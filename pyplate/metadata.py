@@ -891,9 +891,10 @@ class LogpageMeta(OrderedDict):
                                                    exif_datetime[11:])
 
                 if pytz_available:
-                    dt = datetime.strptime(exif_datetime, '%Y-%m-%d %H:%M:%S')
+                    dt_exif = dt.datetime.strptime(exif_datetime, 
+                                                   '%Y-%m-%d %H:%M:%S')
                     # !!! Need to read timezone from configuration!
-                    dt_local = pytz.timezone('Europe/Berlin').localize(dt)
+                    dt_local = pytz.timezone('Europe/Berlin').localize(dt_exif)
                     exif_datetime = (dt_local.astimezone(pytz.utc)
                                      .strftime('%Y-%m-%dT%H:%M:%S'))
 
