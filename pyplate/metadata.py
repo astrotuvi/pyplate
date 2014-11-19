@@ -765,6 +765,9 @@ class ArchiveMeta:
             if plate_id in csvdict:
                 platemeta.parse_csv(csvdict[plate_id], 
                                     csv_filename=csvdict.filename)
+            elif platemeta['plate_id'] in csvdict:
+                platemeta.parse_csv(csvdict[platemeta['plate_id']], 
+                                    csv_filename=csvdict.filename)
 
         if fn_base in self.scan_csv_dict:
             platemeta.parse_csv(self.scan_csv_dict[fn_base], 
