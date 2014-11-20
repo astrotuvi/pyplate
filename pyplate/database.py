@@ -12,7 +12,7 @@ _schema = OrderedDict()
 _schema['archive'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL PRIMARY KEY', None)),
     ('archive_name',     ('VARCHAR(80)', None)),
-    ('institute',        ('VARCHAR(80)', None))
+    ('institute',        ('VARCHAR(80)', None)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
