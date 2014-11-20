@@ -13,6 +13,9 @@ _schema['archive'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL PRIMARY KEY', None)),
     ('archive_name',     ('VARCHAR(80)', None)),
     ('institute',        ('VARCHAR(80)', None))
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ])
 
 _schema['plate'] = OrderedDict([
@@ -64,6 +67,9 @@ _schema['plate'] = OrderedDict([
     ('bibcode',          ('VARCHAR(80)', 'bibcode')),
     ('filename_preview', ('VARCHAR(80)', 'fn_pre')),
     ('filename_cover',   ('VARCHAR(80)', 'fn_cover')),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX wfpdb_ind',   ('(wfpdb_id)', None)),
     ('INDEX method_ind',  ('(method)', None))
@@ -110,6 +116,9 @@ _schema['exposure'] = OrderedDict([
     ('num_sub',          ('TINYINT UNSIGNED', None)),
     ('method',           ('TINYINT UNSIGNED', None)),
     ('focus',            ('FLOAT', 'focus')),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',   ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX raj2000_ind', ('(raj2000)', None)),
@@ -131,6 +140,9 @@ _schema['exposure_sub'] = OrderedDict([
     ('jd_mid',           ('DOUBLE', None)),
     ('jd_end',           ('DOUBLE', None)),
     ('exptime',          ('FLOAT', None)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None))
     ])
@@ -159,6 +171,9 @@ _schema['scan'] = OrderedDict([
     ('scan_author',      ('VARCHAR(80)', 'scan_author')),
     ('scan_notes',       ('VARCHAR(255)', 'scan_notes')),
     ('origin',           ('VARCHAR(80)', 'origin')),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',   ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
@@ -171,6 +186,9 @@ _schema['logbook'] = OrderedDict([
     ('logbook_title',    ('VARCHAR(80)', True)),
     ('logbook_type',     ('TINYINT', True)),
     ('logbook_notes',    ('VARCHAR(255)', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
 
@@ -187,6 +205,9 @@ _schema['logpage'] = OrderedDict([
     ('image_width',      ('SMALLINT UNSIGNED', True)),
     ('image_height',     ('SMALLINT UNSIGNED', True)),
     ('image_datetime',   ('DATETIME', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
 
@@ -194,6 +215,9 @@ _schema['plate_logpage'] = OrderedDict([
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('logpage_id',       ('INT UNSIGNED NOT NULL', None)),
     ('logpage_order',    ('TINYINT', None)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',  ('(plate_id)', None)),
     ('INDEX logpage_ind',('(logpage_id)', None))
     ])
@@ -248,6 +272,9 @@ _schema['source'] = OrderedDict([
     ('flag_rim',         ('TINYINT', True)),
     ('flag_negradius',   ('TINYINT', True)),
     ('flag_clean',       ('TINYINT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',      ('(plate_id)', None)),
     ('INDEX archive_ind',    ('(archive_id)', None)),
     ('INDEX exposure_ind',   ('(exposure_id)', None)),
@@ -280,6 +307,9 @@ _schema['source_calib'] = OrderedDict([
     ('ucac4_id',         ('CHAR(10)', False)),
     ('ucac4_bmag',       ('FLOAT', False)),
     ('ucac4_vmag',       ('FLOAT', False)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
