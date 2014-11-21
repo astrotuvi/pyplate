@@ -83,7 +83,7 @@ class PlateImagePipeline():
         proc.solve_plate()
         #proc.output_wcs_header()
         proc.solve_recursive()
-        proc.process_coordinates()
+        proc.process_source_coordinates()
         proc.output_sources_db()
         #proc.output_sources_csv()
         proc.finish()
