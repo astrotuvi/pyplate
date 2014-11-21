@@ -1587,7 +1587,7 @@ class SolveProcess:
 
         # Match sources with the UCAC4 catalogue
         if num_finite > 0:
-            ind_finite = np.where(bool_finite)
+            ind_finite = np.where(bool_finite)[0]
             ra_finite = self.sources['raj2000_sub'][ind_finite]
             dec_finite = self.sources['dej2000_sub'][ind_finite]
 
