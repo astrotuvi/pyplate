@@ -1652,10 +1652,10 @@ class SolveProcess:
         x = self.sources['x_source']
         y = self.sources['y_source']
         erra_arcsec = (self.sources['erra_source'] * self.mean_pixscale)
-        ra = np.empty(len(x)) * np.nan
-        dec = np.empty(len(x)) * np.nan
-        sigma_ra = np.empty(len(x)) * np.nan
-        sigma_dec = np.empty(len(x)) * np.nan
+        ra = np.zeros(len(x)) * np.nan
+        dec = np.zeros(len(x)) * np.nan
+        sigma_ra = np.zeros(len(x)) * np.nan
+        sigma_dec = np.zeros(len(x)) * np.nan
         gridsize = np.zeros(len(x))
 
         xsize = (in_head['XMAX'] - in_head['XMIN']) / 2.

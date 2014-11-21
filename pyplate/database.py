@@ -661,7 +661,7 @@ class PlateDB:
                     source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
                                   else None)
 
-                    if k == 'HEALPIX8' and source_val < 0:
+                    if 'healpix' in k and source_val < 0:
                         source_val = None
                         
                     val_tuple = val_tuple + (source_val, )
