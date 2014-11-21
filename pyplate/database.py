@@ -290,6 +290,10 @@ _schema['source_calib'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
     ('raj2000',          ('DOUBLE', True)),
     ('dej2000',          ('DOUBLE', True)),
+    ('x_sphere',         ('DOUBLE', True)),
+    ('y_sphere',         ('DOUBLE', True)),
+    ('z_sphere',         ('DOUBLE', True)),
+    ('healpix8',         ('INT', True)),
     ('raj2000_wcs',      ('DOUBLE', True)),
     ('dej2000_wcs',      ('DOUBLE', True)),
     ('raj2000_sub',      ('DOUBLE', True)),
@@ -316,6 +320,10 @@ _schema['source_calib'] = OrderedDict([
     ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None)),
+    ('INDEX x_ind',        ('(x_sphere)', None)),
+    ('INDEX y_ind',        ('(y_sphere)', None)),
+    ('INDEX z_ind',        ('(z_sphere)', None)),
+    ('INDEX healpix8_ind', ('(healpix8)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
     ])

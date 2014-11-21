@@ -866,6 +866,19 @@ class SolveProcess:
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
                                        for k in _source_meta])
+
+        self.sources['raj2000'] = np.nan
+        self.sources['dej2000'] = np.nan
+        self.sources['raj2000_wcs'] = np.nan
+        self.sources['dej2000_wcs'] = np.nan
+        self.sources['raj2000_sub'] = np.nan
+        self.sources['dej2000_sub'] = np.nan
+        self.sources['raerr_sub'] = np.nan
+        self.sources['decerr_sub'] = np.nan
+        self.sources['x_sphere'] = np.nan
+        self.sources['y_sphere'] = np.nan
+        self.sources['z_sphere'] = np.nan
+        self.sources['healpix8'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -2121,11 +2134,20 @@ class SolveProcess:
         self.sources['raj2000'] = self.sources['raj2000_wcs']
         self.sources['dej2000'] = self.sources['dej2000_wcs']
 
-        ind = np.where(np.isfinite(self.sources['raerr_sub']))
+        ind = np.where(np.isfinite(self.sources['raj2000_sub']) &
+                       np.isfinite(self.sources['dej2000_sub']))
 
         if len(ind[0]) > 0:
             self.sources['raj2000'][ind] = self.sources['raj2000_sub'][ind]
             self.sources['dej2000'][ind] = self.sources['dej2000_sub'][ind]
+
+        # Calculate X, Y, and Z on the unit sphere
+        # http://www.sdss3.org/svn/repo/idlutils/tags/v5_5_5/pro/coord/angles_to_xyz.pro
+        phi_rad = np.radians(self.sources['raj2000'])
+        theta_rad = np.radians(90. - self.sources['dej2000'])
+        self.sources['x_sphere'] = np.cos(phi_rad) * np.sin(theta_rad)
+        self.sources['y_sphere'] = np.sin(phi_rad) * np.sin(theta_rad)
+        self.sources['z_sphere'] = np.cos(theta_rad)
 
     def output_sources_csv(self, filename=None):
         """
