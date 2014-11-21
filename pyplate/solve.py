@@ -1562,30 +1562,39 @@ class SolveProcess:
         self.sources['decerr_sub'] = radec[:,3]
         self.sources['gridsize_sub'] = gridsize
 
+        bool_finite = np.isfinite(self.sources['raj2000_sub'])
+        num_finite = bool_finite.sum()
+
         # Match sources with the UCAC4 catalogue
-        if have_match_coord:
-            coords = ICRS(radec[:,0], radec[:,1], 
-                          unit=(units.degree, units.degree))
-            catalog = ICRS(ra_ucac, dec_ucac, 
-                          unit=(units.degree, units.degree))
-            ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                         nthneighbor=1)
-            ind_plate = np.arange(ind_ucac.size)
-            indmask = ds2d < 5.*units.arcsec
-            ind_plate = ind_plate[indmask]
-            ind_ucac = ind_ucac[indmask]
-        elif have_pyspherematch:
-            ind_plate,ind_ucac,ds_ucac = spherematch(radec[:,0], radec[:,1],
-                                                     ra_ucac, dec_ucac,
-                                                     tol=5./3600., nnearest=1)
+        if num_finite > 0:
+            ind_finite = np.where(bool_finite)
+            ra_finite = self.sources['raj2000_sub'][ind_finite]
+            dec_finite = self.sources['dej2000_sub'][ind_finite]
 
-        if have_match_coord or have_pyspherematch:
-            num_match = len(ind_plate)
+            if have_match_coord:
+                coords = ICRS(ra_finite, dec_finite, 
+                              unit=(units.degree, units.degree))
+                catalog = ICRS(ra_ucac, dec_ucac, 
+                              unit=(units.degree, units.degree))
+                ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
+                                                             nthneighbor=1)
+                ind_plate = np.arange(ind_ucac.size)
+                indmask = ds2d < 5.*units.arcsec
+                ind_plate = ind_plate[indmask]
+                ind_ucac = ind_ucac[indmask]
+            elif have_pyspherematch:
+                ind_plate,ind_ucac,ds_ucac = \
+                        spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
+                                    tol=5./3600., nnearest=1)
 
-            if num_match > 0:
-                self.sources['ucac4_id'][ind_plate] = id_ucac[ind_ucac]
-                self.sources['ucac4_bmag'][ind_plate] = bmag_ucac[ind_ucac]
-                self.sources['ucac4_vmag'][ind_plate] = vmag_ucac[ind_ucac]
+            if have_match_coord or have_pyspherematch:
+                num_match = len(ind_plate)
+
+                if num_match > 0:
+                    ind = ind_finite[ind_plate]
+                    self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
+                    self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
+                    self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
