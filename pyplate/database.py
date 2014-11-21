@@ -659,7 +659,11 @@ class PlateDB:
                 if v[1]:
                     col_list.append(k)
                     source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
-                                  else None)
+                                  else None)a
+
+                    if k == 'HEALPIX8' and source_val < 0:
+                        source_val = None
+                        
                     val_tuple = val_tuple + (source_val, )
 
             col_str = ','.join(col_list)

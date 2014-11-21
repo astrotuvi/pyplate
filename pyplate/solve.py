@@ -387,6 +387,10 @@ _source_meta = OrderedDict([
     ('flag_clean',          ('i1', '%1d', '')),
     ('raj2000',             ('f8', '%11.7f', '')),
     ('dej2000',             ('f8', '%11.7f', '')),
+    ('x_sphere',            ('f8', '%10.7f', '')),
+    ('y_sphere',            ('f8', '%10.7f', '')),
+    ('z_sphere',            ('f8', '%10.7f', '')),
+    ('healpix8',            ('i4', '%6d', '')),
     ('raj2000_wcs',         ('f8', '%11.7f', '')),
     ('dej2000_wcs',         ('f8', '%11.7f', '')),
     ('raj2000_sub',         ('f8', '%11.7f', '')),
@@ -394,10 +398,6 @@ _source_meta = OrderedDict([
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
-    ('x_sphere',            ('f8', '%10.7f', '')),
-    ('y_sphere',            ('f8', '%10.7f', '')),
-    ('z_sphere',            ('f8', '%10.7f', '')),
-    ('healpix8',            ('i4', '%6d', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_bmag',          ('f8', '%7.4f', '')),
     ('ucac4_vmag',          ('f8', '%7.4f', ''))
@@ -878,7 +878,7 @@ class SolveProcess:
         self.sources['x_sphere'] = np.nan
         self.sources['y_sphere'] = np.nan
         self.sources['z_sphere'] = np.nan
-        self.sources['healpix8'] = np.nan
+        self.sources['healpix8'] = -1
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
