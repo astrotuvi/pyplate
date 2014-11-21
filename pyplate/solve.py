@@ -1581,7 +1581,8 @@ class SolveProcess:
         self.sources['decerr_sub'] = radec[:,3]
         self.sources['gridsize_sub'] = gridsize
 
-        bool_finite = np.isfinite(self.sources['raj2000_sub'])
+        bool_finite = (np.isfinite(self.sources['raj2000_sub']) &
+                       np.isfinite(self.sources['dej2000_sub']))
         num_finite = bool_finite.sum()
 
         # Match sources with the UCAC4 catalogue
