@@ -658,8 +658,13 @@ class PlateDB:
             for k,v in _schema['source_calib'].items():
                 if v[1]:
                     col_list.append(k)
-                    source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
-                                  else None)
+
+                    try:
+                        source_val = (sources[i][k] 
+                                      if np.isfinite(sources[i][k])
+                                      else None)
+                    except TypeError:
+                        source_val = sources[i][k]
 
                     if 'healpix' in k and source_val < 0:
                         source_val = None
