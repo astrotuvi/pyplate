@@ -1630,10 +1630,10 @@ class SolveProcess:
         x = self.sources['x_source']
         y = self.sources['y_source']
         erra_arcsec = (self.sources['erra_source'] * self.mean_pixscale)
-        ra = np.zeros(len(x)) + 999.9
-        dec = np.zeros(len(x)) + 999.9
-        sigma_ra = np.zeros(len(x)) + 99.9
-        sigma_dec = np.zeros(len(x)) + 99.9
+        ra = np.empty(len(x)) * np.nan
+        dec = np.empty(len(x)) * np.nan
+        sigma_ra = np.empty(len(x)) * np.nan
+        sigma_dec = np.empty(len(x)) * np.nan
         gridsize = np.zeros(len(x))
 
         xsize = (in_head['XMAX'] - in_head['XMIN']) / 2.
@@ -2059,7 +2059,9 @@ class SolveProcess:
                                            distort=distort,
                                            max_recursion_depth=max_recursion_depth,
                                            force_recursion_depth=force_recursion_depth)
-                    bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
+                    bnew = (np.isfinite(new_radec[:,0]) & 
+                            np.isfinite(new_radec[:,1]))
+                    #bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
 
                     if bnew.sum() > 0:
                         indnew = np.where(bnew)
@@ -2082,7 +2084,9 @@ class SolveProcess:
                                        distort=distort,
                                        max_recursion_depth=max_recursion_depth,
                                        force_recursion_depth=force_recursion_depth)
-                bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
+                bnew = (np.isfinite(new_radec[:,0]) & 
+                        np.isfinite(new_radec[:,1]))
+                #bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
 
                 if bnew.sum() > 0:
                     indnew = np.where(bnew)
@@ -2108,17 +2112,11 @@ class SolveProcess:
         self.sources['raj2000'] = self.sources['raj2000_wcs']
         self.sources['dej2000'] = self.sources['dej2000_wcs']
 
-        ind = np.where(self.sources['raerr_sub'] < 99)
+        ind = np.where(np.isfinite(self.sources['raerr_sub']))
 
         if len(ind[0]) > 0:
             self.sources['raj2000'][ind] = self.sources['raj2000_sub'][ind]
             self.sources['dej2000'][ind] = self.sources['dej2000_sub'][ind]
-
-        ind = np.where(self.sources['raerr_sub'] >= 99)
-
-        if len(ind[0]) > 0:
-            self.sources['raj2000_sub'][ind] = None
-            self.sources['dej2000_sub'][ind] = None
 
     def output_sources_csv(self, filename=None):
         """
