@@ -669,6 +669,9 @@ class PlateDB:
                     if 'healpix' in k and source_val < 0:
                         source_val = None
                         
+                    if 'ucac4_id' in k and source_val == '':
+                        source_val = None
+                        
                     val_tuple = val_tuple + (source_val, )
 
             col_str = ','.join(col_list)

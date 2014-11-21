@@ -885,6 +885,8 @@ class SolveProcess:
         self.sources['y_sphere'] = np.nan
         self.sources['z_sphere'] = np.nan
         self.sources['healpix256'] = -1
+        self.sources['ucac4_bmag'] = np.nan
+        self.sources['ucac4_vmag'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
