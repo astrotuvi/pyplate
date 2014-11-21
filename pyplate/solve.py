@@ -2162,7 +2162,7 @@ class SolveProcess:
             if len(ind[0]) > 0:
                 phi_rad = np.radians(self.sources['raj2000'][ind])
                 theta_rad = np.radians(90. - self.sources['dej2000'][ind])
-                hp8 = healpy.ang2pix(256, phi_rad, theta_rad, nest=True)
+                hp8 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
                 self.sources['healpix8'][ind] = hp8
 
     def output_sources_csv(self, filename=None):
