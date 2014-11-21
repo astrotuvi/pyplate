@@ -632,7 +632,9 @@ class PlateDB:
             for k,v in _schema['source'].items():
                 if v[1]:
                     col_list.append(k)
-                    val_tuple = val_tuple + (sources[i][k], )
+                    source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
+                                  else None)
+                    val_tuple = val_tuple + (source_val, )
 
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
@@ -648,7 +650,9 @@ class PlateDB:
             for k,v in _schema['source_calib'].items():
                 if v[1]:
                     col_list.append(k)
-                    val_tuple = val_tuple + (sources[i][k], )
+                    source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
+                                  else None)
+                    val_tuple = val_tuple + (source_val, )
 
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
