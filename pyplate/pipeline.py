@@ -72,7 +72,7 @@ class PlateImagePipeline():
         h.rewrite()
         h.reorder()
         fn_header = os.path.splitext(fn)[0] + '.hdr'
-        h.output_header(fn_header)
+        #h.output_header(fn_header)
 
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)
@@ -81,10 +81,11 @@ class PlateImagePipeline():
         proc.invert_plate()
         proc.extract_sources()
         proc.solve_plate()
-        proc.output_wcs_header()
+        #proc.output_wcs_header()
         proc.solve_recursive()
+        proc.process_coordinates()
         proc.output_sources_db()
-        proc.output_sources_csv()
+        #proc.output_sources_csv()
         proc.finish()
 
     def worker(self):

@@ -385,6 +385,8 @@ _source_meta = OrderedDict([
     ('flag_negradius',      ('i1', '%1d', '')),
     ('flag_rim',            ('i1', '%1d', '')),
     ('flag_clean',          ('i1', '%1d', '')),
+    ('raj2000',             ('f8', '%11.7f', '')),
+    ('dej2000',             ('f8', '%11.7f', '')),
     ('raj2000_wcs',         ('f8', '%11.7f', '')),
     ('dej2000_wcs',         ('f8', '%11.7f', '')),
     ('raj2000_sub',         ('f8', '%11.7f', '')),
@@ -392,6 +394,10 @@ _source_meta = OrderedDict([
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
+    ('x_sphere',            ('f8', '%10.7f', '')),
+    ('y_sphere',            ('f8', '%10.7f', '')),
+    ('z_sphere',            ('f8', '%10.7f', '')),
+    ('healpix8',            ('i4', '%6d', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_bmag',          ('f8', '%7.4f', '')),
     ('ucac4_vmag',          ('f8', '%7.4f', ''))
@@ -2091,6 +2097,28 @@ class SolveProcess:
 
         return (np.column_stack((ra, dec, sigma_ra, sigma_dec)), 
                 gridsize)
+
+    def process_source_coordinates(self):
+        """
+        Combine coordinates from the global and recursive solutions.
+        Calculate X, Y, and Z on the unit sphere.
+
+        """
+
+        self.sources['raj2000'] = self.sources['raj2000_wcs']
+        self.sources['dej2000'] = self.sources['dej2000_wcs']
+
+        ind = np.where(self.sources['raerr_sub'] < 99)
+
+        if len(ind[0]) > 0:
+            self.sources['raj2000'][ind] = self.sources['raj2000_sub'][ind]
+            self.sources['dej2000'][ind] = self.sources['dej2000_sub'][ind]
+
+        ind = np.where(self.sources['raerr_sub'] >= 99)
+
+        if len(ind[0]) > 0:
+            self.sources['raj2000_sub'][ind] = None
+            self.sources['dej2000_sub'][ind] = None
 
     def output_sources_csv(self, filename=None):
         """
