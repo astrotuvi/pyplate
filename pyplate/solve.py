@@ -50,6 +50,12 @@ try:
 except ImportError:
     have_esutil = False
 
+try:
+    import healpy
+    have_healpy = True
+except ImportError:
+    have_healpy = False
+    
 
 class AstrometryNetIndex:
     """
@@ -2148,6 +2154,17 @@ class SolveProcess:
         self.sources['x_sphere'] = np.cos(phi_rad) * np.sin(theta_rad)
         self.sources['y_sphere'] = np.sin(phi_rad) * np.sin(theta_rad)
         self.sources['z_sphere'] = np.cos(theta_rad)
+
+        if have_healpy:
+            ind = np.where(np.isfinite(self.sources['raj2000']) &
+                           np.isfinite(self.sources['dej2000']))
+
+            if len(ind[0]) > 0:
+                hp8 = healpy.ang2pix(256, 
+                                     np.radians(self.sources['raj2000'][ind]), 
+                                     np.radians(self.sources['dej2000'][ind]), 
+                                     nest=True)
+                self.sources['healpix8'][ind] = hp8
 
     def output_sources_csv(self, filename=None):
         """
