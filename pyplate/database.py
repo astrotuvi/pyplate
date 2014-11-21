@@ -293,7 +293,7 @@ _schema['source_calib'] = OrderedDict([
     ('x_sphere',         ('DOUBLE', True)),
     ('y_sphere',         ('DOUBLE', True)),
     ('z_sphere',         ('DOUBLE', True)),
-    ('healpix8',         ('INT', True)),
+    ('healpix256',       ('INT', True)),
     ('raj2000_wcs',      ('DOUBLE', True)),
     ('dej2000_wcs',      ('DOUBLE', True)),
     ('raj2000_sub',      ('DOUBLE', True)),
@@ -323,7 +323,7 @@ _schema['source_calib'] = OrderedDict([
     ('INDEX x_ind',        ('(x_sphere)', None)),
     ('INDEX y_ind',        ('(y_sphere)', None)),
     ('INDEX z_ind',        ('(z_sphere)', None)),
-    ('INDEX healpix8_ind', ('(healpix8)', None)),
+    ('INDEX healpix256_ind', ('(healpix256)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
     ])

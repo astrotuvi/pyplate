@@ -396,7 +396,7 @@ _source_meta = OrderedDict([
     ('x_sphere',            ('f8', '%10.7f', '')),
     ('y_sphere',            ('f8', '%10.7f', '')),
     ('z_sphere',            ('f8', '%10.7f', '')),
-    ('healpix8',            ('i4', '%6d', '')),
+    ('healpix256',          ('i4', '%6d', '')),
     ('raj2000_wcs',         ('f8', '%11.7f', '')),
     ('dej2000_wcs',         ('f8', '%11.7f', '')),
     ('raj2000_sub',         ('f8', '%11.7f', '')),
@@ -884,7 +884,7 @@ class SolveProcess:
         self.sources['x_sphere'] = np.nan
         self.sources['y_sphere'] = np.nan
         self.sources['z_sphere'] = np.nan
-        self.sources['healpix8'] = -1
+        self.sources['healpix256'] = -1
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -2162,8 +2162,8 @@ class SolveProcess:
             if len(ind[0]) > 0:
                 phi_rad = np.radians(self.sources['raj2000'][ind])
                 theta_rad = np.radians(90. - self.sources['dej2000'][ind])
-                hp8 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
-                self.sources['healpix8'][ind] = hp8
+                hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
+                self.sources['healpix256'][ind] = hp256
 
     def output_sources_csv(self, filename=None):
         """
