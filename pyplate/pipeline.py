@@ -55,7 +55,10 @@ class PlateImagePipeline():
                      'output_wcs_file', 'solve_recursive', 
                      'output_sources_db', 'output_sources_csv']:
             try:
-                setattr(self, attr, conf.get('Pipeline', attr))
+                setattr(self, attr, conf.getboolean('Pipeline', attr))
+            except ValueError:
+                print ('Error in configuration file: not a boolean value '
+                       '({}: {})'.format('Pipeline', attr))
             except ConfigParser.Error:
                 pass
 
