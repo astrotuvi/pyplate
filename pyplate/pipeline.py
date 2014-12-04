@@ -58,7 +58,7 @@ class PlateImagePipeline():
                 setattr(self, attr, conf.getboolean('Pipeline', attr))
             except ValueError:
                 print ('Error in configuration file: not a boolean value '
-                       '({}: {})'.format('Pipeline', attr))
+                       '([{}], {})'.format('Pipeline', attr))
             except ConfigParser.Error:
                 pass
 
