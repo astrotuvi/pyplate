@@ -19,6 +19,7 @@ from astropy import units
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
+from . import __version__
 
 try:
     from PIL import Image
@@ -1948,6 +1949,25 @@ class PlateHeader(fits.Header):
                 self.set(skey, '')
             else:
                 self.append(fits.Card.fromstring('{:8s}='.format(skey)))
+
+    def blank(self):
+        """
+        Populate header with blank cards.
+
+        """
+
+        for k,v in _keyword_meta.items():
+            if v[1]:
+                self._update_keyword_list(v[3], v[4], v[0], None)
+            elif v[3]:
+                self._update_keyword(v[3], v[0], None)
+
+        self.add_history('Header created with PyPlate {} at {}'
+                         .format(__version__, dt.datetime.now()
+                                 .strftime('%Y-%m-%dT%H:%M:%S')))
+
+        self.update_comments()
+        self.format()
 
     def update_from_platemeta(self, platemeta=None):
         """
