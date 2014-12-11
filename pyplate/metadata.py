@@ -17,7 +17,8 @@ from astropy.time import Time
 from astropy.coordinates import Angle
 from astropy import units
 from collections import OrderedDict
-from database import PlateDB
+from .database import PlateDB
+from .conf import read_conf
 
 try:
     from PIL import Image
@@ -164,38 +165,6 @@ _logpage_meta = OrderedDict([
     ('image_height', (int, None)),
     ('image_datetime', (str, None))
     ])
-
-def read_conf(conf_file):
-    """
-    Read configuration file.
-
-    Parameters
-    ----------
-    conf_file : str
-        Configuration file path.
-
-    Returns
-    -------
-    conf : a ConfigParser object
-    
-    """
-
-    conf = ConfigParser.ConfigParser()
-    conf.read(conf_file)
-
-    if (conf.has_section('Files') and 
-        conf.has_option('Files', 'fits_acknowledgements')):
-        fn_ack = conf.get('Files', 'fits_acknowledgements')
-
-        with open(fn_ack, 'rb') as f:
-            ack = '\n'.join(line.strip() for line in f.readlines())
-
-        if not conf.has_section('Keyword values'):
-            conf.add_section('Keyword values')
-
-        conf.set('Keyword values', 'fits_acknowledgements', ack.strip())
-
-    return conf
 
 def str_to_num(s):
     """
@@ -812,6 +781,9 @@ class LogpageMeta(OrderedDict):
 
         """
 
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
         self.conf = conf
 
         try:
@@ -919,6 +891,7 @@ class PlateMeta(OrderedDict):
 
         self['plate_id'] = plate_id
 
+        self.conf = None
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
@@ -983,6 +956,9 @@ class PlateMeta(OrderedDict):
         Assign configuration.
 
         """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
 
         self.conf = conf
 
@@ -1904,6 +1880,9 @@ class PlateHeader(fits.Header):
         Assign configuration to the plate header.
 
         """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
 
         self.conf = conf
 
