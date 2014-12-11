@@ -1872,6 +1872,7 @@ class PlateHeader(fits.Header):
         'FN-LOGn',
         'ORIGIN',
         'DATE',
+        'sep:WCS',
         'sep:Acknowledgements',
         'sep:History',
         'HISTORY']
@@ -1963,9 +1964,8 @@ class PlateHeader(fits.Header):
                 self._update_keyword(v[3], v[0], None)
 
         self.add_history('Header created with PyPlate {} at {}'
-                         .format(__version__, dt.datetime.now()
+                         .format(__version__, dt.datetime.utcnow()
                                  .strftime('%Y-%m-%dT%H:%M:%S')))
-
         self.update_comments()
         self.format()
 
@@ -2284,6 +2284,31 @@ class PlateHeader(fits.Header):
         self.update_comments()
         self.rewrite()
         self.reorder()
+
+    def insert_wcs(self, wcshead):
+        """
+        Insert WCS header cards.
+
+        """
+
+        wcs_sep = ' WCS'.rjust(72, '-')
+
+        if wcs_sep in self.values():
+            wcs_ind = self.values().index(wcs_sep) + 1
+            
+            for c in wcshead.cards:
+                if c[0] == 'HISTORY':
+                    self.insert(wcs_ind, ('COMMENT', c[1]))
+                    wcs_ind += 1
+                elif c[0] == 'COMMENT':
+                    pass
+                elif c[0] not in self:
+                    self.insert(wcs_ind, c)
+                    wcs_ind += 1
+                    
+            self.add_history('WCS added with PyPlate {} at {}'
+                             .format(__version__, dt.datetime.utcnow()
+                                     .strftime('%Y-%m-%dT%H:%M:%S')))
 
     def output_header(self, filename):
         """
