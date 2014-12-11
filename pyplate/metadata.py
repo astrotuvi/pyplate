@@ -1949,24 +1949,22 @@ class PlateHeader(fits.Header):
             else:
                 self.append(fits.Card.fromstring('{:8s}='.format(skey)))
 
-    def update_from_platemeta(self):
+    def update_from_platemeta(self, platemeta=None):
         """
         Update header with plate metadata.
 
         """
 
+        if platemeta is None:
+            platemeta = self.platemeta
+
         for k,v in _keyword_meta.items():
-            if k in self.platemeta:
+            if k in platemeta:
                 if v[1]:
                     self._update_keyword_list(v[3], v[4], v[0], 
-                                              self.platemeta[k])
+                                              platemeta[k])
                 elif v[3]:
-                    self._update_keyword(v[3], v[0], self.platemeta[k])
-
-        #if self.platemeta['numexp']:
-        #    self.set('NUMEXP', self.platemeta['numexp'])
-        #elif not 'NUMEXP' in self:
-        #    self.set('NUMEXP', 1)
+                    self._update_keyword(v[3], v[0], platemeta[k])
 
         self.update_comments()
 
@@ -2136,7 +2134,7 @@ class PlateHeader(fits.Header):
         for key in self:
             if key in self._default_comments:
                 self.comments[key] = self._default_comments[key]
-            elif key[-1].isdigit():
+            elif key and key[-1].isdigit():
                 # If keyword ends with a digit, replace the ending number 
                 # with 'n', and look for such a keyword. For example, if 
                 # keyword is 'EXPTIM1', look for 'EXPTIMn' instead.
@@ -2166,9 +2164,10 @@ class PlateHeader(fits.Header):
             if (k == 'COMMENT' or k == 'HISTORY') and not v:
                 continue
 
-            # Rename blank keyword to COMMENT
-            if not k: 
-                k = 'COMMENT'
+            # Rename blank keyword to COMMENT if it is not a separator
+            if not k:
+                if not re.match('---', v):
+                    k = 'COMMENT'
 
             # Store cards in the new header
             # Treat null value separately to get proper comment alignment
@@ -2235,7 +2234,21 @@ class PlateHeader(fits.Header):
 
         # Copy the remaining cards
         for c in h.cards:
-            self.append(c, bottom=True)
+            k,v,comment = c
+
+            # Copy cards that are not existing separators
+            if k or v not in self['']:
+                self.append(c, bottom=True)
+
+    def format(self):
+        """
+        Format and reorder header cards.
+
+        """
+
+        self.update_comments()
+        self.rewrite()
+        self.reorder()
 
     def update_all(self):
         """
