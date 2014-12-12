@@ -1599,7 +1599,7 @@ class PlateHeader(fits.Header):
         fits.Header.__init__(self, *args, **kwargs)
         self.platemeta = PlateMeta()
         self.conf = ConfigParser.ConfigParser()
-
+        
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
         'NAXIS':    'number of data axes',
@@ -1875,7 +1875,8 @@ class PlateHeader(fits.Header):
         'sep:WCS',
         'sep:Acknowledgements',
         'sep:History',
-        'HISTORY']
+        'HISTORY',
+        'sep:']
 
     def assign_conf(self, conf):
         """
@@ -1903,7 +1904,12 @@ class PlateHeader(fits.Header):
 
         """
 
-        return cls.fromfile(filename, sep='\n', endcard=False, padding=False)
+        pheader = cls.fromfile(filename, sep='\n', endcard=False, 
+                               padding=False)
+        pheader.add_history('Header imported with PyPlate {} at {}'
+                            .format(__version__, dt.datetime.utcnow()
+                                    .strftime('%Y-%m-%dT%H:%M:%S')))
+        return pheader
 
     def _update_keyword(self, key, valtype, value):
         """
@@ -1963,10 +1969,7 @@ class PlateHeader(fits.Header):
             elif v[3]:
                 self._update_keyword(v[3], v[0], None)
 
-        self.add_history('Header created with PyPlate {} at {}'
-                         .format(__version__, dt.datetime.utcnow()
-                                 .strftime('%Y-%m-%dT%H:%M:%S')))
-        self.update_comments()
+        #self.update_comments()
         self.format()
 
     def update_from_platemeta(self, platemeta=None):
@@ -1986,7 +1989,11 @@ class PlateHeader(fits.Header):
                 elif v[3]:
                     self._update_keyword(v[3], v[0], platemeta[k])
 
-        self.update_comments()
+        self.add_history('Header updated with PyPlate {} at {}'
+                         .format(__version__, dt.datetime.utcnow()
+                                 .strftime('%Y-%m-%dT%H:%M:%S')))
+        #self.update_comments()
+        self.format()
 
     def update_values(self):
         """
