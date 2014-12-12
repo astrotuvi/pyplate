@@ -2195,7 +2195,8 @@ class PlateHeader(fits.Header):
                 cardstr = k.ljust(8) + '='.ljust(22) + ' / ' + c
                 self.append(fits.Card.fromstring(cardstr))
             else:
-                self.set(k, v, c)
+                #self.set(k, v, c)
+                self.append((k, v, c), bottom=True)
 
             # Pad empty strings in card values
             if not v and k and (k != 'COMMENT') and (k != 'HISTORY'):
@@ -2209,7 +2210,8 @@ class PlateHeader(fits.Header):
         """
 
         if self.conf.has_section('FITS keyword order'):
-            orderkeys = self.conf.get('FITS keyword order','keywords').split('\n')
+            orderkeys = self.conf.get('FITS keyword order',
+                                      'keywords').split('\n')
         else:
             orderkeys = self._default_order
 
@@ -2226,10 +2228,25 @@ class PlateHeader(fits.Header):
 
                 self.append(('', sepstr), end=True)
 
+                # Copy WCS block
+                wcs_sep = ' WCS'.rjust(72, '-')
+
+                if key.strip().endswith('WCS') and wcs_sep in h.values():
+                    wcs_ind = h.values().index(wcs_sep) + 1
+
+                    for i,c in enumerate(h.cards[wcs_ind:]):
+                        if c[0]:
+                            self.append(c, end=True)
+                            del h[wcs_ind]
+                        else:
+                            break
+
+                # Include acknowledgements
                 if (key.strip().endswith('Acknowledgements') and 
                     self.platemeta['fits_acknowledgements']):
                     ack = self.platemeta['fits_acknowledgements']
-                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) for ackpara in ack.split('\n\n')])
+                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) 
+                                       for ackpara in ack.split('\n\n')])
 
                     for ackline in ack.split('\n'):
                         self.append(('COMMENT', ackline), end=True)
@@ -2244,7 +2261,8 @@ class PlateHeader(fits.Header):
             elif key == 'HISTORY':
                 if key in h:
                     for histitem in h[key]:
-                        self.add_history(histitem)
+                        self.append(('HISTORY', histitem), end=True)
+                        #self.add_history(histitem)
                         
                     del h[key]
             elif key in h:
@@ -2298,7 +2316,8 @@ class PlateHeader(fits.Header):
             
             for c in wcshead.cards:
                 if c[0] == 'HISTORY':
-                    self.insert(wcs_ind, ('COMMENT', c[1]))
+                    #self.insert(wcs_ind, ('COMMENT', c[1]))
+                    self.insert(wcs_ind, c)
                     wcs_ind += 1
                 elif c[0] == 'COMMENT':
                     pass
