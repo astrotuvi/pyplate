@@ -1951,7 +1951,7 @@ class PlateHeader(fits.Header):
             else:
                 self.append(fits.Card.fromstring('{:8s}='.format(skey)))
 
-    def blank(self):
+    def populate(self):
         """
         Populate header with blank cards.
 
