@@ -104,7 +104,7 @@ class PlateImagePipeline():
 
         if self.output_header_file:
             fn_header = os.path.splitext(fn)[0] + '.hdr'
-            h.output_header(fn_header)
+            h.output_to_file(fn_header)
 
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)
@@ -288,7 +288,7 @@ def run_pipeline(filenames, fn_conf):
         h.rewrite()
         h.reorder()
         fn_header = os.path.splitext(fn)[0] + '.hdr'
-        h.output_header(fn_header)
+        h.output_to_file(fn_header)
 
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)

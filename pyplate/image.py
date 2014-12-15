@@ -3,6 +3,7 @@ import glob
 import numpy as np
 from datetime import datetime
 from astropy.io import fits
+from .conf import read_conf
 
 try:
     from PIL import Image
@@ -40,6 +41,9 @@ class PlateConverter:
         Parse configuration and set class attributes.
 
         """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
 
         for attr in ['tiff_dir', 'write_fits_dir', 'write_wedge_dir']:
             try:

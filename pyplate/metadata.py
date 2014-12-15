@@ -1599,6 +1599,9 @@ class PlateHeader(fits.Header):
         fits.Header.__init__(self, *args, **kwargs)
         self.platemeta = PlateMeta()
         self.conf = ConfigParser.ConfigParser()
+        self.fits_dir = ''
+        self.write_fits_dir = ''
+        self.write_header_dir = ''
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -1888,6 +1891,12 @@ class PlateHeader(fits.Header):
             conf = read_conf(conf)
 
         self.conf = conf
+
+        for attr in ['fits_dir', 'write_fits_dir', 'write_header_dir']:
+            try:
+                setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
 
     def assign_platemeta(self, platemeta):
         """
@@ -2336,25 +2345,50 @@ class PlateHeader(fits.Header):
                              .format(__version__, dt.datetime.utcnow()
                                      .strftime('%Y-%m-%dT%H:%M:%S')))
 
-    def output_header(self, filename):
+    def output_to_fits(self, filename):
+        """
+        Output header to FITS file.
+
+        """
+
+        fn_fits = os.path.join(self.fits_dir, filename)
+
+        if not os.path.exists(fn_fits):
+            print 'File does not exist: {}'.format(fn_fits)
+
+        with fits.open(fn_fits) as fitsfile:
+            fitsfile[0].header = self.copy()
+
+            try:
+                os.makedirs(self.write_fits_dir)
+            if not os.path.isdir(self.write_fits_dir):
+                print ('Could not create directory {}'
+                       .format(self.write_fits_dir))
+            
+            fn_out = os.path.join(self.write_fits_dir, filename)
+
+            try:
+                fitsfile.writeto(fn_out)
+            except IOError:
+                print 'Could not write to {}'.format(fn_out)
+                
+            fitsfile.close()
+            del fitsfile
+
+    def output_to_file(self, filename):
         """
         Output header to a text file.
 
         """
         
-        header_out_dir = ''
-
-        if self.conf.has_section('Files'):
-            if self.conf.has_option('Files', 'write_header_dir'):
-                header_out_dir = self.conf.get('Files', 'write_header_dir')
-
         try:
-            os.makedirs(header_out_dir)
+            os.makedirs(self.write_header_dir)
         except OSError:
-            if not os.path.isdir(header_out_dir):
-                raise
+            if not os.path.isdir(self.write_header_dir):
+                print ('Could not create directory {}'
+                       .format(self.write_header_dir))
 
-        fn_out = os.path.join(header_out_dir, filename)
+        fn_out = os.path.join(self.write_header_dir, filename)
 
         if os.path.exists(fn_out):
             os.remove(fn_out)
