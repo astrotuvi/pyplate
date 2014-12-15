@@ -44,12 +44,12 @@ _keyword_meta = OrderedDict([
     ('plate_id', (int, False, None, None, None)),
     ('archive_id', (int, False, None, None, None)),
     ('fits_simple', (bool, False, True, 'SIMPLE', None)),
-    ('fits_bitpix', (int, False, None, 'BITPIX', None)),
-    ('fits_naxis', (int, False, None, 'NAXIS', None)),
-    ('fits_naxis1', (int, False, None, 'NAXIS1', None)),
-    ('fits_naxis2', (int, False, None, 'NAXIS2', None)),
-    ('fits_bscale', (float, False, None, 'BSCALE', None)),
-    ('fits_bzero', (int, False, None, 'BZERO', None)),
+    ('fits_bitpix', (int, False, 16, 'BITPIX', None)),
+    ('fits_naxis', (int, False, 2, 'NAXIS', None)),
+    ('fits_naxis1', (int, False, 0, 'NAXIS1', None)),
+    ('fits_naxis2', (int, False, 0, 'NAXIS2', None)),
+    ('fits_bscale', (float, False, 1.0, 'BSCALE', None)),
+    ('fits_bzero', (int, False, 32768, 'BZERO', None)),
     ('fits_minval', (float, False, None, 'MINVAL', None)),
     ('fits_maxval', (float, False, None, 'MAXVAL', None)),
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
@@ -1926,7 +1926,7 @@ class PlateHeader(fits.Header):
 
         """
 
-        if value:
+        if value or (valtype is int and value == 0):
             self.set(key, value)
         elif not key in self:
             if valtype is str:
@@ -1978,7 +1978,6 @@ class PlateHeader(fits.Header):
             elif v[3]:
                 self._update_keyword(v[3], v[0], None)
 
-        #self.update_comments()
         self.format()
 
     def update_from_platemeta(self, platemeta=None):
@@ -2001,7 +2000,6 @@ class PlateHeader(fits.Header):
         self.add_history('Header updated with PyPlate {} at {}'
                          .format(__version__, dt.datetime.utcnow()
                                  .strftime('%Y-%m-%dT%H:%M:%S')))
-        #self.update_comments()
         self.format()
 
     def update_values(self):
@@ -2215,7 +2213,8 @@ class PlateHeader(fits.Header):
                 self.append((k, v, c), bottom=True)
 
             # Pad empty strings in card values
-            if not v and k and (k != 'COMMENT') and (k != 'HISTORY'):
+            if (isinstance(v, str) and not v and k and (k != 'COMMENT') 
+                and (k != 'HISTORY')):
                 self[k] = 'a'  # pyfits hack
                 self[k] = ' '  # pyfits hack
 
@@ -2352,28 +2351,34 @@ class PlateHeader(fits.Header):
         """
 
         fn_fits = os.path.join(self.fits_dir, filename)
+        fn_out = os.path.join(self.write_fits_dir, filename)
 
-        if not os.path.exists(fn_fits):
-            print 'File does not exist: {}'.format(fn_fits)
+        if os.path.exists(fn_out):
+            fitsfile = fits.open(fn_out, mode='update', 
+                                 do_not_scale_image_data=True)
+            fitsfile[0].header = self.copy()
+            fitsfile.flush()
+        else:
+            if not os.path.exists(fn_fits):
+                print 'File does not exist: {}'.format(fn_fits)
 
-        with fits.open(fn_fits) as fitsfile:
+            fitsfile = fits.open(fn_fits, do_not_scale_image_data=True)
             fitsfile[0].header = self.copy()
 
             try:
                 os.makedirs(self.write_fits_dir)
-            if not os.path.isdir(self.write_fits_dir):
-                print ('Could not create directory {}'
-                       .format(self.write_fits_dir))
-            
-            fn_out = os.path.join(self.write_fits_dir, filename)
-
+            except OSError:
+                if not os.path.isdir(self.write_fits_dir):
+                    print ('Could not create directory {}'
+                           .format(self.write_fits_dir))
+        
             try:
                 fitsfile.writeto(fn_out)
             except IOError:
                 print 'Could not write to {}'.format(fn_out)
-                
-            fitsfile.close()
-            del fitsfile
+            
+        fitsfile.close()
+        del fitsfile
 
     def output_to_file(self, filename):
         """
