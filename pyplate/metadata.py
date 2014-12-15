@@ -44,12 +44,12 @@ _keyword_meta = OrderedDict([
     ('plate_id', (int, False, None, None, None)),
     ('archive_id', (int, False, None, None, None)),
     ('fits_simple', (bool, False, True, 'SIMPLE', None)),
-    ('fits_bitpix', (int, False, 16, 'BITPIX', None)),
-    ('fits_naxis', (int, False, 2, 'NAXIS', None)),
-    ('fits_naxis1', (int, False, 0, 'NAXIS1', None)),
-    ('fits_naxis2', (int, False, 0, 'NAXIS2', None)),
-    ('fits_bscale', (float, False, 1.0, 'BSCALE', None)),
-    ('fits_bzero', (int, False, 32768, 'BZERO', None)),
+    ('fits_bitpix', (int, False, None, 'BITPIX', None)),
+    ('fits_naxis', (int, False, None, 'NAXIS', None)),
+    ('fits_naxis1', (int, False, None, 'NAXIS1', None)),
+    ('fits_naxis2', (int, False, None, 'NAXIS2', None)),
+    ('fits_bscale', (float, False, None, 'BSCALE', None)),
+    ('fits_bzero', (int, False, None, 'BZERO', None)),
     ('fits_minval', (float, False, None, 'MINVAL', None)),
     ('fits_maxval', (float, False, None, 'MAXVAL', None)),
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
@@ -1907,6 +1907,19 @@ class PlateHeader(fits.Header):
         self.platemeta = platemeta
 
     @classmethod
+    def from_fits(cls, filename):
+        """
+        Read header from FITS file.
+
+        """
+
+        pheader = cls.fromfile(filename)
+        pheader.add_history('Header imported with PyPlate {} at {}'
+                            .format(__version__, dt.datetime.utcnow()
+                                    .strftime('%Y-%m-%dT%H:%M:%S')))
+        return pheader
+
+    @classmethod
     def from_hdrf(cls, filename):
         """
         Read header from the output file of header2011.
@@ -1977,6 +1990,21 @@ class PlateHeader(fits.Header):
                 self._update_keyword_list(v[3], v[4], v[0], None)
             elif v[3]:
                 self._update_keyword(v[3], v[0], None)
+
+        _default_header_values = OrderedDict([('SIMPLE', True),
+                                              ('BITPIX', 16),
+                                              ('NAXIS', 2),
+                                              ('NAXIS1', 0),
+                                              ('NAXIS2', 0),
+                                              ('BSCALE', 1.0),
+                                              ('BZERO', 32768),
+                                              ('EXTEND', True)])
+
+        for k in _default_header_values:
+            if k not in self or (k in self and 
+                                 isinstance(self[k], fits.card.Undefined)):
+                v = _default_header_values[k]
+                self._update_keyword(k, type(v), v)
 
         self.format()
 
