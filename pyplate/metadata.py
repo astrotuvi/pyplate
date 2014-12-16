@@ -19,7 +19,6 @@ from astropy import units
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
-from . import __version__
 
 try:
     from PIL import Image
