@@ -1602,6 +1602,9 @@ class PlateHeader(fits.Header):
         self.fits_dir = ''
         self.write_fits_dir = ''
         self.write_header_dir = ''
+        self.add_history('Header created with PyPlate {} at {}'
+                         .format(__version__, dt.datetime.utcnow()
+                                 .strftime('%Y-%m-%dT%H:%M:%S')))
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -1914,7 +1917,7 @@ class PlateHeader(fits.Header):
         """
 
         pheader = cls.fromfile(filename)
-        pheader.add_history('Header imported with PyPlate {} at {}'
+        pheader.add_history('Header imported from FITS with PyPlate {} at {}'
                             .format(__version__, dt.datetime.utcnow()
                                     .strftime('%Y-%m-%dT%H:%M:%S')))
         return pheader
@@ -1928,7 +1931,7 @@ class PlateHeader(fits.Header):
 
         pheader = cls.fromfile(filename, sep='\n', endcard=False, 
                                padding=False)
-        pheader.add_history('Header imported with PyPlate {} at {}'
+        pheader.add_history('Header imported from file with PyPlate {} at {}'
                             .format(__version__, dt.datetime.utcnow()
                                     .strftime('%Y-%m-%dT%H:%M:%S')))
         return pheader
@@ -2030,6 +2033,31 @@ class PlateHeader(fits.Header):
                                  .strftime('%Y-%m-%dT%H:%M:%S')))
         self.format()
 
+    def update_from_fits(self, filename):
+        """
+        Update header with header values in a FITS file.
+
+        """
+
+        fn_fits = os.path.join(self.fits_dir, filename)
+
+        try:
+            h = fits.getheader(fn_fits)
+        except IOError:
+            print 'Error reading file {}'.format(fn_fits)
+            return
+
+        for k,v,c in h.cards:
+            if k in self:
+                self.set(k, v)
+            else:
+                self.append(c, bottom=True)
+
+        self.add_history('Header updated from FITS with PyPlate {} at {}'
+                         .format(__version__, dt.datetime.utcnow()
+                                 .strftime('%Y-%m-%dT%H:%M:%S')))
+        self.format()
+        
     def update_values(self):
         """
         Edit keyword values based on configuration.
