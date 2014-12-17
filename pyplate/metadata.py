@@ -321,7 +321,7 @@ class ArchiveMeta:
         Parameters
         ----------
         wfpdb_dir : str
-            Name of the directory with WFPDB files.
+            Path to the directory with WFPDB files.
         fn_maindata : str
             Name of the WFPDB maindata file.
         fn_quality : str
@@ -399,13 +399,15 @@ class ArchiveMeta:
             except IOError:
                 print 'Could not read the WFPDB observer file!'
 
-    def read_csv(self, fn_plate_csv=None, fn_scan_csv=None, 
+    def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
                  fn_logpage_csv=None):
         """
         Read CSV files.
 
         Parameters
         ----------
+        csv_dir : str
+            Path to the directory with CSV files.
         fn_plate_csv : str
             Name of the plate metadata CSV file.
         fn_scan_csv : str
@@ -415,12 +417,13 @@ class ArchiveMeta:
 
         """
 
-        if self.conf.has_section('Files'):
-            csv_dir = ''
-
-            if self.conf.has_option('Files', 'csv_dir'):
+        if csv_dir is None:
+            try:
                 csv_dir = self.conf.get('Files', 'csv_dir')
-
+            except ConfigParser.Error:
+                csv_dir = ''
+                
+        if self.conf.has_section('Files'):
             if self.conf.has_option('Files', 'plate_csv'):
                 fn_str = self.conf.get('Files', 'plate_csv')
 

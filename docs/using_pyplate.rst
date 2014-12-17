@@ -1,12 +1,43 @@
-Using PyPlate
+Using pyplate
 =============
 
-Creating and managing a FITS header
------------------------------------
+Working with metadata
+---------------------
 
-Create an empty header::
+An archive is a collection of photographic plates, logbooks, observer notes, 
+etc. In ``pyplate``, an archive is represented with ``ArchiveMeta`` class in
+the ``metadata`` module. An individual plate is represented with ``PlateMeta``
+and a FITS header with ``PlateHeader`` class.
+
+Initialise an archive::
 
     import pyplate
+
+    archive = pyplate.metadata.ArchiveMeta()
+
+Importing metadata from files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Metadata can be conveniently imported from the Wide-Field Plate Database 
+(WFPDB) files and comma-separated values (CSV) files.
+
+Import metadata from WFPDB files::
+
+    archive.read_wfpdb(wfpdb_dir='/path/to/wfpdb_dir', 
+                       fn_maindata='maindata.txt', fn_quality='quality.txt',
+                       fn_notes='notes.txt', fn_observer='observer.txt')
+
+Import metadata from CSV files::
+
+    archive.read_csv(csv_dir='/path/to/csv_dir', fn_plate_csv='plates.csv',
+                     fn_scan_csv='scans.csv', fn_logpage_csv='logpages.csv')
+
+
+
+Creating and managing a FITS header
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Create an empty header::
 
     pheader = pyplate.metadata.PlateHeader()
     pheader.populate()
@@ -42,5 +73,17 @@ file is written to ``write_fits_dir`` with the current header.
 Write header to a text file in ``write_header_dir``::
 
     pheader.output_to_fits('file.hdr')
+
+
+Extracting and calibrating data from a plate image
+--------------------------------------------------
+
+
+Writing data to database
+------------------------
+
+
+Creating a pipeline
+-------------------
 
 
