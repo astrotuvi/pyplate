@@ -19,6 +19,7 @@ from astropy import units
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
+from . import __version__
 
 try:
     from PIL import Image
@@ -1604,9 +1605,6 @@ class PlateHeader(fits.Header):
         self.fits_dir = ''
         self.write_fits_dir = ''
         self.write_header_dir = ''
-        self.add_history('Header created with PyPlate {} at {}'
-                         .format(__version__, dt.datetime.utcnow()
-                                 .strftime('%Y-%m-%dT%H:%M:%S')))
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -1989,6 +1987,11 @@ class PlateHeader(fits.Header):
         Populate header with blank cards.
 
         """
+
+        if self.__len__() == 0:
+            self.add_history('Header created with PyPlate {} at {}'
+                             .format(__version__, dt.datetime.utcnow()
+                                     .strftime('%Y-%m-%dT%H:%M:%S')))
 
         for k,v in _keyword_meta.items():
             if v[1]:
