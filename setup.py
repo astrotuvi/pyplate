@@ -10,5 +10,9 @@ setup(
     author_email = 'taavi.tuvikene@to.ee',
     description = 'A Python package for processing astronomical photographic plates',
     packages = ['pyplate'],
+    install_requires = ['numpy>=1.7',
+                        'astropy>=0.2.3',
+                        'ephem'
+                       ]
 )
 
