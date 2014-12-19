@@ -3,6 +3,8 @@ import glob
 import numpy as np
 from datetime import datetime
 from astropy.io import fits
+from .conf import read_conf
+from ._version import __version__
 
 try:
     from PIL import Image
@@ -40,6 +42,9 @@ class PlateConverter:
         Parse configuration and set class attributes.
 
         """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
 
         for attr in ['tiff_dir', 'write_fits_dir', 'write_wedge_dir']:
             try:
@@ -139,6 +144,15 @@ class PlateConverter:
 
         hdu_wedge = fits.PrimaryHDU(np.flipud(im_wedge))
 
+        if exif_datetime:
+            hdu_wedge.header.set('DATESCAN', exif_datetime)
+
+        history_line = ('TIFF image converted to FITS with '
+                        'PyPlate v{} at {}'
+                        .format(__version__, datetime.utcnow()
+                                .strftime('%Y-%m-%dT%H:%M:%S')))
+        hdu_wedge.header.add_history(history_line)
+
         if '-' in os.path.basename(fn_tiff):
             xedge = []
 
@@ -167,6 +181,7 @@ class PlateConverter:
             if exif_datetime:
                 hdu_left.header.set('DATESCAN', exif_datetime)
 
+            hdu_left.header.add_history(history_line)
             hdu_left.writeto(os.path.join(self.write_fits_dir, fn_left), 
                              clobber=True)
             
@@ -182,6 +197,7 @@ class PlateConverter:
             if exif_datetime:
                 hdu_right.header.set('DATESCAN', exif_datetime)
 
+            hdu_right.header.add_history(history_line)
             hdu_right.writeto(os.path.join(self.write_fits_dir, fn_right), 
                               clobber=True)
 
@@ -197,6 +213,7 @@ class PlateConverter:
             if exif_datetime:
                 hdu_plate.header.set('DATESCAN', exif_datetime)
 
+            hdu_plate.header.add_history(history_line)
             hdu_plate.writeto(os.path.join(self.write_fits_dir, fn_plate), 
                               clobber=True)
             fn_wedge = os.path.splitext(fn_plate)[0] + '_w.fits'

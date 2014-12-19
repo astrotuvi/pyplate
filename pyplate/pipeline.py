@@ -19,6 +19,19 @@ class PlateImagePipeline():
         self.input_queue = None
         self.done_queue = None
 
+        self.read_wfpdb = False
+        self.read_csv = False
+        self.read_fits = False
+        self.output_header_file = False
+        self.output_header_fits = False
+        self.invert_image = False
+        self.extract_sources = False
+        self.solve_plate = False
+        self.output_wcs_file = False
+        self.solve_recursive = False
+        self.output_sources_db = False
+        self.output_sources_csv = False
+
     def assign_conf(self, conf):
         """
         Parse configuration and set class attributes.
@@ -36,6 +49,19 @@ class PlateImagePipeline():
             except ConfigParser.Error:
                 pass
 
+        for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
+                     'output_header_file', 'output_header_fits', 
+                     'invert_image', 'extract_sources', 'solve_plate', 
+                     'output_wcs_file', 'solve_recursive', 
+                     'output_sources_db', 'output_sources_csv']:
+            try:
+                setattr(self, attr, conf.getboolean('Pipeline', attr))
+            except ValueError:
+                print ('Error in configuration file: not a boolean value '
+                       '([{}], {})'.format('Pipeline', attr))
+            except ConfigParser.Error:
+                pass
+
     def single_image(self, filename):
         """
         Process single plate image.
@@ -49,8 +75,12 @@ class PlateImagePipeline():
 
         ameta = ArchiveMeta()
         ameta.assign_conf(self.conf)
-        ameta.read_wfpdb()
-        ameta.read_csv()
+
+        if self.read_wfpdb:
+            ameta.read_wfpdb()
+
+        if self.read_csv:
+            ameta.read_csv()
 
         fn = os.path.basename(filename)
         pmeta = ameta.get_platemeta(filename=fn)
@@ -71,20 +101,39 @@ class PlateImagePipeline():
         h.update_comments()
         h.rewrite()
         h.reorder()
-        fn_header = os.path.splitext(fn)[0] + '.hdr'
-        h.output_header(fn_header)
+
+        if self.output_header_file:
+            fn_header = os.path.splitext(fn)[0] + '.hdr'
+            h.output_to_file(fn_header)
 
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)
         proc.assign_header(h)
         proc.setup()
-        proc.invert_plate()
-        proc.extract_sources()
-        proc.solve_plate()
-        proc.output_wcs_header()
-        proc.solve_recursive()
-        proc.output_sources_db()
-        proc.output_sources_csv()
+
+        if self.invert_image:
+            proc.invert_plate()
+
+        if self.extract_sources:
+            proc.extract_sources()
+
+            if self.solve_plate:
+                proc.solve_plate()
+
+            if self.output_wcs_file:
+                proc.output_wcs_header()
+
+            if self.solve_recursive:
+                proc.solve_recursive()
+
+            proc.process_source_coordinates()
+
+            if self.output_sources_db:
+                proc.output_sources_db()
+
+            if self.output_sources_csv:
+                proc.output_sources_csv()
+
         proc.finish()
 
     def worker(self):
@@ -239,7 +288,7 @@ def run_pipeline(filenames, fn_conf):
         h.rewrite()
         h.reorder()
         fn_header = os.path.splitext(fn)[0] + '.hdr'
-        h.output_header(fn_header)
+        h.output_to_file(fn_header)
 
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)

@@ -4,7 +4,6 @@ import image
 import database
 import pipeline
 import conf
-
-__version__ = '0.9.0'
+from _version import __version__
 
 __all__ = ['solve', 'metadata', 'image', 'database', 'pipeline', 'conf']

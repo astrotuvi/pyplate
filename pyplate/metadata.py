@@ -17,7 +17,9 @@ from astropy.time import Time
 from astropy.coordinates import Angle
 from astropy import units
 from collections import OrderedDict
-from database import PlateDB
+from .database import PlateDB
+from .conf import read_conf
+from ._version import __version__
 
 try:
     from PIL import Image
@@ -164,38 +166,6 @@ _logpage_meta = OrderedDict([
     ('image_height', (int, None)),
     ('image_datetime', (str, None))
     ])
-
-def read_conf(conf_file):
-    """
-    Read configuration file.
-
-    Parameters
-    ----------
-    conf_file : str
-        Configuration file path.
-
-    Returns
-    -------
-    conf : a ConfigParser object
-    
-    """
-
-    conf = ConfigParser.ConfigParser()
-    conf.read(conf_file)
-
-    if (conf.has_section('Files') and 
-        conf.has_option('Files', 'fits_acknowledgements')):
-        fn_ack = conf.get('Files', 'fits_acknowledgements')
-
-        with open(fn_ack, 'rb') as f:
-            ack = '\n'.join(line.strip() for line in f.readlines())
-
-        if not conf.has_section('Keyword values'):
-            conf.add_section('Keyword values')
-
-        conf.set('Keyword values', 'fits_acknowledgements', ack.strip())
-
-    return conf
 
 def str_to_num(s):
     """
@@ -352,7 +322,7 @@ class ArchiveMeta:
         Parameters
         ----------
         wfpdb_dir : str
-            Name of the directory with WFPDB files.
+            Path to the directory with WFPDB files.
         fn_maindata : str
             Name of the WFPDB maindata file.
         fn_quality : str
@@ -430,13 +400,15 @@ class ArchiveMeta:
             except IOError:
                 print 'Could not read the WFPDB observer file!'
 
-    def read_csv(self, fn_plate_csv=None, fn_scan_csv=None, 
+    def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
                  fn_logpage_csv=None):
         """
         Read CSV files.
 
         Parameters
         ----------
+        csv_dir : str
+            Path to the directory with CSV files.
         fn_plate_csv : str
             Name of the plate metadata CSV file.
         fn_scan_csv : str
@@ -446,12 +418,13 @@ class ArchiveMeta:
 
         """
 
-        if self.conf.has_section('Files'):
-            csv_dir = ''
-
-            if self.conf.has_option('Files', 'csv_dir'):
+        if csv_dir is None:
+            try:
                 csv_dir = self.conf.get('Files', 'csv_dir')
-
+            except ConfigParser.Error:
+                csv_dir = ''
+                
+        if self.conf.has_section('Files'):
             if self.conf.has_option('Files', 'plate_csv'):
                 fn_str = self.conf.get('Files', 'plate_csv')
 
@@ -765,6 +738,9 @@ class ArchiveMeta:
             if plate_id in csvdict:
                 platemeta.parse_csv(csvdict[plate_id], 
                                     csv_filename=csvdict.filename)
+            elif platemeta['plate_id'] in csvdict:
+                platemeta.parse_csv(csvdict[platemeta['plate_id']], 
+                                    csv_filename=csvdict.filename)
 
         if fn_base in self.scan_csv_dict:
             platemeta.parse_csv(self.scan_csv_dict[fn_base], 
@@ -808,6 +784,9 @@ class LogpageMeta(OrderedDict):
         Assign configuration.
 
         """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
 
         self.conf = conf
 
@@ -891,9 +870,10 @@ class LogpageMeta(OrderedDict):
                                                    exif_datetime[11:])
 
                 if pytz_available:
-                    dt = datetime.strptime(exif_datetime, '%Y-%m-%d %H:%M:%S')
+                    dt_exif = dt.datetime.strptime(exif_datetime, 
+                                                   '%Y-%m-%d %H:%M:%S')
                     # !!! Need to read timezone from configuration!
-                    dt_local = pytz.timezone('Europe/Berlin').localize(dt)
+                    dt_local = pytz.timezone('Europe/Berlin').localize(dt_exif)
                     exif_datetime = (dt_local.astimezone(pytz.utc)
                                      .strftime('%Y-%m-%dT%H:%M:%S'))
 
@@ -915,6 +895,7 @@ class PlateMeta(OrderedDict):
 
         self['plate_id'] = plate_id
 
+        self.conf = None
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
@@ -979,6 +960,9 @@ class PlateMeta(OrderedDict):
         Assign configuration.
 
         """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
 
         self.conf = conf
 
@@ -1618,7 +1602,10 @@ class PlateHeader(fits.Header):
         fits.Header.__init__(self, *args, **kwargs)
         self.platemeta = PlateMeta()
         self.conf = ConfigParser.ConfigParser()
-
+        self.fits_dir = ''
+        self.write_fits_dir = ''
+        self.write_header_dir = ''
+        
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
         'NAXIS':    'number of data axes',
@@ -1891,9 +1878,11 @@ class PlateHeader(fits.Header):
         'FN-LOGn',
         'ORIGIN',
         'DATE',
+        'sep:WCS',
         'sep:Acknowledgements',
         'sep:History',
-        'HISTORY']
+        'HISTORY',
+        'sep:']
 
     def assign_conf(self, conf):
         """
@@ -1901,7 +1890,16 @@ class PlateHeader(fits.Header):
 
         """
 
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
         self.conf = conf
+
+        for attr in ['fits_dir', 'write_fits_dir', 'write_header_dir']:
+            try:
+                setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
 
     def assign_platemeta(self, platemeta):
         """
@@ -1912,13 +1910,31 @@ class PlateHeader(fits.Header):
         self.platemeta = platemeta
 
     @classmethod
+    def from_fits(cls, filename):
+        """
+        Read header from FITS file.
+
+        """
+
+        pheader = cls.fromfile(filename)
+        pheader.add_history('Header imported from FITS with PyPlate v{} at {}'
+                            .format(__version__, dt.datetime.utcnow()
+                                    .strftime('%Y-%m-%dT%H:%M:%S')))
+        return pheader
+
+    @classmethod
     def from_hdrf(cls, filename):
         """
         Read header from the output file of header2011.
 
         """
 
-        return cls.fromfile(filename, sep='\n', endcard=False, padding=False)
+        pheader = cls.fromfile(filename, sep='\n', endcard=False, 
+                               padding=False)
+        pheader.add_history('Header imported from file with PyPlate v{} at {}'
+                            .format(__version__, dt.datetime.utcnow()
+                                    .strftime('%Y-%m-%dT%H:%M:%S')))
+        return pheader
 
     def _update_keyword(self, key, valtype, value):
         """
@@ -1926,7 +1942,7 @@ class PlateHeader(fits.Header):
 
         """
 
-        if value:
+        if value or (valtype is int and value == 0):
             self.set(key, value)
         elif not key in self:
             if valtype is str:
@@ -1966,27 +1982,87 @@ class PlateHeader(fits.Header):
             else:
                 self.append(fits.Card.fromstring('{:8s}='.format(skey)))
 
-    def update_from_platemeta(self):
+    def populate(self):
+        """
+        Populate header with blank cards.
+
+        """
+
+        if self.__len__() == 0:
+            self.add_history('Header created with PyPlate v{} at {}'
+                             .format(__version__, dt.datetime.utcnow()
+                                     .strftime('%Y-%m-%dT%H:%M:%S')))
+
+        for k,v in _keyword_meta.items():
+            if v[1]:
+                self._update_keyword_list(v[3], v[4], v[0], None)
+            elif v[3]:
+                self._update_keyword(v[3], v[0], None)
+
+        _default_header_values = OrderedDict([('SIMPLE', True),
+                                              ('BITPIX', 16),
+                                              ('NAXIS', 2),
+                                              ('NAXIS1', 0),
+                                              ('NAXIS2', 0),
+                                              ('BSCALE', 1.0),
+                                              ('BZERO', 32768),
+                                              ('EXTEND', True)])
+
+        for k in _default_header_values:
+            if k not in self or (k in self and 
+                                 isinstance(self[k], fits.card.Undefined)):
+                v = _default_header_values[k]
+                self._update_keyword(k, type(v), v)
+
+        self.format()
+
+    def update_from_platemeta(self, platemeta=None):
         """
         Update header with plate metadata.
 
         """
 
+        if platemeta is None:
+            platemeta = self.platemeta
+
         for k,v in _keyword_meta.items():
-            if k in self.platemeta:
+            if k in platemeta:
                 if v[1]:
                     self._update_keyword_list(v[3], v[4], v[0], 
-                                              self.platemeta[k])
+                                              platemeta[k])
                 elif v[3]:
-                    self._update_keyword(v[3], v[0], self.platemeta[k])
+                    self._update_keyword(v[3], v[0], platemeta[k])
 
-        #if self.platemeta['numexp']:
-        #    self.set('NUMEXP', self.platemeta['numexp'])
-        #elif not 'NUMEXP' in self:
-        #    self.set('NUMEXP', 1)
+        self.add_history('Header updated with PyPlate v{} at {}'
+                         .format(__version__, dt.datetime.utcnow()
+                                 .strftime('%Y-%m-%dT%H:%M:%S')))
+        self.format()
 
-        self.update_comments()
+    def update_from_fits(self, filename):
+        """
+        Update header with header values in a FITS file.
 
+        """
+
+        fn_fits = os.path.join(self.fits_dir, filename)
+
+        try:
+            h = fits.getheader(fn_fits)
+        except IOError:
+            print 'Error reading file {}'.format(fn_fits)
+            return
+
+        for k,v,c in h.cards:
+            if k in self:
+                self.set(k, v)
+            else:
+                self.append(c, bottom=True)
+
+        self.add_history('Header updated from FITS with PyPlate v{} at {}'
+                         .format(__version__, dt.datetime.utcnow()
+                                 .strftime('%Y-%m-%dT%H:%M:%S')))
+        self.format()
+        
     def update_values(self):
         """
         Edit keyword values based on configuration.
@@ -2153,7 +2229,7 @@ class PlateHeader(fits.Header):
         for key in self:
             if key in self._default_comments:
                 self.comments[key] = self._default_comments[key]
-            elif key[-1].isdigit():
+            elif key and key[-1].isdigit():
                 # If keyword ends with a digit, replace the ending number 
                 # with 'n', and look for such a keyword. For example, if 
                 # keyword is 'EXPTIM1', look for 'EXPTIMn' instead.
@@ -2183,9 +2259,10 @@ class PlateHeader(fits.Header):
             if (k == 'COMMENT' or k == 'HISTORY') and not v:
                 continue
 
-            # Rename blank keyword to COMMENT
-            if not k: 
-                k = 'COMMENT'
+            # Rename blank keyword to COMMENT if it is not a separator
+            if not k:
+                if not re.match('---', v):
+                    k = 'COMMENT'
 
             # Store cards in the new header
             # Treat null value separately to get proper comment alignment
@@ -2193,10 +2270,12 @@ class PlateHeader(fits.Header):
                 cardstr = k.ljust(8) + '='.ljust(22) + ' / ' + c
                 self.append(fits.Card.fromstring(cardstr))
             else:
-                self.set(k, v, c)
+                #self.set(k, v, c)
+                self.append((k, v, c), bottom=True)
 
             # Pad empty strings in card values
-            if not v and k and (k != 'COMMENT') and (k != 'HISTORY'):
+            if (isinstance(v, str) and not v and k and (k != 'COMMENT') 
+                and (k != 'HISTORY')):
                 self[k] = 'a'  # pyfits hack
                 self[k] = ' '  # pyfits hack
 
@@ -2207,7 +2286,8 @@ class PlateHeader(fits.Header):
         """
 
         if self.conf.has_section('FITS keyword order'):
-            orderkeys = self.conf.get('FITS keyword order','keywords').split('\n')
+            orderkeys = self.conf.get('FITS keyword order',
+                                      'keywords').split('\n')
         else:
             orderkeys = self._default_order
 
@@ -2224,10 +2304,25 @@ class PlateHeader(fits.Header):
 
                 self.append(('', sepstr), end=True)
 
+                # Copy WCS block
+                wcs_sep = ' WCS'.rjust(72, '-')
+
+                if key.strip().endswith('WCS') and wcs_sep in h.values():
+                    wcs_ind = h.values().index(wcs_sep) + 1
+
+                    for i,c in enumerate(h.cards[wcs_ind:]):
+                        if c[0]:
+                            self.append(c, end=True)
+                            del h[wcs_ind]
+                        else:
+                            break
+
+                # Include acknowledgements
                 if (key.strip().endswith('Acknowledgements') and 
                     self.platemeta['fits_acknowledgements']):
                     ack = self.platemeta['fits_acknowledgements']
-                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) for ackpara in ack.split('\n\n')])
+                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) 
+                                       for ackpara in ack.split('\n\n')])
 
                     for ackline in ack.split('\n'):
                         self.append(('COMMENT', ackline), end=True)
@@ -2242,7 +2337,8 @@ class PlateHeader(fits.Header):
             elif key == 'HISTORY':
                 if key in h:
                     for histitem in h[key]:
-                        self.add_history(histitem)
+                        self.append(('HISTORY', histitem), end=True)
+                        #self.add_history(histitem)
                         
                     del h[key]
             elif key in h:
@@ -2252,7 +2348,21 @@ class PlateHeader(fits.Header):
 
         # Copy the remaining cards
         for c in h.cards:
-            self.append(c, bottom=True)
+            k,v,comment = c
+
+            # Copy cards that are not existing separators
+            if k or v not in self['']:
+                self.append(c, bottom=True)
+
+    def format(self):
+        """
+        Format and reorder header cards.
+
+        """
+
+        self.update_comments()
+        self.rewrite()
+        self.reorder()
 
     def update_all(self):
         """
@@ -2269,25 +2379,82 @@ class PlateHeader(fits.Header):
         self.rewrite()
         self.reorder()
 
-    def output_header(self, filename):
+    def insert_wcs(self, wcshead):
+        """
+        Insert WCS header cards.
+
+        """
+
+        wcs_sep = ' WCS'.rjust(72, '-')
+
+        if wcs_sep in self.values():
+            wcs_ind = self.values().index(wcs_sep) + 1
+            
+            for c in wcshead.cards:
+                if c[0] == 'HISTORY':
+                    #self.insert(wcs_ind, ('COMMENT', c[1]))
+                    self.insert(wcs_ind, c)
+                    wcs_ind += 1
+                elif c[0] == 'COMMENT':
+                    pass
+                elif c[0] not in self:
+                    self.insert(wcs_ind, c)
+                    wcs_ind += 1
+                    
+            self.add_history('WCS added with PyPlate v{} at {}'
+                             .format(__version__, dt.datetime.utcnow()
+                                     .strftime('%Y-%m-%dT%H:%M:%S')))
+
+    def output_to_fits(self, filename):
+        """
+        Output header to FITS file.
+
+        """
+
+        fn_fits = os.path.join(self.fits_dir, filename)
+        fn_out = os.path.join(self.write_fits_dir, filename)
+
+        if os.path.exists(fn_out):
+            fitsfile = fits.open(fn_out, mode='update', 
+                                 do_not_scale_image_data=True)
+            fitsfile[0].header = self.copy()
+            fitsfile.flush()
+        else:
+            if not os.path.exists(fn_fits):
+                print 'File does not exist: {}'.format(fn_fits)
+
+            fitsfile = fits.open(fn_fits, do_not_scale_image_data=True)
+            fitsfile[0].header = self.copy()
+
+            try:
+                os.makedirs(self.write_fits_dir)
+            except OSError:
+                if not os.path.isdir(self.write_fits_dir):
+                    print ('Could not create directory {}'
+                           .format(self.write_fits_dir))
+        
+            try:
+                fitsfile.writeto(fn_out)
+            except IOError:
+                print 'Could not write to {}'.format(fn_out)
+            
+        fitsfile.close()
+        del fitsfile
+
+    def output_to_file(self, filename):
         """
         Output header to a text file.
 
         """
         
-        header_out_dir = ''
-
-        if self.conf.has_section('Files'):
-            if self.conf.has_option('Files', 'write_header_dir'):
-                header_out_dir = self.conf.get('Files', 'write_header_dir')
-
         try:
-            os.makedirs(header_out_dir)
+            os.makedirs(self.write_header_dir)
         except OSError:
-            if not os.path.isdir(header_out_dir):
-                raise
+            if not os.path.isdir(self.write_header_dir):
+                print ('Could not create directory {}'
+                       .format(self.write_header_dir))
 
-        fn_out = os.path.join(header_out_dir, filename)
+        fn_out = os.path.join(self.write_header_dir, filename)
 
         if os.path.exists(fn_out):
             os.remove(fn_out)

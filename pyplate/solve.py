@@ -50,6 +50,12 @@ try:
 except ImportError:
     have_esutil = False
 
+try:
+    import healpy
+    have_healpy = True
+except ImportError:
+    have_healpy = False
+    
 
 class AstrometryNetIndex:
     """
@@ -385,6 +391,12 @@ _source_meta = OrderedDict([
     ('flag_negradius',      ('i1', '%1d', '')),
     ('flag_rim',            ('i1', '%1d', '')),
     ('flag_clean',          ('i1', '%1d', '')),
+    ('raj2000',             ('f8', '%11.7f', '')),
+    ('dej2000',             ('f8', '%11.7f', '')),
+    ('x_sphere',            ('f8', '%10.7f', '')),
+    ('y_sphere',            ('f8', '%10.7f', '')),
+    ('z_sphere',            ('f8', '%10.7f', '')),
+    ('healpix256',          ('i4', '%6d', '')),
     ('raj2000_wcs',         ('f8', '%11.7f', '')),
     ('dej2000_wcs',         ('f8', '%11.7f', '')),
     ('raj2000_sub',         ('f8', '%11.7f', '')),
@@ -860,6 +872,21 @@ class SolveProcess:
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
                                        for k in _source_meta])
+
+        self.sources['raj2000'] = np.nan
+        self.sources['dej2000'] = np.nan
+        self.sources['raj2000_wcs'] = np.nan
+        self.sources['dej2000_wcs'] = np.nan
+        self.sources['raj2000_sub'] = np.nan
+        self.sources['dej2000_sub'] = np.nan
+        self.sources['raerr_sub'] = np.nan
+        self.sources['decerr_sub'] = np.nan
+        self.sources['x_sphere'] = np.nan
+        self.sources['y_sphere'] = np.nan
+        self.sources['z_sphere'] = np.nan
+        self.sources['healpix256'] = -1
+        self.sources['ucac4_bmag'] = np.nan
+        self.sources['ucac4_vmag'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -1556,30 +1583,40 @@ class SolveProcess:
         self.sources['decerr_sub'] = radec[:,3]
         self.sources['gridsize_sub'] = gridsize
 
+        bool_finite = (np.isfinite(self.sources['raj2000_sub']) &
+                       np.isfinite(self.sources['dej2000_sub']))
+        num_finite = bool_finite.sum()
+
         # Match sources with the UCAC4 catalogue
-        if have_match_coord:
-            coords = ICRS(radec[:,0], radec[:,1], 
-                          unit=(units.degree, units.degree))
-            catalog = ICRS(ra_ucac, dec_ucac, 
-                          unit=(units.degree, units.degree))
-            ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                         nthneighbor=1)
-            ind_plate = np.arange(ind_ucac.size)
-            indmask = ds2d < 5.*units.arcsec
-            ind_plate = ind_plate[indmask]
-            ind_ucac = ind_ucac[indmask]
-        elif have_pyspherematch:
-            ind_plate,ind_ucac,ds_ucac = spherematch(radec[:,0], radec[:,1],
-                                                     ra_ucac, dec_ucac,
-                                                     tol=5./3600., nnearest=1)
+        if num_finite > 0:
+            ind_finite = np.where(bool_finite)[0]
+            ra_finite = self.sources['raj2000_sub'][ind_finite]
+            dec_finite = self.sources['dej2000_sub'][ind_finite]
 
-        if have_match_coord or have_pyspherematch:
-            num_match = len(ind_plate)
+            if have_match_coord:
+                coords = ICRS(ra_finite, dec_finite, 
+                              unit=(units.degree, units.degree))
+                catalog = ICRS(ra_ucac, dec_ucac, 
+                              unit=(units.degree, units.degree))
+                ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
+                                                             nthneighbor=1)
+                ind_plate = np.arange(ind_ucac.size)
+                indmask = ds2d < 5.*units.arcsec
+                ind_plate = ind_plate[indmask]
+                ind_ucac = ind_ucac[indmask]
+            elif have_pyspherematch:
+                ind_plate,ind_ucac,ds_ucac = \
+                        spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
+                                    tol=5./3600., nnearest=1)
 
-            if num_match > 0:
-                self.sources['ucac4_id'][ind_plate] = id_ucac[ind_ucac]
-                self.sources['ucac4_bmag'][ind_plate] = bmag_ucac[ind_ucac]
-                self.sources['ucac4_vmag'][ind_plate] = vmag_ucac[ind_ucac]
+            if have_match_coord or have_pyspherematch:
+                num_match = len(ind_plate)
+
+                if num_match > 0:
+                    ind = ind_finite[ind_plate]
+                    self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
+                    self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
+                    self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
@@ -1624,10 +1661,10 @@ class SolveProcess:
         x = self.sources['x_source']
         y = self.sources['y_source']
         erra_arcsec = (self.sources['erra_source'] * self.mean_pixscale)
-        ra = np.zeros(len(x)) + 999.9
-        dec = np.zeros(len(x)) + 999.9
-        sigma_ra = np.zeros(len(x)) + 99.9
-        sigma_dec = np.zeros(len(x)) + 99.9
+        ra = np.zeros(len(x)) * np.nan
+        dec = np.zeros(len(x)) * np.nan
+        sigma_ra = np.zeros(len(x)) * np.nan
+        sigma_dec = np.zeros(len(x)) * np.nan
         gridsize = np.zeros(len(x))
 
         xsize = (in_head['XMAX'] - in_head['XMIN']) / 2.
@@ -2053,7 +2090,9 @@ class SolveProcess:
                                            distort=distort,
                                            max_recursion_depth=max_recursion_depth,
                                            force_recursion_depth=force_recursion_depth)
-                    bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
+                    bnew = (np.isfinite(new_radec[:,0]) & 
+                            np.isfinite(new_radec[:,1]))
+                    #bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
 
                     if bnew.sum() > 0:
                         indnew = np.where(bnew)
@@ -2076,7 +2115,9 @@ class SolveProcess:
                                        distort=distort,
                                        max_recursion_depth=max_recursion_depth,
                                        force_recursion_depth=force_recursion_depth)
-                bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
+                bnew = (np.isfinite(new_radec[:,0]) & 
+                        np.isfinite(new_radec[:,1]))
+                #bnew = (new_radec[:,0] < 999) & (new_radec[:,1] < 999)
 
                 if bnew.sum() > 0:
                     indnew = np.where(bnew)
@@ -2091,6 +2132,41 @@ class SolveProcess:
 
         return (np.column_stack((ra, dec, sigma_ra, sigma_dec)), 
                 gridsize)
+
+    def process_source_coordinates(self):
+        """
+        Combine coordinates from the global and recursive solutions.
+        Calculate X, Y, and Z on the unit sphere.
+
+        """
+
+        self.sources['raj2000'] = self.sources['raj2000_wcs']
+        self.sources['dej2000'] = self.sources['dej2000_wcs']
+
+        ind = np.where(np.isfinite(self.sources['raj2000_sub']) &
+                       np.isfinite(self.sources['dej2000_sub']))
+
+        if len(ind[0]) > 0:
+            self.sources['raj2000'][ind] = self.sources['raj2000_sub'][ind]
+            self.sources['dej2000'][ind] = self.sources['dej2000_sub'][ind]
+
+        # Calculate X, Y, and Z on the unit sphere
+        # http://www.sdss3.org/svn/repo/idlutils/tags/v5_5_5/pro/coord/angles_to_xyz.pro
+        phi_rad = np.radians(self.sources['raj2000'])
+        theta_rad = np.radians(90. - self.sources['dej2000'])
+        self.sources['x_sphere'] = np.cos(phi_rad) * np.sin(theta_rad)
+        self.sources['y_sphere'] = np.sin(phi_rad) * np.sin(theta_rad)
+        self.sources['z_sphere'] = np.cos(theta_rad)
+
+        if have_healpy:
+            ind = np.where(np.isfinite(self.sources['raj2000']) &
+                           np.isfinite(self.sources['dej2000']))
+
+            if len(ind[0]) > 0:
+                phi_rad = np.radians(self.sources['raj2000'][ind])
+                theta_rad = np.radians(90. - self.sources['dej2000'][ind])
+                hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
+                self.sources['healpix256'][ind] = hp256
 
     def output_sources_csv(self, filename=None):
         """

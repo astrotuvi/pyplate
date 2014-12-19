@@ -12,7 +12,10 @@ _schema = OrderedDict()
 _schema['archive'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL PRIMARY KEY', None)),
     ('archive_name',     ('VARCHAR(80)', None)),
-    ('institute',        ('VARCHAR(80)', None))
+    ('institute',        ('VARCHAR(80)', None)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ])
 
 _schema['plate'] = OrderedDict([
@@ -64,6 +67,9 @@ _schema['plate'] = OrderedDict([
     ('bibcode',          ('VARCHAR(80)', 'bibcode')),
     ('filename_preview', ('VARCHAR(80)', 'fn_pre')),
     ('filename_cover',   ('VARCHAR(80)', 'fn_cover')),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX wfpdb_ind',   ('(wfpdb_id)', None)),
     ('INDEX method_ind',  ('(method)', None))
@@ -110,6 +116,9 @@ _schema['exposure'] = OrderedDict([
     ('num_sub',          ('TINYINT UNSIGNED', None)),
     ('method',           ('TINYINT UNSIGNED', None)),
     ('focus',            ('FLOAT', 'focus')),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',   ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX raj2000_ind', ('(raj2000)', None)),
@@ -131,6 +140,9 @@ _schema['exposure_sub'] = OrderedDict([
     ('jd_mid',           ('DOUBLE', None)),
     ('jd_end',           ('DOUBLE', None)),
     ('exptime',          ('FLOAT', None)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None))
     ])
@@ -159,6 +171,9 @@ _schema['scan'] = OrderedDict([
     ('scan_author',      ('VARCHAR(80)', 'scan_author')),
     ('scan_notes',       ('VARCHAR(255)', 'scan_notes')),
     ('origin',           ('VARCHAR(80)', 'origin')),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',   ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
@@ -171,6 +186,9 @@ _schema['logbook'] = OrderedDict([
     ('logbook_title',    ('VARCHAR(80)', True)),
     ('logbook_type',     ('TINYINT', True)),
     ('logbook_notes',    ('VARCHAR(255)', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
 
@@ -187,6 +205,9 @@ _schema['logpage'] = OrderedDict([
     ('image_width',      ('SMALLINT UNSIGNED', True)),
     ('image_height',     ('SMALLINT UNSIGNED', True)),
     ('image_datetime',   ('DATETIME', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
 
@@ -194,6 +215,9 @@ _schema['plate_logpage'] = OrderedDict([
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('logpage_id',       ('INT UNSIGNED NOT NULL', None)),
     ('logpage_order',    ('TINYINT', None)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',  ('(plate_id)', None)),
     ('INDEX logpage_ind',('(logpage_id)', None))
     ])
@@ -248,6 +272,9 @@ _schema['source'] = OrderedDict([
     ('flag_rim',         ('TINYINT', True)),
     ('flag_negradius',   ('TINYINT', True)),
     ('flag_clean',       ('TINYINT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',      ('(plate_id)', None)),
     ('INDEX archive_ind',    ('(archive_id)', None)),
     ('INDEX exposure_ind',   ('(exposure_id)', None)),
@@ -261,8 +288,12 @@ _schema['source_calib'] = OrderedDict([
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
-    ('raj2000',          ('DOUBLE', False)),
-    ('dej2000',          ('DOUBLE', False)),
+    ('raj2000',          ('DOUBLE', True)),
+    ('dej2000',          ('DOUBLE', True)),
+    ('x_sphere',         ('DOUBLE', True)),
+    ('y_sphere',         ('DOUBLE', True)),
+    ('z_sphere',         ('DOUBLE', True)),
+    ('healpix256',       ('INT', True)),
     ('raj2000_wcs',      ('DOUBLE', True)),
     ('dej2000_wcs',      ('DOUBLE', True)),
     ('raj2000_sub',      ('DOUBLE', True)),
@@ -277,15 +308,22 @@ _schema['source_calib'] = OrderedDict([
     ('tycho2_id',        ('CHAR(12)', False)),
     ('tycho2_btmag',     ('FLOAT', False)),
     ('tycho2_vtmag',     ('FLOAT', False)),
-    ('ucac4_id',         ('CHAR(10)', False)),
-    ('ucac4_bmag',       ('FLOAT', False)),
-    ('ucac4_vmag',       ('FLOAT', False)),
+    ('ucac4_id',         ('CHAR(10)', True)),
+    ('ucac4_bmag',       ('FLOAT', True)),
+    ('ucac4_vmag',       ('FLOAT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None)),
+    ('INDEX x_ind',        ('(x_sphere)', None)),
+    ('INDEX y_ind',        ('(y_sphere)', None)),
+    ('INDEX z_ind',        ('(z_sphere)', None)),
+    ('INDEX healpix256_ind', ('(healpix256)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
     ])
@@ -602,7 +640,9 @@ class PlateDB:
             for k,v in _schema['source'].items():
                 if v[1]:
                     col_list.append(k)
-                    val_tuple = val_tuple + (sources[i][k], )
+                    source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
+                                  else None)
+                    val_tuple = val_tuple + (source_val, )
 
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
@@ -618,7 +658,21 @@ class PlateDB:
             for k,v in _schema['source_calib'].items():
                 if v[1]:
                     col_list.append(k)
-                    val_tuple = val_tuple + (sources[i][k], )
+
+                    try:
+                        source_val = (sources[i][k] 
+                                      if np.isfinite(sources[i][k])
+                                      else None)
+                    except TypeError:
+                        source_val = sources[i][k]
+
+                    if 'healpix' in k and source_val < 0:
+                        source_val = None
+                        
+                    if 'ucac4_id' in k and source_val == '':
+                        source_val = None
+                        
+                    val_tuple = val_tuple + (source_val, )
 
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
