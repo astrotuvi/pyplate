@@ -1917,7 +1917,7 @@ class PlateHeader(fits.Header):
         """
 
         pheader = cls.fromfile(filename)
-        pheader.add_history('Header imported from FITS with PyPlate {} at {}'
+        pheader.add_history('Header imported from FITS with PyPlate v{} at {}'
                             .format(__version__, dt.datetime.utcnow()
                                     .strftime('%Y-%m-%dT%H:%M:%S')))
         return pheader
@@ -1931,7 +1931,7 @@ class PlateHeader(fits.Header):
 
         pheader = cls.fromfile(filename, sep='\n', endcard=False, 
                                padding=False)
-        pheader.add_history('Header imported from file with PyPlate {} at {}'
+        pheader.add_history('Header imported from file with PyPlate v{} at {}'
                             .format(__version__, dt.datetime.utcnow()
                                     .strftime('%Y-%m-%dT%H:%M:%S')))
         return pheader
@@ -1989,7 +1989,7 @@ class PlateHeader(fits.Header):
         """
 
         if self.__len__() == 0:
-            self.add_history('Header created with PyPlate {} at {}'
+            self.add_history('Header created with PyPlate v{} at {}'
                              .format(__version__, dt.datetime.utcnow()
                                      .strftime('%Y-%m-%dT%H:%M:%S')))
 
@@ -2033,7 +2033,7 @@ class PlateHeader(fits.Header):
                 elif v[3]:
                     self._update_keyword(v[3], v[0], platemeta[k])
 
-        self.add_history('Header updated with PyPlate {} at {}'
+        self.add_history('Header updated with PyPlate v{} at {}'
                          .format(__version__, dt.datetime.utcnow()
                                  .strftime('%Y-%m-%dT%H:%M:%S')))
         self.format()
@@ -2058,7 +2058,7 @@ class PlateHeader(fits.Header):
             else:
                 self.append(c, bottom=True)
 
-        self.add_history('Header updated from FITS with PyPlate {} at {}'
+        self.add_history('Header updated from FITS with PyPlate v{} at {}'
                          .format(__version__, dt.datetime.utcnow()
                                  .strftime('%Y-%m-%dT%H:%M:%S')))
         self.format()
@@ -2401,7 +2401,7 @@ class PlateHeader(fits.Header):
                     self.insert(wcs_ind, c)
                     wcs_ind += 1
                     
-            self.add_history('WCS added with PyPlate {} at {}'
+            self.add_history('WCS added with PyPlate v{} at {}'
                              .format(__version__, dt.datetime.utcnow()
                                      .strftime('%Y-%m-%dT%H:%M:%S')))
 

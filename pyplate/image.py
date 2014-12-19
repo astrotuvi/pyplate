@@ -148,7 +148,7 @@ class PlateConverter:
             hdu_wedge.header.set('DATESCAN', exif_datetime)
 
         history_line = ('TIFF image converted to FITS with '
-                        'PyPlate {} at {}'
+                        'PyPlate v{} at {}'
                         .format(__version__, datetime.utcnow()
                                 .strftime('%Y-%m-%dT%H:%M:%S')))
         hdu_wedge.header.add_history(history_line)
