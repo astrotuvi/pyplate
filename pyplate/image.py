@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 from astropy.io import fits
 from .conf import read_conf
-from . import __version__
+from ._version import __version__
 
 try:
     from PIL import Image
