@@ -11,7 +11,9 @@ setup(
     description = 'A Python package for processing astronomical photographic plates',
     classifiers = ['Programming Language :: Python',
                    'Programming Language :: Python :: 2.7',
+                   'Development Status :: 4 - Beta',
                    'Intended Audience :: Science/Research',
+                   'License :: OSI Approved :: Apache Software License',
                    'Topic :: Scientific/Engineering :: Astronomy'
                   ],
     packages = ['pyplate'],
