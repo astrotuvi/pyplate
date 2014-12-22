@@ -9,6 +9,11 @@ setup(
     author = 'Taavi Tuvikene',
     author_email = 'taavi.tuvikene@to.ee',
     description = 'A Python package for processing astronomical photographic plates',
+    classifiers = ['Programming Language :: Python',
+                   'Programming Language :: Python :: 2.7',
+                   'Intended Audience :: Science/Research',
+                   'Topic :: Scientific/Engineering :: Astronomy'
+                  ],
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
                         'astropy>=0.2.3',
