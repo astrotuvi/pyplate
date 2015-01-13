@@ -645,6 +645,28 @@ class PlateDB:
         logpage_id = self.cursor.lastrowid
         return logpage_id
 
+    def write_solution(self, solution, scan_id=None, plate_id=None, 
+                       archive_id=None):
+        """
+        Write plate solution to the database.
+
+        """
+
+        col_list = ['solution_id', 'plate_id', 'archive_id', 'exposure_id', 
+                    'scan_id']
+        val_tuple = (None, plate_id, archive_id, None, scan_id)
+
+        for k,v in _schema['solution'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (solution[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO solution ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.cursor.execute(sql, val_tuple)
+
     def write_sources(self, sources, scan_id=None, plate_id=None, 
                       archive_id=None):
         """

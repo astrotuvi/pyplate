@@ -1383,6 +1383,34 @@ class SolveProcess:
             self.log.write('Writing WCS output file {}'.format(fn_wcshead))
             self.wcshead.tofile(fn_wcshead, clobber=True)
 
+    def output_solution_db(self):
+        """
+        Write plate solution to the database.
+
+        """
+
+        if self.solution is None:
+            self.log.write('No plate solution to write to the database.')
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'solution table.')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+        scan_id, plate_id = platedb.get_scan_id(self.filename, self.archive_id)
+
+        if (scan_id is not None and plate_id is not None and 
+            self.archive_id is not None):
+            platedb.write_solution(self.solution, scan_id=scan_id, 
+                                   plate_id=plate_id, 
+                                   archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection.')
+
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
         """
