@@ -92,7 +92,6 @@ _schema['exposure'] = OrderedDict([
     ('flag_wcs',         ('TINYINT UNSIGNED', None)),
     ('fov1',             ('FLOAT', None)),
     ('fov2',             ('FLOAT', None)),
-    ('footprint',        ('VARCHAR(200)', None)),
     ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
     ('date_orig_end',    ('VARCHAR(10)', None)),
     ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
@@ -326,6 +325,25 @@ _schema['source_calib'] = OrderedDict([
     ('INDEX healpix256_ind', ('(healpix256)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
+    ])
+
+_schema['solution'] = OrderedDict([
+    ('solution_id',      ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('raj2000',          ('DOUBLE', True)),
+    ('dej2000',          ('DOUBLE', True)),
+    ('raj2000_hms',      ('CHAR(11)', True)),
+    ('dej2000_dms',      ('CHAR(11)', True)),
+    ('fov1',             ('FLOAT', True)),
+    ('fov2',             ('FLOAT', True)),
+    ('source_density',   ('FLOAT', True)),
+    ('stc_box',          ('VARCHAR(200)', True)),
+    ('stc_polygon',      ('VARCHAR(200)', True)),
+    ('wcs',              ('TEXT', True))
     ])
 
 def _get_columns_sql(table):
