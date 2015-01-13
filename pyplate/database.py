@@ -1,6 +1,7 @@
 import numpy as np
 from collections import OrderedDict
-from conf import read_conf
+from .conf import read_conf
+from ._version import __version__
 
 try:
     import MySQLdb
@@ -355,6 +356,22 @@ _schema['solution'] = OrderedDict([
     ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None))
+    ])
+
+_schema['processlog'] = OrderedDict([
+    ('processlog_id',    ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          None)),
+    ('timestamp_log',    ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', None)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', None)),
+    ('action',           ('SMALLINT', None)),
+    ('message',          ('TEXT', None)),
+    ('pyplate_version',  ('CHAR(10)', None)),
+    ('INDEX plate_ind',  ('(plate_id)', None)),
+    ('INDEX archive_ind', ('(archive_id)', None)),
+    ('INDEX scan_ind',   ('(scan_id)', None)),
+    ('INDEX action_ind', ('(action)', None))
     ])
 
 def _get_columns_sql(table):
@@ -730,6 +747,23 @@ class PlateDB:
             sql = ('INSERT INTO source_calib ({}) VALUES ({})'
                    .format(col_str, val_str))
             self.cursor.execute(sql, val_tuple)
+
+    def write_processlog(self, message, action=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
+        """
+        Write plate image process log message to the database.
+
+        """
+
+        col_list = ['processlog_id', 'timestamp_log', 'scan_id', 'plate_id', 
+                    'archive_id', 'action', 'message', 'pyplate_version']
+        val_tuple = (None, None, scan_id, plate_id, archive_id, action, 
+                     message, __version__)
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO solution ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.cursor.execute(sql, val_tuple)
 
     def get_plate_id(self, plate_num, archive_id):
         """

@@ -219,6 +219,11 @@ class SolveProcessLog:
             
         self.handle = None
 
+        self.platedb = None
+        self.archive_id = None
+        self.plate_id = None
+        self.scan_id = None
+
     def open(self):
         """
         Open log file.
@@ -234,7 +239,7 @@ class SolveProcessLog:
         else:
             self.handle = sys.stdout
 
-    def write(self, message, timestamp=True, double_newline=True):
+    def write(self, message, action=None, timestamp=True, double_newline=True):
         """
         Write a message to the log file.
 
@@ -250,6 +255,12 @@ class SolveProcessLog:
         """
 
         log_message = '{}'.format(message)
+
+        if self.platedb is not None:
+            self.platedb.write_processlog(message, action=action, 
+                                          scan_id=self.scan_id, 
+                                          plate_id=self.plate_id, 
+                                          archive_id=self.archive_id)
 
         if timestamp:
             log_message = '***** {} ***** {}'.format(str(dt.datetime.now()), 
@@ -453,6 +464,7 @@ class SolveProcess:
         self.scratch_dir = None
         self.enable_log = True
         self.log = None
+        self.enable_db_log = False
     
         self.plate_epoch = 1950
         self.plate_year = int(self.plate_epoch)
@@ -517,7 +529,7 @@ class SolveProcess:
         for attr in ['use_tycho2_fits', 'use_ucac4_db', 
                      'ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
                      'ucac4_db_passwd', 'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
+                     'output_db_name', 'output_db_passwd', 'enable_db_log']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except ConfigParser.Error:
@@ -570,6 +582,20 @@ class SolveProcess:
         else:
             self.log = SolveProcessLog(None)
 
+        # Open database connection for logs
+        if self.enable_db_log:
+            platedb = PlateDB()
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+            scan_id, plate_id = platedb.get_scan_id(self.filename, 
+                                                    self.archive_id)
+            self.log.platedb = platedb
+            self.log.archive_id = self.archive_id
+            self.log.plate_id = plate_id
+            self.log.scan_id = scan_id
+
         # Read FITS header
         if not self.plate_header:
             self.plate_header = fits.getheader(self.fn_fits)
@@ -606,6 +632,10 @@ class SolveProcess:
         # Remove scratch directory and its contents
         if self.scratch_dir:
             shutil.rmtree(self.scratch_dir)
+
+        # Close database connection used for logging
+        if self.log.platedb is not None:
+            self.log.platedb.close_connection()
 
         # Close log file
         self.log.close()
