@@ -1563,7 +1563,7 @@ class PlateMeta(OrderedDict):
 
                 try:
                     ra_str = Angle(pointing.ra, units.radian)\
-                            .to_string(unit=units.deg, sep=':', precision=1, 
+                            .to_string(unit=units.hour, sep=':', precision=1, 
                                        pad=True)
                     dec_str = Angle(pointing.dec, units.radian)\
                             .to_string(unit=units.deg, sep=':', precision=1, 
