@@ -346,6 +346,9 @@ _schema['solution'] = OrderedDict([
     ('stc_box',          ('VARCHAR(100)', True)),
     ('stc_polygon',      ('VARCHAR(200)', True)),
     ('wcs',              ('TEXT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
