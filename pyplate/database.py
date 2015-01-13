@@ -761,7 +761,7 @@ class PlateDB:
                      message, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO solution ({}) VALUES ({})'
+        sql = ('INSERT INTO processlog ({}) VALUES ({})'
                .format(col_str, val_str))
         self.cursor.execute(sql, val_tuple)
 
