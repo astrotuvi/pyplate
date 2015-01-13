@@ -345,7 +345,13 @@ _schema['solution'] = OrderedDict([
     ('source_density',   ('FLOAT', True)),
     ('stc_box',          ('VARCHAR(100)', True)),
     ('stc_polygon',      ('VARCHAR(200)', True)),
-    ('wcs',              ('TEXT', True))
+    ('wcs',              ('TEXT', True)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX raj2000_ind',  ('(raj2000)', None)),
+    ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
 
 def _get_columns_sql(table):
