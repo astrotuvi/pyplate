@@ -340,8 +340,10 @@ _schema['solution'] = OrderedDict([
     ('dej2000_dms',      ('CHAR(11)', True)),
     ('fov1',             ('FLOAT', True)),
     ('fov2',             ('FLOAT', True)),
+    ('pixscale1',        ('FLOAT', True)),
+    ('pixscale2',        ('FLOAT', True)),
     ('source_density',   ('FLOAT', True)),
-    ('stc_box',          ('VARCHAR(200)', True)),
+    ('stc_box',          ('VARCHAR(100)', True)),
     ('stc_polygon',      ('VARCHAR(200)', True)),
     ('wcs',              ('TEXT', True))
     ])

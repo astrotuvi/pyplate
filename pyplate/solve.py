@@ -10,10 +10,11 @@ import ConfigParser
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
+from astropy.coordinates import Angle
 from astropy import units
 from collections import OrderedDict
-from database import PlateDB
-from conf import read_conf
+from .database import PlateDB
+from .conf import read_conf
 
 try:
     from astropy.coordinates import ICRS
@@ -480,6 +481,7 @@ class SolveProcess:
         self.scampcat = None
         self.wcshead = None
         self.wcs_plate = None
+        self.solution = None
 
     def assign_conf(self, conf):
         """
@@ -1292,11 +1294,61 @@ class SolveProcess:
         #                                          units.degree)
         #num_stars = len(self.xyclean.data)
         self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
-        self.mean_pixscale = np.mean([imwidth_deg/self.imwidth, 
-                                     imheight_deg/self.imheight]) * 3600.
+        pixscale1 = imwidth_deg / self.imwidth * 3600.
+        pixscale2 = imheight_deg / self.imheight * 3600.
+        self.mean_pixscale = np.mean([pixscale1, pixscale2])
         half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
         self.ncp_in_plate = 90. - self.wcshead['CRVAL2'] <= half_diag
         self.scp_in_plate = 90. + self.wcshead['CRVAL2'] <= half_diag
+
+        ra_angle = Angle(self.wcshead['CRVAL1'], units.deg)
+        dec_angle = Angle(self.wcshead['CRVAL2'], units.deg)
+
+        try:
+            ra_str = ra_angle.to_string(unit=units.hour, sep=':', precision=1, 
+                                        pad=True)
+            dec_str = dec_angle.to_string(unit=units.deg, sep=':', precision=1,
+                                          pad=True)
+        except AttributeError:
+            ra_str = ra_angle.format(unit='hour', sep=':', precision=1, 
+                                     pad=True)
+            dec_str = dec_angle.format(sep=':', precision=1, pad=True)
+
+        stc_box = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
+                   .format(self.wcshead['CRVAL1'], self.wcshead['CRVAL2'], 
+                           imwidth_deg, imheight_deg))
+
+        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
+                                [self.imwidth, self.imheight], 
+                                [1., self.imheight]])
+        corners = self.wcs_plate.all_pix2world(pix_corners, 1)
+        stc_polygon = ('Polygon ICRS {:.5f} {:.5f} {:.5f} {:.5f} '
+                       '{:.5f} {:.5f} {:.5f} {:.5f}'
+                       .format(corners[0,0], corners[0,1], 
+                               corners[1,0], corners[1,1],
+                               corners[2,0], corners[2,1],
+                               corners[3,0], corners[3,1]))
+
+        wcshead_strip = fits.Header()
+
+        for c in self.wcshead.cards:
+            if c[0] != 'COMMENT':
+                wcshead_strip.append(c, bottom=True)
+
+        self.solution = OrderedDict([
+            ('raj2000', self.wcshead['CRVAL1']),
+            ('dej2000', self.wcshead['CRVAL2']),
+            ('raj2000_hms', ra_str),
+            ('dej2000_dms', dec_str),
+            ('fov1', imwidth_deg),
+            ('fov2', imheight_deg),
+            ('pixscale1', pixscale1),
+            ('pixscale2', pixscale2),
+            ('source_density', self.stars_sqdeg),
+            ('stc_box', stc_box),
+            ('stc_polygon', stc_polygon),
+            ('wcs', wcshead_strip)
+        ])
 
         self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
                        ''.format(imwidth_deg, imheight_deg),
