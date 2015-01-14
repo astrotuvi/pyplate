@@ -1299,7 +1299,7 @@ class SolveProcess:
         #cmd += ' --timestamp'
         #cmd += ' --verbose'
         cmd += ' --cpulimit 120'
-        self.log.write(cmd, level=4)
+        self.log.write(cmd.replace(' --', '\n--'), level=4)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
