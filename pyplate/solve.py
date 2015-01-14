@@ -15,6 +15,7 @@ from astropy import units
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
+from ._version import __version__
 
 try:
     from astropy.coordinates import ICRS
@@ -616,6 +617,8 @@ class SolveProcess:
             self.log.scan_id = scan_id
             self.log.to_db(3, 'Set up plate solve process', event=10)
 
+        self.log.write('Using PyPlate v{}'.format(__version__), level=4)
+
         # Read FITS header
         if not self.plate_header:
             self.plate_header = fits.getheader(self.fn_fits)
@@ -753,22 +756,28 @@ class SolveProcess:
                 fconf.close()
 
                 # Create configuration file
+                cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
+                cnf += 'FILTER           N\n'
+                #cnf += 'PHOT_APERTURES   10\n'
+                #cnf += 'WEIGHT_IMAGE     %s_wmap.fits\n' % self.basefn
+                #cnf += 'WEIGHT_TYPE      MAP_WEIGHT\n'
+                #cnf += 'WEIGHT_THRESH    1\n'
+                cnf += 'SATUR_LEVEL      65000.0\n'
+                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                #cnf += 'BACKPHOTO_THICK  96\n'
+                cnf += 'MAG_ZEROPOINT    25.0\n'
+                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                cnf += 'CATALOG_TYPE     FITS_LDAC\n'
+                cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.basefn)
+
                 fn_sex_conf = self.basefn + '_sextractor.conf'
+                self.log.write('Writing SExtractor configuration file {}'
+                               .format(fn_sex_conf), level=4)
+                self.log.write('SExtractor configuration file:\n{}'
+                               .format(cnf), level=5)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-                fconf.write('DETECT_THRESH    %f\n' % psf_model_sigma)
-                fconf.write('ANALYSIS_THRESH  %f\n' % psf_model_sigma)
-                fconf.write('FILTER           N\n')
-                #fconf.write('PHOT_APERTURES   10\n')
-                #fconf.write('WEIGHT_IMAGE     %s_wmap.fits\n' % self.basefn)
-                #fconf.write('WEIGHT_TYPE      MAP_WEIGHT\n')
-                #fconf.write('WEIGHT_THRESH    1\n')
-                fconf.write('SATUR_LEVEL      65000.0\n')
-                fconf.write('BACKPHOTO_TYPE   LOCAL\n')
-                #fconf.write('BACKPHOTO_THICK  96\n')
-                fconf.write('MAG_ZEROPOINT    25.0\n')
-                fconf.write('PARAMETERS_NAME  %s\n' % fn_sex_param)
-                fconf.write('CATALOG_TYPE     FITS_LDAC\n')
-                fconf.write('CATALOG_NAME     %s_psfex.cat\n' % self.basefn)
+                fconf.write(cnf)
                 fconf.close()
 
                 cmd = self.sextractor_path
@@ -776,7 +785,7 @@ class SolveProcess:
                 cmd += ' -c %s' % fn_sex_conf
                 self.log.write('Running SExtractor for extracting PSF model '
                                'sources (threshold {:.1f})'
-                               ''.format(psf_model_sigma), level=4)
+                               ''.format(psf_model_sigma), level=3, event=31)
                 self.log.write('Subprocess: {}'.format(cmd), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
@@ -785,32 +794,39 @@ class SolveProcess:
             # Run PSFEx
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.psf')):
+                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
+                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
+                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
+                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
+                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
+                cnf += 'PSFVAR_GROUPS      1,1\n'
+                cnf += 'PSFVAR_DEGREES     3\n'
+                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
+                cnf += 'SAMPLE_VARIABILITY 3.0\n'
+                #cnf += 'PSF_SIZE           25,25\n'
+                cnf += 'PSF_SIZE           50,50\n'
+                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
+                cnf += 'CHECKPLOT_NAME     ellipticity\n'
+                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
+                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
+                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn
+                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
+                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
+                cnf += 'VERBOSE_TYPE       LOG\n'
+
                 fn_psfex_conf = self.basefn + '_psfex.conf'
+                self.log.write('Writing PSFEx configuration file {}'
+                               .format(fn_psfex_conf), level=4)
+                self.log.write('PSFEx configuration file:\n{}'
+                               .format(cnf), level=5)
                 fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
-                #fconf.write('PHOTFLUX_KEY       FLUX_APER(1)\n')
-                #fconf.write('PHOTFLUXERR_KEY    FLUXERR_APER(1)\n')
-                fconf.write('PHOTFLUX_KEY       FLUX_AUTO\n')
-                fconf.write('PHOTFLUXERR_KEY    FLUXERR_AUTO\n')
-                fconf.write('PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n')
-                fconf.write('PSFVAR_GROUPS      1,1\n')
-                fconf.write('PSFVAR_DEGREES     3\n')
-                fconf.write('SAMPLE_FWHMRANGE   3.0,50.0\n')
-                fconf.write('SAMPLE_VARIABILITY 3.0\n')
-                #fconf.write('PSF_SIZE           25,25\n')
-                fconf.write('PSF_SIZE           50,50\n')
-                fconf.write('CHECKPLOT_TYPE     ellipticity\n')
-                fconf.write('CHECKPLOT_NAME     ellipticity\n')
-                fconf.write('CHECKIMAGE_TYPE    SNAPSHOTS\n')
-                fconf.write('CHECKIMAGE_NAME    snap.fits\n')
-                #fconf.write('CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn)
-                #fconf.write('CHECKIMAGE_TYPE    NONE\n')
-                fconf.write('XML_NAME           %s_psfex.xml\n' % self.basefn)
-                fconf.write('VERBOSE_TYPE       LOG\n')
+                fconf.write(cnf)
                 fconf.close()
 
                 cmd = self.psfex_path
                 cmd += ' %s_psfex.cat' % self.basefn
                 cmd += ' -c %s' % fn_psfex_conf
+                self.log.write('Running PSFEx', level=3, event=32)
                 self.log.write('Subprocess: {}'.format(cmd), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
@@ -830,20 +846,26 @@ class SolveProcess:
                 fconf.write('ERRTHETAPSF_IMAGE\n')
                 fconf.close()
 
+                cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
+                cnf += 'FILTER           N\n'
+                cnf += 'SATUR_LEVEL      65000.0\n'
+                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                #cnf += 'BACKPHOTO_THICK  96\n'
+                cnf += 'MAG_ZEROPOINT    25.0\n'
+                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                cnf += 'CATALOG_TYPE     FITS_1.0\n'
+                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.basefn)
+                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.basefn)
+                cnf += 'NTHREADS         0\n'
+
                 fn_sex_conf = self.basefn + '_sextractor.conf'
+                self.log.write('Writing SExtractor configuration file {}'
+                               .format(fn_sex_conf), level=4)
+                self.log.write('SExtractor configuration file:\n{}'
+                               .format(cnf), level=5)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-                fconf.write('DETECT_THRESH    %f\n' % psf_threshold_sigma)
-                fconf.write('ANALYSIS_THRESH  %f\n' % psf_threshold_sigma)
-                fconf.write('FILTER           N\n')
-                fconf.write('SATUR_LEVEL      65000.0\n')
-                fconf.write('BACKPHOTO_TYPE   LOCAL\n')
-                #fconf.write('BACKPHOTO_THICK  96\n')
-                fconf.write('MAG_ZEROPOINT    25.0\n')
-                fconf.write('PARAMETERS_NAME  %s\n' % fn_sex_param)
-                fconf.write('CATALOG_TYPE     FITS_1.0\n')
-                fconf.write('CATALOG_NAME     %s.cat-psf\n' % self.basefn)
-                fconf.write('PSF_NAME         %s_psfex.psf\n' % self.basefn)
-                fconf.write('NTHREADS         0\n')
+                fconf.write(cnf)
                 fconf.close()
 
                 cmd = self.sextractor_path
@@ -851,7 +873,8 @@ class SolveProcess:
                 cmd += ' -c %s' % fn_sex_conf
                 self.log.write('Running SExtractor with the PSF model '
                                '(threshold {:.1f})'
-                               ''.format(psf_threshold_sigma), level=4)
+                               ''.format(psf_threshold_sigma), 
+                               level=3, event=33)
                 self.log.write('Subprocess: {}'.format(cmd), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
@@ -922,7 +945,7 @@ class SolveProcess:
             cmd += ' -c %s' % fn_sex_conf
             self.log.write('Running SExtractor without the PSF model '
                            '(threshold {:.1f})'.format(threshold_sigma), 
-                           level=4)
+                           level=3, event=34)
             self.log.write('Subprocess: {}'.format(cmd), level=4)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)

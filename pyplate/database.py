@@ -1,7 +1,6 @@
 import numpy as np
 from collections import OrderedDict
 from .conf import read_conf
-from ._version import __version__
 
 try:
     import MySQLdb
@@ -368,7 +367,6 @@ _schema['processlog'] = OrderedDict([
     ('level',            ('TINYINT', None)),
     ('event',            ('SMALLINT', None)),
     ('message',          ('TEXT', None)),
-    ('pyplate_version',  ('CHAR(10)', None)),
     ('INDEX plate_ind',  ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
@@ -757,10 +755,9 @@ class PlateDB:
         """
 
         col_list = ['processlog_id', 'timestamp_log', 'scan_id', 'plate_id', 
-                    'archive_id', 'level', 'event', 'message', 
-                    'pyplate_version']
+                    'archive_id', 'level', 'event', 'message']
         val_tuple = (None, None, scan_id, plate_id, archive_id, level, event, 
-                     message, __version__)
+                     message)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO processlog ({}) VALUES ({})'
