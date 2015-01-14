@@ -777,7 +777,7 @@ class SolveProcess:
                 self.log.write('Running SExtractor for extracting PSF model '
                                'sources (threshold {:.1f})'
                                ''.format(psf_model_sigma), level=4)
-                self.log.write(cmd, level=4)
+                self.log.write('Subprocess: '.format(cmd)), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -811,7 +811,7 @@ class SolveProcess:
                 cmd = self.psfex_path
                 cmd += ' %s_psfex.cat' % self.basefn
                 cmd += ' -c %s' % fn_psfex_conf
-                self.log.write(cmd, level=4)
+                self.log.write('Subprocess: '.format(cmd)), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -852,7 +852,7 @@ class SolveProcess:
                 self.log.write('Running SExtractor with the PSF model '
                                '(threshold {:.1f})'
                                ''.format(psf_threshold_sigma), level=4)
-                self.log.write(cmd, level=4)
+                self.log.write('Subprocess: '.format(cmd)), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -911,7 +911,8 @@ class SolveProcess:
             fn_sex_conf = self.basefn + '_sextractor.conf'
             self.log.write('Writing SExtractor configuration file {}'
                            .format(fn_sex_conf), level=4)
-            self.log.write(cnf, level=5)
+            self.log.write('SExtractor configuration file:\n{}'.format(cnf), 
+                           level=5)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
             fconf.write(cnf)
             fconf.close()
@@ -922,7 +923,7 @@ class SolveProcess:
             self.log.write('Running SExtractor without the PSF model '
                            '(threshold {:.1f})'.format(threshold_sigma), 
                            level=4)
-            self.log.write(cmd, level=4)
+            self.log.write('Subprocess: '.format(cmd)), level=4)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
@@ -1299,7 +1300,7 @@ class SolveProcess:
         #cmd += ' --timestamp'
         #cmd += ' --verbose'
         cmd += ' --cpulimit 120'
-        self.log.write(cmd.replace(' --', '\n--'), level=4)
+        self.log.write('Subprocess: '.format(cmd)), level=4)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1706,7 +1707,7 @@ class SolveProcess:
                 cmd += ' -SOLVE_PHOTOM N'
                 cmd += ' -VERBOSE_TYPE LOG'
                 cmd += ' -CHECKPLOT_TYPE NONE'
-                self.log.write(cmd, level=4)
+                self.log.write('Subprocess: '.format(cmd)), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -1917,7 +1918,7 @@ class SolveProcess:
                 cmd += ' --overwrite'
                 #cmd += ' --timestamp'
                 #cmd += ' --verbose'
-                self.log.write(cmd, level=5)
+                self.log.write('Subprocess: '.format(cmd)), level=5)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -2008,7 +2009,7 @@ class SolveProcess:
             cmd += ' -H %f' % ymax_ext
             cmd += ' -N 10'
             cmd += ' -o %s_tan.wcs' % fnsub
-            self.log.write(cmd, level=5)
+            self.log.write('Subprocess: '.format(cmd)), level=5)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2066,7 +2067,7 @@ class SolveProcess:
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius), 
                            level=5)
-            self.log.write(cmd, level=5)
+            self.log.write('Subprocess: '.format(cmd)), level=5)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2135,7 +2136,7 @@ class SolveProcess:
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius), 
                            level=5)
-            self.log.write(cmd, level=5)
+            self.log.write('Subprocess: '.format(cmd)), level=5)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2220,7 +2221,7 @@ class SolveProcess:
                     cmd = self.xy2sky_path
                     cmd += (' -d -o rd {} @{}_xy.txt > {}_world.txt'
                             ''.format(hdrfile, fnsub, fnsub))
-                    self.log.write(cmd, level=5)
+                    self.log.write('Subprocess: '.format(cmd)), level=5)
                     sp.call(cmd, shell=True, stdout=self.log.handle, 
                             stderr=self.log.handle, cwd=self.scratch_dir)
 
