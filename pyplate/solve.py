@@ -239,9 +239,10 @@ class SolveProcessLog:
         else:
             self.handle = sys.stdout
 
-    def write(self, message, action=None, timestamp=True, double_newline=True):
+    def write(self, message, timestamp=True, double_newline=True, 
+              level=None, event=None):
         """
-        Write a message to the log file.
+        Write a message to the log file and optionally to the database.
 
         Parameters
         ----------
@@ -256,12 +257,6 @@ class SolveProcessLog:
 
         log_message = '{}'.format(message)
 
-        if self.platedb is not None:
-            self.platedb.write_processlog(message, action=action, 
-                                          scan_id=self.scan_id, 
-                                          plate_id=self.plate_id, 
-                                          archive_id=self.archive_id)
-
         if timestamp:
             log_message = '***** {} ***** {}'.format(str(dt.datetime.now()), 
                                                      log_message)
@@ -270,6 +265,30 @@ class SolveProcessLog:
             log_message += '\n'
 
         self.handle.write('{}\n'.format(log_message))
+
+        if level is not None:
+            self.to_db(level, message, event=event)
+
+    def to_db(self, level, message, event=None):
+        """
+        Write a log message to the database.
+
+        Parameters
+        ----------
+        level : int
+            Log level (1 = error, 2 = warning, 3 = info, 4 = debug, 5 = trace)
+        message : str
+            Message to be written to the log file
+        event : int
+            Event code (default None)
+
+        """
+
+        if self.platedb is not None:
+            self.platedb.write_processlog(level, message, event=event, 
+                                          scan_id=self.scan_id, 
+                                          plate_id=self.plate_id, 
+                                          archive_id=self.archive_id)
 
     def close(self):
         """
@@ -595,6 +614,7 @@ class SolveProcess:
             self.log.archive_id = self.archive_id
             self.log.plate_id = plate_id
             self.log.scan_id = scan_id
+            self.log.to_db(3, 'Set up plate solve process', event=1)
 
         # Read FITS header
         if not self.plate_header:
@@ -635,6 +655,7 @@ class SolveProcess:
 
         # Close database connection used for logging
         if self.log.platedb is not None:
+            self.log.to_db(3, 'Finish plate solve process', event=99)
             self.log.platedb.close_connection()
 
         # Close log file
@@ -654,7 +675,8 @@ class SolveProcess:
             fn_inverted = os.path.join(self.work_dir, fn_inverted)
         
         if not os.path.exists(fn_inverted):
-            self.log.write('Inverting image, writing {}'.format(fn_inverted))
+            self.log.write('Inverting image, writing {}'.format(fn_inverted), 
+                           level=3, event=10)
 
             fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True)
 
@@ -662,15 +684,14 @@ class SolveProcess:
             invfits.header = fitsfile[0].header.copy()
             invfits.header.set('BZERO', 32768)
             invfits.header.set('BSCALE', 1.0)
-
-            if os.path.exists(fn_inverted):
-                print "Inverted file exists: %s" % fn_inverted
-            else:
-                invfits.writeto(fn_inverted)
+            invfits.writeto(fn_inverted)
 
             fitsfile.close()
             del fitsfile
             del invfits
+        else:
+            self.log.write('Inverted file exists: {}'.format(fn_inverted), 
+                           level=4)
 
     def extract_sources(self, threshold_sigma=None, use_psf=None, 
                         psf_threshold_sigma=None, psf_model_sigma=None, 
@@ -706,6 +727,8 @@ class SolveProcess:
 
         if circular_film is None:
             circular_film = self.circular_film
+
+        self.log.write('Extracting sources from image', level=3, event=30)
 
         if use_psf:
             # If PSFEx input file does not exist then run SExtractor
@@ -1133,6 +1156,8 @@ class SolveProcess:
 
         """
 
+        self.log.write('Solving astrometry', level=3, event=40)
+
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
@@ -1420,9 +1445,12 @@ class SolveProcess:
         """
 
         if self.solution is None:
-            self.log.write('No plate solution to write to the database.')
+            self.log.write('No plate solution to write to the database.', 
+                           level=2)
             return
 
+        self.log.to_db(3, 'Writing astrometric solution to the database', 
+                       event=49)
         self.log.write('Open database connection for writing to the '
                        'solution table.')
         platedb = PlateDB()
@@ -1464,8 +1492,11 @@ class SolveProcess:
 
         if not self.plate_solved:
             self.log.write('Missing initial solution, '
-                           'recursive solving not possible!')
+                           'recursive solving not possible!', 
+                           level=2)
             return
+
+        self.log.write('Recursive solving of astrometry', level=3, event=50)
 
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
@@ -1476,7 +1507,8 @@ class SolveProcess:
             except ValueError:
                 plate_year = self.plate_year
 
-        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch))
+        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
+                       level=4)
 
         if sip is None:
             sip = self.sip

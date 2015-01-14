@@ -365,13 +365,14 @@ _schema['processlog'] = OrderedDict([
     ('scan_id',          ('INT UNSIGNED NOT NULL', None)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', None)),
-    ('action',           ('SMALLINT', None)),
+    ('level',            ('TINYINT', None)),
+    ('event',            ('SMALLINT', None)),
     ('message',          ('TEXT', None)),
     ('pyplate_version',  ('CHAR(10)', None)),
     ('INDEX plate_ind',  ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
-    ('INDEX action_ind', ('(action)', None))
+    ('INDEX event_ind',  ('(event)', None))
     ])
 
 def _get_columns_sql(table):
@@ -748,16 +749,17 @@ class PlateDB:
                    .format(col_str, val_str))
             self.cursor.execute(sql, val_tuple)
 
-    def write_processlog(self, message, action=None, scan_id=None, 
-                         plate_id=None, archive_id=None):
+    def write_processlog(self, level, message, event=None, 
+                         scan_id=None, plate_id=None, archive_id=None):
         """
-        Write plate image process log message to the database.
+        Write plate solve process log message to the database.
 
         """
 
         col_list = ['processlog_id', 'timestamp_log', 'scan_id', 'plate_id', 
-                    'archive_id', 'action', 'message', 'pyplate_version']
-        val_tuple = (None, None, scan_id, plate_id, archive_id, action, 
+                    'archive_id', 'level', 'event', 'message', 
+                    'pyplate_version']
+        val_tuple = (None, None, scan_id, plate_id, archive_id, level, event, 
                      message, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
