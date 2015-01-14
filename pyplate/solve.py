@@ -889,26 +889,31 @@ class SolveProcess:
             fconf.write('FLAGS')
             fconf.close()
 
+            cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
+            cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
+            cnf += 'FILTER           N\n'
+            cnf += 'SATUR_LEVEL      65000.0\n'
+            cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+            cnf += 'CLEAN            N\n'
+            #cnf += 'CLEAN_PARAM      0.2\n'
+            #cnf += 'BACKPHOTO_THICK  96\n'
+            cnf += 'MAG_ZEROPOINT    25.0\n'
+            cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+            cnf += 'CATALOG_TYPE     FITS_1.0\n'
+            cnf += 'CATALOG_NAME     {}.cat\n'.format(self.basefn)
+            cnf += 'NTHREADS         0\n'
+            #cnf += 'DETECT_TYPE      PHOTO\n'
+            #cnf += 'MAG_GAMMA        1.0\n'
+            #cnf += 'MEMORY_OBJSTACK  8000\n'
+            #cnf += 'MEMORY_PIXSTACK  800000\n'
+            #cnf += 'MEMORY_BUFSIZE   256\n'
+
             fn_sex_conf = self.basefn + '_sextractor.conf'
+            self.log.write('Writing SExtractor configuration file {}'
+                           .format(fn_sex_conf), level=4)
+            self.log.write(cnf, level=5)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-            fconf.write('DETECT_THRESH    %f\n' % threshold_sigma)
-            fconf.write('ANALYSIS_THRESH  %f\n' % threshold_sigma)
-            fconf.write('FILTER           N\n')
-            fconf.write('SATUR_LEVEL      65000.0\n')
-            fconf.write('BACKPHOTO_TYPE   LOCAL\n')
-            fconf.write('CLEAN            N\n')
-            #fconf.write('CLEAN_PARAM      0.2\n')
-            #fconf.write('BACKPHOTO_THICK  96\n')
-            fconf.write('MAG_ZEROPOINT    25.0\n')
-            fconf.write('PARAMETERS_NAME  %s\n' % fn_sex_param)
-            fconf.write('CATALOG_TYPE     FITS_1.0\n')
-            fconf.write('CATALOG_NAME     %s.cat\n' % self.basefn)
-            fconf.write('NTHREADS         0\n')
-            #fconf.write('DETECT_TYPE      PHOTO\n')
-            #fconf.write('MAG_GAMMA        1.0\n')
-            #fconf.write('MEMORY_OBJSTACK  8000\n')
-            #fconf.write('MEMORY_PIXSTACK  800000\n')
-            #fconf.write('MEMORY_BUFSIZE   256\n')
+            fconf.write(cnf)
             fconf.close()
 
             cmd = self.sextractor_path
