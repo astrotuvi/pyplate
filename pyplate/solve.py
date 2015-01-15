@@ -1108,53 +1108,58 @@ class SolveProcess:
             fn_psfcat = os.path.join(self.scratch_dir, self.basefn + '.cat-psf')
 
             if os.path.exists(fn_psfcat):
-                psfcat = fits.open(fn_psfcat)
-                xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
-                ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
+                try:
+                    psfcat = fits.open(fn_psfcat)
+                except IOError:
+                    psfcat = None
 
-                # Match sources in two lists (distance < 1 px)
-                coords1 = np.empty((self.num_sources, 2))
-                coords1[:,0] = self.sources['x_peak']
-                coords1[:,1] = self.sources['y_peak']
-                coords2 = np.empty((xpeakpsf.size, 2))
-                coords2[:,0] = xpeakpsf
-                coords2[:,1] = ypeakpsf
-                kdt = KDT(coords2)
-                ds,ind2 = kdt.query(coords1)
-                ind1 = np.arange(self.num_sources)
-                indmask = ds < 1.
-                ind1 = ind1[indmask]
-                ind2 = ind2[indmask]
+                if psfcat is not None:
+                    xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
+                    ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
 
-                #ind1,ind2,ds = pyspherematch.xymatch(self.sources['x_peak'],
-                #                                     self.sources['y_peak'],
-                #                                     xpeakpsf,
-                #                                     ypeakpsf,
-                #                                     tol=1.)
+                    # Match sources in two lists (distance < 1 px)
+                    coords1 = np.empty((self.num_sources, 2))
+                    coords1[:,0] = self.sources['x_peak']
+                    coords1[:,1] = self.sources['y_peak']
+                    coords2 = np.empty((xpeakpsf.size, 2))
+                    coords2[:,0] = xpeakpsf
+                    coords2[:,1] = ypeakpsf
+                    kdt = KDT(coords2)
+                    ds,ind2 = kdt.query(coords1)
+                    ind1 = np.arange(self.num_sources)
+                    indmask = ds < 1.
+                    ind1 = ind1[indmask]
+                    ind2 = ind2[indmask]
 
-                self.log.write('Replacing x,y values from PSF photometry for '
-                               '{:d} sources'.format(len(ind1)), 
-                               level=3, event=36)
-                self.sources[ind1]['x_psf'] = \
-                        psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                self.sources[ind1]['y_psf'] = \
-                        psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                self.sources[ind1]['erra_psf'] = \
-                        psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                self.sources[ind1]['errb_psf'] = \
-                        psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                self.sources[ind1]['errtheta_psf'] = \
-                        psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                self.sources[ind1]['x_source'] = \
-                        psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                self.sources[ind1]['y_source'] = \
-                        psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                self.sources[ind1]['erra_source'] = \
-                        psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                self.sources[ind1]['errb_source'] = \
-                        psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                self.sources[ind1]['errtheta_source'] = \
-                        psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                    #ind1,ind2,ds = pyspherematch.xymatch(self.sources['x_peak'],
+                    #                                     self.sources['y_peak'],
+                    #                                     xpeakpsf,
+                    #                                     ypeakpsf,
+                    #                                     tol=1.)
+
+                    self.log.write('Replacing x,y values from PSF photometry '
+                                   'for {:d} sources'.format(len(ind1)), 
+                                   level=3, event=36)
+                    self.sources[ind1]['x_psf'] = \
+                            psfcat[1].data.field('XPSF_IMAGE')[ind2]
+                    self.sources[ind1]['y_psf'] = \
+                            psfcat[1].data.field('YPSF_IMAGE')[ind2]
+                    self.sources[ind1]['erra_psf'] = \
+                            psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errb_psf'] = \
+                            psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errtheta_psf'] = \
+                            psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                    self.sources[ind1]['x_source'] = \
+                            psfcat[1].data.field('XPSF_IMAGE')[ind2]
+                    self.sources[ind1]['y_source'] = \
+                            psfcat[1].data.field('YPSF_IMAGE')[ind2]
+                    self.sources[ind1]['erra_source'] = \
+                            psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errb_source'] = \
+                            psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errtheta_source'] = \
+                            psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
             else:
                 self.log.write('Cannot read PSF coordinates, file {} does not '
                                'exist!'.format(fn_psfcat), level=2)
