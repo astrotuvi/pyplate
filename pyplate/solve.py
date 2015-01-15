@@ -615,9 +615,10 @@ class SolveProcess:
             self.log.archive_id = self.archive_id
             self.log.plate_id = plate_id
             self.log.scan_id = scan_id
-            self.log.to_db(3, 'Set up plate solve process', event=10)
+            self.log.to_db(3, 'Setting up plate solve process', event=10)
 
-        self.log.write('Using PyPlate v{}'.format(__version__), level=4)
+        self.log.write('Using PyPlate v{}'.format(__version__), 
+                       level=4, event=10)
 
         # Read FITS header
         if not self.plate_header:
@@ -695,7 +696,7 @@ class SolveProcess:
             del invfits
         else:
             self.log.write('Inverted file exists: {}'.format(fn_inverted), 
-                           level=4)
+                           level=4, event=20)
 
     def extract_sources(self, threshold_sigma=None, use_psf=None, 
                         psf_threshold_sigma=None, psf_model_sigma=None, 
@@ -738,6 +739,10 @@ class SolveProcess:
             # If PSFEx input file does not exist then run SExtractor
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.cat')):
+                self.log.write('Running SExtractor for extracting PSF model '
+                               'sources (threshold {:.1f})'
+                               ''.format(psf_model_sigma), level=3, event=31)
+
                 # Create parameter file
                 fn_sex_param = self.basefn + '_sextractor.param'
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
@@ -773,9 +778,9 @@ class SolveProcess:
 
                 fn_sex_conf = self.basefn + '_sextractor.conf'
                 self.log.write('Writing SExtractor configuration file {}'
-                               .format(fn_sex_conf), level=4)
+                               .format(fn_sex_conf), level=4, event=31)
                 self.log.write('SExtractor configuration file:\n{}'
-                               .format(cnf), level=5)
+                               .format(cnf), level=5, event=31)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
                 fconf.write(cnf)
                 fconf.close()
@@ -783,10 +788,7 @@ class SolveProcess:
                 cmd = self.sextractor_path
                 cmd += ' %s_inverted.fits' % self.basefn
                 cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Running SExtractor for extracting PSF model '
-                               'sources (threshold {:.1f})'
-                               ''.format(psf_model_sigma), level=3, event=31)
-                self.log.write('Subprocess: {}'.format(cmd), level=4)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=31)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -794,6 +796,8 @@ class SolveProcess:
             # Run PSFEx
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.psf')):
+                self.log.write('Running PSFEx', level=3, event=32)
+
                 #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
                 #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
                 cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
@@ -816,9 +820,9 @@ class SolveProcess:
 
                 fn_psfex_conf = self.basefn + '_psfex.conf'
                 self.log.write('Writing PSFEx configuration file {}'
-                               .format(fn_psfex_conf), level=4)
+                               .format(fn_psfex_conf), level=4, event=32)
                 self.log.write('PSFEx configuration file:\n{}'
-                               .format(cnf), level=5)
+                               .format(cnf), level=5, event=32)
                 fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
                 fconf.write(cnf)
                 fconf.close()
@@ -826,8 +830,7 @@ class SolveProcess:
                 cmd = self.psfex_path
                 cmd += ' %s_psfex.cat' % self.basefn
                 cmd += ' -c %s' % fn_psfex_conf
-                self.log.write('Running PSFEx', level=3, event=32)
-                self.log.write('Subprocess: {}'.format(cmd), level=4)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=32)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -835,6 +838,11 @@ class SolveProcess:
             # Run SExtractor with PSF
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '.cat-psf')):
+                self.log.write('Running SExtractor with the PSF model '
+                               '(threshold {:.1f})'
+                               ''.format(psf_threshold_sigma), 
+                               level=3, event=33)
+
                 fn_sex_param = self.basefn + '_sextractor.param'
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
                 fconf.write('XPEAK_IMAGE\n')
@@ -861,9 +869,9 @@ class SolveProcess:
 
                 fn_sex_conf = self.basefn + '_sextractor.conf'
                 self.log.write('Writing SExtractor configuration file {}'
-                               .format(fn_sex_conf), level=4)
+                               .format(fn_sex_conf), level=4, event=33)
                 self.log.write('SExtractor configuration file:\n{}'
-                               .format(cnf), level=5)
+                               .format(cnf), level=5, event=33)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
                 fconf.write(cnf)
                 fconf.close()
@@ -871,11 +879,7 @@ class SolveProcess:
                 cmd = self.sextractor_path
                 cmd += ' %s_inverted.fits' % self.basefn
                 cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Running SExtractor with the PSF model '
-                               '(threshold {:.1f})'
-                               ''.format(psf_threshold_sigma), 
-                               level=3, event=33)
-                self.log.write('Subprocess: {}'.format(cmd), level=4)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=33)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -883,6 +887,10 @@ class SolveProcess:
         # If SExtractor catalog does not exist then run SExtractor
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
+            self.log.write('Running SExtractor without the PSF model '
+                           '(threshold {:.1f})'.format(threshold_sigma), 
+                           level=3, event=34)
+
             fn_sex_param = self.basefn + '_sextractor.param'
             fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
             fconf.write('NUMBER\n')
@@ -933,9 +941,9 @@ class SolveProcess:
 
             fn_sex_conf = self.basefn + '_sextractor.conf'
             self.log.write('Writing SExtractor configuration file {}'
-                           .format(fn_sex_conf), level=4)
+                           .format(fn_sex_conf), level=4, event=34)
             self.log.write('SExtractor configuration file:\n{}'.format(cnf), 
-                           level=5)
+                           level=5, event=34)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
             fconf.write(cnf)
             fconf.close()
@@ -943,10 +951,7 @@ class SolveProcess:
             cmd = self.sextractor_path
             cmd += ' %s_inverted.fits' % self.basefn
             cmd += ' -c %s' % fn_sex_conf
-            self.log.write('Running SExtractor without the PSF model '
-                           '(threshold {:.1f})'.format(threshold_sigma), 
-                           level=3, event=34)
-            self.log.write('Subprocess: {}'.format(cmd), level=4)
+            self.log.write('Subprocess: {}'.format(cmd), level=4, event=34)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
@@ -1007,7 +1012,7 @@ class SolveProcess:
         self.sources['dist_edge'] = np.amin(distarr, 1)
         
         # Define 8 concentric annular bins + bin9 for edges
-        self.log.write('Calculating annular bins', level=3, event=35)
+        self.log.write('Flagging sources', level=3, event=35)
         sampling = 100
         imwidth_s = int(self.imwidth / sampling)
         imheight_s = int(self.imheight / sampling)
@@ -1046,7 +1051,7 @@ class SolveProcess:
             nbin = bbin.sum()
             self.log.write('Annular bin {:d} (radius {:8.2f} pixels): '
                            '{:6d} sources'.format(b, bin_dist[b], nbin), 
-                           double_newline=False, level=4)
+                           double_newline=False, level=4, event=35)
 
             if nbin > 0:
                 indbin = np.where(bbin)
@@ -1057,7 +1062,7 @@ class SolveProcess:
         nbin = bbin.sum()
         self.log.write('Annular bin 9 (radius {:8.2f} pixels): '
                        '{:6d} sources'.format(bin9_corner_dist, nbin), 
-                       level=4)
+                       level=4, event=35)
 
         if nbin > 0:
             indbin = np.where(bbin)
@@ -1091,20 +1096,24 @@ class SolveProcess:
         indclean = np.where(bclean)[0]
         self.sources['flag_clean'][indclean] = 1
         self.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
-                       double_newline=False, level=4)
+                       double_newline=False, level=4, event=35)
 
         indrim = np.where(borderbg >= 100)[0]
         self.sources['flag_rim'][indrim] = 1
         self.log.write('Flagged {:d} sources at the plate rim'
-                       ''.format(len(indrim)), double_newline=False, level=4)
+                       ''.format(len(indrim)), double_newline=False, 
+                       level=4, event=35)
 
         indnegrad = np.where(self.sources['flux_radius'] <= 0)[0]
         self.sources['flag_negradius'][indnegrad] = 1
         self.log.write('Flagged {:d} sources with negative FLUX_RADIUS'
-                       ''.format(len(indnegrad)), level=4)
+                       ''.format(len(indnegrad)), level=4, event=35)
 
         # For bright stars, update coordinates with PSF coordinates
         if use_psf:
+            self.log.write('Updating coordinates with PSF coordinates '
+                           'for bright sources', level=3, event=36)
+
             fn_psfcat = os.path.join(self.scratch_dir, self.basefn + '.cat-psf')
 
             if os.path.exists(fn_psfcat):
@@ -1112,7 +1121,8 @@ class SolveProcess:
                     psfcat = fits.open(fn_psfcat)
                 except IOError:
                     self.log.write('Cannot read PSF coordinates, file {} '
-                                   'is corrupt'.format(fn_psfcat), level=2)
+                                   'is corrupt'.format(fn_psfcat), 
+                                   level=2, event=36)
                     psfcat = None
 
                 if psfcat is not None:
@@ -1164,7 +1174,7 @@ class SolveProcess:
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
             else:
                 self.log.write('Cannot read PSF coordinates, file {} does not '
-                               'exist!'.format(fn_psfcat), level=2)
+                               'exist!'.format(fn_psfcat), level=2, event=36)
 
         # Keep clean xy data for later use
         #self.xyclean = xycat[1].copy()
@@ -1208,7 +1218,7 @@ class SolveProcess:
                 plate_year = self.plate_year
 
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
-                       level=4)
+                       level=4, event=40)
 
         if sip is None:
             sip = self.sip
@@ -1330,7 +1340,7 @@ class SolveProcess:
         #cmd += ' --timestamp'
         #cmd += ' --verbose'
         cmd += ' --cpulimit 120'
-        self.log.write('Subprocess: {}'.format(cmd), level=4)
+        self.log.write('Subprocess: {}'.format(cmd), level=4, event=40)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1343,7 +1353,7 @@ class SolveProcess:
             self.plate_solved = True
         else:
             self.log.write('Could not solve astrometry for the plate!', 
-                           level=2)
+                           level=2, event=40)
             return
 
         # Read the .wcs file and calculate star density
@@ -1475,12 +1485,12 @@ class SolveProcess:
             # Create output directory, if missing
             if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
                 self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir), level=4)
+                               ''.format(self.write_wcs_dir), level=4, event=48)
                 os.makedirs(self.write_wcs_dir)
 
             fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
             self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
-                           level=4)
+                           level=4, event=48)
             self.wcshead.tofile(fn_wcshead, clobber=True)
 
     def output_solution_db(self):
@@ -1489,13 +1499,14 @@ class SolveProcess:
 
         """
 
-        if self.solution is None:
-            self.log.write('No plate solution to write to the database.', 
-                           level=2)
-            return
-
         self.log.to_db(3, 'Writing astrometric solution to the database', 
                        event=49)
+
+        if self.solution is None:
+            self.log.write('No plate solution to write to the database.', 
+                           level=2, event=49)
+            return
+
         self.log.write('Open database connection for writing to the '
                        'solution table.')
         platedb = PlateDB()
@@ -1889,9 +1900,9 @@ class SolveProcess:
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
                     (self.sources['flag_clean'] == 1))
 
-            db_log_msg = ('Sub-field, {:d}x{:d}, '
-                          'X: {:.2f}:{:.2f}, Y: {:.2f}:{:.2f}, '
-                          'X_ext: {:.2f}:{:.2f}, Y_ext: {:.2f}:{:.2f}, '
+            db_log_msg = ('Sub-field: {:d}x{:d}, '
+                          'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
+                          'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
                           '#stars: {:d}'
                           .format(2**recdepth, 2**recdepth, 
                                   xmin, xmax, ymin, ymax, 
@@ -1904,7 +1915,7 @@ class SolveProcess:
             if bsub.sum() < 50:
                 self.log.write('Fewer stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(5, db_log_msg, event=51)
+                self.log.to_db(4, db_log_msg, event=51)
                 continue
 
             indsub = np.where(bsub)
@@ -1958,7 +1969,7 @@ class SolveProcess:
                 cmd += ' --overwrite'
                 #cmd += ' --timestamp'
                 #cmd += ' --verbose'
-                self.log.write('Subprocess: {}'.format(cmd), level=5)
+                self.log.write('Subprocess: {}'.format(cmd))
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -2009,16 +2020,16 @@ class SolveProcess:
                     (dec_ref < corners[:,1].max()))
 
             self.log.write('Found {:d} reference stars in the sub-field'
-                           .format(bref.sum()), double_newline=False, level=5)
+                           .format(bref.sum()), double_newline=False)
             db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, bref.sum())
 
             if bref.sum() < 50:
                 self.log.write('Fewer reference stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(5, db_log_msg, event=51)
+                self.log.to_db(4, db_log_msg, event=51)
                 continue
 
-            self.log.to_db(5, db_log_msg, event=51)
+            self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
             indref = np.where(bref)
@@ -2109,7 +2120,7 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            db_log_msg = 'SCAMP: CROSSID_RADIUS {:.2f}'.format(crossid_radius)
+            db_log_msg = 'SCAMP: CROSSID_RADIUS: {:.2f}'.format(crossid_radius)
             self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
@@ -2178,7 +2189,7 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            db_log_msg = '{}, {:.2f}'.format(db_log_msg, crossid_radius)
+            db_log_msg = '{} {:.2f}'.format(db_log_msg, crossid_radius)
             self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
@@ -2191,12 +2202,12 @@ class SolveProcess:
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
 
             self.log.write('SCAMP reported {:d} detections'.format(ndetect), 
-                           double_newline=False, level=5)
+                           double_newline=False)
             self.log.write('Astrometric sigmas: {:.3f} {:.3f}, '
                            'previous: {:.3f} {:.3f}'
                            ''.format(astromsigma[0], astromsigma[1],
                                      in_astromsigma[0], in_astromsigma[1]),
-                           double_newline=False, level=5)
+                           double_newline=False)
             mean_diff = (astromsigma-in_astromsigma).mean()
             mean_diff_ratio = mean_diff / in_astromsigma.mean()
             self.log.write('Mean astrometric sigma difference: '
@@ -2209,7 +2220,7 @@ class SolveProcess:
                                   astromsigma[0], astromsigma[1], 
                                   in_astromsigma[0], in_astromsigma[1], 
                                   mean_diff, mean_diff_ratio*100.))
-            self.log.to_db(5, db_log_msg, event=52)
+            self.log.to_db(4, db_log_msg, event=52)
 
             # Use decreasing threshold for astrometric sigmas
             astrom_threshold = 2. - (recdepth - 1) * 0.2
