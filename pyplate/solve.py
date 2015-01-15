@@ -1553,7 +1553,7 @@ class SolveProcess:
                 plate_year = self.plate_year
 
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
-                       level=4)
+                       level=4, event=50)
 
         if sip is None:
             sip = self.sip
@@ -1575,7 +1575,7 @@ class SolveProcess:
         # Check UCAC4 database name
         if self.use_ucac4_db and (self.ucac4_db_name == ''):
             self.use_ucac4_db = False
-            self.log.write('UCAC-4 database name missing!', level=2)
+            self.log.write('UCAC-4 database name missing!', level=2, event=50)
 
         # Read the SCAMP input catalog
         self.scampcat = fits.open(os.path.join(self.scratch_dir,
@@ -1875,9 +1875,8 @@ class SolveProcess:
 
             self.log.write('Sub-field ({:d}x{:d}) {:.2f} : {:.2f}, '
                            '{:.2f} : {:.2f}'.format(2**recdepth, 2**recdepth, 
-                                                    xmin, xmax, ymin, ymax),
-                           level=5)
-
+                                                    xmin, xmax, ymin, ymax))
+            
             xmin_ext = xmin - 0.1 * xsize
             xmax_ext = xmax + 0.1 * xsize
             ymin_ext = ymin - 0.1 * ysize
@@ -1890,11 +1889,22 @@ class SolveProcess:
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
                     (self.sources['flag_clean'] == 1))
 
+            db_log_msg = ('Sub-field, {:d}x{:d}, '
+                          'X: {:.2f}:{:.2f}, Y: {:.2f}:{:.2f}, '
+                          'X_ext: {:.2f}:{:.2f}, Y_ext: {:.2f}:{:.2f}, '
+                          '#stars: {:d}'
+                          .format(2**recdepth, 2**recdepth, 
+                                  xmin, xmax, ymin, ymax, 
+                                  xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
+                                  bsub.sum()))
+
             self.log.write('Found {:d} stars in the sub-field'
-                           .format(bsub.sum()), double_newline=False, level=5)
+                           .format(bsub.sum()), double_newline=False)
 
             if bsub.sum() < 50:
-                self.log.write('Fewer stars than the threshold (50)', level=5)
+                self.log.write('Fewer stars than the threshold (50)')
+                db_log_msg = '{} (<50)'.format(db_log_msg)
+                self.log.to_db(5, db_log_msg, event=51)
                 continue
 
             indsub = np.where(bsub)
@@ -2000,12 +2010,15 @@ class SolveProcess:
 
             self.log.write('Found {:d} reference stars in the sub-field'
                            .format(bref.sum()), double_newline=False, level=5)
+            db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, bref.sum())
 
             if bref.sum() < 50:
-                self.log.write('Fewer reference stars than the threshold (50)', 
-                               level=5)
+                self.log.write('Fewer reference stars than the threshold (50)')
+                db_log_msg = '{} (<50)'.format(db_log_msg)
+                self.log.to_db(5, db_log_msg, event=51)
                 continue
 
+            self.log.to_db(5, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
             indref = np.where(bref)
@@ -2039,7 +2052,7 @@ class SolveProcess:
             cmd += ' -H %f' % ymax_ext
             cmd += ' -N 10'
             cmd += ' -o %s_tan.wcs' % fnsub
-            self.log.write('Subprocess: {}'.format(cmd), level=5)
+            self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2095,9 +2108,9 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_TYPE FGROUPS,DISTORTION,ASTR_REFERROR2D,ASTR_REFERROR1D'
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
-            self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius), 
-                           level=5)
-            self.log.write('Subprocess: {}'.format(cmd), level=5)
+            self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
+            db_log_msg = 'SCAMP: CROSSID_RADIUS {:.2f}'.format(crossid_radius)
+            self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2164,9 +2177,9 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_TYPE FGROUPS,DISTORTION,ASTR_REFERROR2D,ASTR_REFERROR1D'
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
-            self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius), 
-                           level=5)
-            self.log.write('Subprocess: {}'.format(cmd), level=5)
+            self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
+            db_log_msg = '{}, {:.2f}'.format(db_log_msg, crossid_radius)
+            self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2184,12 +2197,19 @@ class SolveProcess:
                            ''.format(astromsigma[0], astromsigma[1],
                                      in_astromsigma[0], in_astromsigma[1]),
                            double_newline=False, level=5)
+            mean_diff = (astromsigma-in_astromsigma).mean()
+            mean_diff_ratio = mean_diff / in_astromsigma.mean()
             self.log.write('Mean astrometric sigma difference: '
                            '{:.3f} ({:+.1f}%)'
-                           ''.format((astromsigma-in_astromsigma).mean(),
-                                     (astromsigma-in_astromsigma).mean() /
-                                     in_astromsigma.mean() * 100.),
-                           level=5)
+                           ''.format(mean_diff, mean_diff_ratio*100.))
+            db_log_msg = ('{}, #detections: {:d}, sigmas: {:.3f} {:.3f}, '
+                          'previous: {:.3f} {:.3f}, '
+                          'mean diff: {:.3f} ({:+.1f}%)'
+                          .format(db_log_msg, ndetect, 
+                                  astromsigma[0], astromsigma[1], 
+                                  in_astromsigma[0], in_astromsigma[1], 
+                                  mean_diff, mean_diff_ratio*100.)
+            self.log.to_db(5, db_log_msg, event=52)
 
             # Use decreasing threshold for astrometric sigmas
             astrom_threshold = 2. - (recdepth - 1) * 0.2
@@ -2251,7 +2271,7 @@ class SolveProcess:
                     cmd = self.xy2sky_path
                     cmd += (' -d -o rd {} @{}_xy.txt > {}_world.txt'
                             ''.format(hdrfile, fnsub, fnsub))
-                    self.log.write('Subprocess: {}'.format(cmd), level=5)
+                    self.log.write('Subprocess: {}'.format(cmd))
                     sp.call(cmd, shell=True, stdout=self.log.handle, 
                             stderr=self.log.handle, cwd=self.scratch_dir)
 
