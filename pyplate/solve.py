@@ -2215,7 +2215,7 @@ class SolveProcess:
                            ''.format(mean_diff, mean_diff_ratio*100.))
             db_log_msg = ('{}, #detections: {:d}, sigmas: {:.3f} {:.3f}, '
                           'previous: {:.3f} {:.3f}, '
-                          'mean diff: {:.3f} ({:+.1f}%)'
+                          'mean difference: {:.3f} ({:+.1f}%)'
                           .format(db_log_msg, ndetect, 
                                   astromsigma[0], astromsigma[1], 
                                   in_astromsigma[0], in_astromsigma[1], 
