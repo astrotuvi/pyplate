@@ -1111,6 +1111,8 @@ class SolveProcess:
                 try:
                     psfcat = fits.open(fn_psfcat)
                 except IOError:
+                    self.log.write('Cannot read PSF coordinates, file {} '
+                                   'is corrupt'.format(fn_psfcat), level=2)
                     psfcat = None
 
                 if psfcat is not None:
