@@ -1354,7 +1354,7 @@ class SolveProcess:
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
         else:
-            self.log.write('Could not solve astrometry for the plate!', 
+            self.log.write('Could not solve astrometry for the plate', 
                            level=2, event=40)
             return
 
@@ -1505,12 +1505,12 @@ class SolveProcess:
                        event=49)
 
         if self.solution is None:
-            self.log.write('No plate solution to write to the database.', 
+            self.log.write('No plate solution to write to the database', 
                            level=2, event=49)
             return
 
         self.log.write('Open database connection for writing to the '
-                       'solution table.')
+                       'solution table')
         platedb = PlateDB()
         platedb.open_connection(host=self.output_db_host,
                                 user=self.output_db_user,
@@ -1525,7 +1525,7 @@ class SolveProcess:
                                    archive_id=self.archive_id)
             
         platedb.close_connection()
-        self.log.write('Closed database connection.')
+        self.log.write('Closed database connection')
 
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
@@ -1548,13 +1548,13 @@ class SolveProcess:
 
         """
 
+        self.log.write('Recursive solving of astrometry', level=3, event=50)
+
         if not self.plate_solved:
             self.log.write('Missing initial solution, '
                            'recursive solving not possible!', 
-                           level=2)
+                           level=2, event=50)
             return
-
-        self.log.write('Recursive solving of astrometry', level=3, event=50)
 
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
