@@ -2220,7 +2220,7 @@ class SolveProcess:
                                   astromsigma[0], astromsigma[1], 
                                   in_astromsigma[0], in_astromsigma[1], 
                                   mean_diff, mean_diff_ratio*100.))
-            self.log.to_db(4, db_log_msg, event=52)
+            self.log.to_db(5, db_log_msg, event=52)
 
             # Use decreasing threshold for astrometric sigmas
             astrom_threshold = 2. - (recdepth - 1) * 0.2
