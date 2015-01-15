@@ -740,8 +740,9 @@ class SolveProcess:
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.cat')):
                 self.log.write('Running SExtractor for extracting PSF model '
-                               'sources (threshold {:.1f})'
-                               ''.format(psf_model_sigma), level=3, event=31)
+                               'sources', level=3, event=31)
+                self.log.write('Using threshold {:.1f}'
+                               .format(psf_model_sigma), level=4, event=31)
 
                 # Create parameter file
                 fn_sex_param = self.basefn + '_sextractor.param'
@@ -838,10 +839,10 @@ class SolveProcess:
             # Run SExtractor with PSF
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '.cat-psf')):
-                self.log.write('Running SExtractor with the PSF model '
-                               '(threshold {:.1f})'
-                               ''.format(psf_threshold_sigma), 
+                self.log.write('Running SExtractor with the PSF model',
                                level=3, event=33)
+                self.log.write('Using threshold {:.1f}'
+                               .format(psf_threshold_sigma), level=4, event=33)
 
                 fn_sex_param = self.basefn + '_sextractor.param'
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
@@ -887,9 +888,10 @@ class SolveProcess:
         # If SExtractor catalog does not exist then run SExtractor
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
-            self.log.write('Running SExtractor without the PSF model '
-                           '(threshold {:.1f})'.format(threshold_sigma), 
+            self.log.write('Running SExtractor without the PSF model',
                            level=3, event=34)
+            self.log.write('Using threshold {:.1f}'.format(threshold_sigma),
+                           level=4, event=34)
 
             fn_sex_param = self.basefn + '_sextractor.param'
             fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
