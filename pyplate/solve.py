@@ -2208,7 +2208,7 @@ class SolveProcess:
                           .format(db_log_msg, ndetect, 
                                   astromsigma[0], astromsigma[1], 
                                   in_astromsigma[0], in_astromsigma[1], 
-                                  mean_diff, mean_diff_ratio*100.)
+                                  mean_diff, mean_diff_ratio*100.))
             self.log.to_db(5, db_log_msg, event=52)
 
             # Use decreasing threshold for astrometric sigmas
