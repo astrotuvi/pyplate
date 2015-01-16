@@ -7,6 +7,7 @@ import datetime as dt
 import subprocess as sp
 import numpy as np
 import ConfigParser
+import warnings
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
@@ -2132,9 +2133,10 @@ class SolveProcess:
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
             # Read statistics from SCAMP XML file
+            warnings.simplefilter('ignore')
             scampxml = votable.parse(os.path.join(self.scratch_dir, 
-                                                  scampxml_file), 
-                                     pedantic=False)
+                                                  scampxml_file))
+            warnings.resetwarnings()
             xmltab = scampxml.get_first_table()
             ndetect = xmltab.array['NDeg_Reference'].data[0]
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
@@ -2202,9 +2204,10 @@ class SolveProcess:
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
             # Read statistics from SCAMP XML file
+            warnings.simplefilter('ignore')
             scampxml = votable.parse(os.path.join(self.scratch_dir, 
-                                                  scampxml_file), 
-                                     pedantic=False)
+                                                  scampxml_file))
+            warnings.resetwarnings()
             xmltab = scampxml.get_first_table()
             ndetect = xmltab.array['NDeg_Reference'].data[0]
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
