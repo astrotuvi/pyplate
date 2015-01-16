@@ -740,8 +740,8 @@ class SolveProcess:
             # If PSFEx input file does not exist then run SExtractor
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.cat')):
-                self.log.write('Running SExtractor for extracting PSF model '
-                               'sources', level=3, event=31)
+                self.log.write('Running SExtractor to get sources for PSFEx', 
+                               level=3, event=31)
                 self.log.write('Using threshold {:.1f}'
                                .format(psf_model_sigma), level=4, event=31)
 
@@ -840,7 +840,7 @@ class SolveProcess:
             # Run SExtractor with PSF
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '.cat-psf')):
-                self.log.write('Running SExtractor with the PSF model',
+                self.log.write('Running SExtractor with PSF model',
                                level=3, event=33)
                 self.log.write('Using threshold {:.1f}'
                                .format(psf_threshold_sigma), level=4, event=33)
@@ -889,7 +889,7 @@ class SolveProcess:
         # If SExtractor catalog does not exist then run SExtractor
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
-            self.log.write('Running SExtractor without the PSF model',
+            self.log.write('Running SExtractor without PSF model',
                            level=3, event=34)
             self.log.write('Using threshold {:.1f}'.format(threshold_sigma),
                            level=4, event=34)
