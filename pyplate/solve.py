@@ -2133,7 +2133,8 @@ class SolveProcess:
 
             # Read statistics from SCAMP XML file
             scampxml = votable.parse(os.path.join(self.scratch_dir, 
-                                                  scampxml_file))
+                                                  scampxml_file), 
+                                     pedantic=False)
             xmltab = scampxml.get_first_table()
             ndetect = xmltab.array['NDeg_Reference'].data[0]
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
@@ -2202,7 +2203,8 @@ class SolveProcess:
 
             # Read statistics from SCAMP XML file
             scampxml = votable.parse(os.path.join(self.scratch_dir, 
-                                                  scampxml_file))
+                                                  scampxml_file), 
+                                     pedantic=False)
             xmltab = scampxml.get_first_table()
             ndetect = xmltab.array['NDeg_Reference'].data[0]
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
