@@ -1880,9 +1880,6 @@ class SolveProcess:
         yoffset = np.array([0., 0., 1., 1.])
 
         for sub in subrange:
-            #flog.write('***** %s ***** Grid: %dx%d  Row, column: %d, %d\n\n' % 
-            #           (str(dt.datetime.now()), nsubx, nsuby, i+1, j+1))
-
             xmin = in_head['XMIN'] + xoffset[sub] * xsize
             ymin = in_head['YMIN'] + yoffset[sub] * ysize
             xmax = xmin + xsize
@@ -1927,76 +1924,7 @@ class SolveProcess:
 
             indsub = np.where(bsub)
 
-            if False:
-            #if recdepth <= 1:
-                subxyfits = fits.HDUList()
-                subxyfits.append(xyfits[0].copy())
-                subxyfits.append(xyfits[1].copy())
-                subxyfits[1].data = subxyfits[1].data[indsub]
-                subxyfits[1].data.field(0)[:] -= xmin_ext
-                subxyfits[1].data.field(1)[:] -= ymin_ext
-                #subxyfits[0].header.remove('CRVAL1')
-                #subxyfits[0].header.remove('CRVAL2')
-                #subxyfits[0].header.remove('CRPIX1')
-                #subxyfits[0].header.remove('CRPIX2')
-                #subxyfits[0].header.remove('CDELT1')
-                #subxyfits[0].header.remove('CDELT2')
-                #subxyfits[0].header.remove('CROTA1')
-                #subxyfits[0].header.remove('CROTA2')
-
-                subxyfile = os.path.join(self.scratch_dir, fnsub + '.xy')
-
-                if os.path.exists(subxyfile):
-                    os.remove(subxyfile)
-                    
-                subxyfits.writeto(subxyfile)
-
-                cmd = self.solve_field_path
-                cmd += ' %s.xy' % fnsub
-                cmd += ' --no-fits2fits'
-                cmd += ' --width %d' % width_ext
-                cmd += ' --height %d' % height_ext
-                #cmd += ' --width %d' % wcshead['IMAGEW']
-                #cmd += ' --height %d' % wcshead['IMAGEH']
-                cmd += ' --x-column X_IMAGE'
-                cmd += ' --y-column Y_IMAGE'
-                cmd += ' --sort-column MAG_AUTO'
-                cmd += ' --sort-ascending'
-                cmd += ' --backend-config %s_backend.cfg' % self.basefn
-                cmd += ' --tweak-order %d' % 3
-                #cmd += ' --no-tweak'
-                cmd += ' --crpix-center'
-                cmd += ' --no-plots'
-                cmd += ' --out %s' % fnsub
-                cmd += ' --solved none'
-                cmd += ' --match none'
-                cmd += ' --rdls none'
-                cmd += ' --corr none'
-                cmd += ' --index-xyls none'
-                cmd += ' --overwrite'
-                #cmd += ' --timestamp'
-                #cmd += ' --verbose'
-                self.log.write('Subprocess: {}'.format(cmd))
-                sp.call(cmd, shell=True, stdout=self.log.handle, 
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
-
-                subwcsfile = os.path.join(self.scratch_dir, fnsub + '.wcs')
-
-                if os.path.exists(subwcsfile):
-                    subwcshead = fits.getheader(subwcsfile)
-                    subwcshead['CRPIX1'] += xmin_ext
-                    subwcshead['CRPIX2'] += ymin_ext
-                    subwcshead['IMAGEW'] = self.imwidth
-                    subwcshead['IMAGEH'] = self.imheight
-                    os.remove(subwcsfile)
-                    subwcshead.tofile(subwcsfile, sep='', endcard=True, 
-                                      padding=True, clobber=True)
-
-
             # Create a SCAMP catalog for the sub-field
-            #scampdata = self.scampcat[2].data[:0].copy()
-            #scampdata.resize(bsub.sum())
             scampdata = fits.new_table(self.scampcat[2].columns, 
                                        nrows=bsub.sum()).data
             scampdata.field('X_IMAGE')[:] = x[indsub] - xmin_ext
