@@ -1085,16 +1085,20 @@ class SolveProcess:
             borderbg = max_halfwidth / rim_dist * (np.abs(bg - mean_bg) / 
                                                    std_bg)
         else:
-            borderbg = ((1. / np.minimum(np.minimum(xim, self.imwidth-xim) / 
-                                         self.imwidth,
-                                         np.minimum(yim, self.imheight-yim) / 
-                                         self.imheight)) *
-                        (np.abs(bg - mean_bg) / std_bg))
+            min_xedgedist = np.minimum(xim, self.imwidth-xim)
+            min_yedgedist = np.minimum(yim, self.imheight-yim)
+            min_reldist = np.minimum(min_xedgedist/self.imwidth,
+                                     min_yedgedist/self.imheight)
+
+            # Avoid dividing by zero
+            if min_reldist < 1e-5:
+                min_reldist = 1e-5
+
+            borderbg = (1. / min_reldist) * (np.abs(bg - mean_bg) / std_bg)
 
         bclean = ((self.sources['flux_radius'] > 0) & 
                   (self.sources['elongation'] < 5) & 
                   (borderbg < 100))
-        #self.num_sources = bclean.sum()
         indclean = np.where(bclean)[0]
         self.sources['flag_clean'][indclean] = 1
         self.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
