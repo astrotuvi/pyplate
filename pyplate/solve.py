@@ -1234,44 +1234,9 @@ class SolveProcess:
             skip_bright = self.skip_bright
 
         # Create another xy list for faster solving
-        #fnxy = os.path.join(self.scratch_dir, self.basefn + '.xy')
-        #xycat = fits.open(fnxy)
-
         # Keep 1000 stars in brightness order, skip the brightest
-        #indsort = np.argsort(xycat[1].data
-        #                     .field('MAG_AUTO'))[skip_bright:skip_bright+1000]
-        #xycat[1].data = xycat[1].data[indsort]
-
-        # Clean xycat header
-        #if 'CRVAL1' in xycat[0].header:
-        #    xycat[0].header.remove('CRVAL1')
-
-        #if 'CRVAL2' in xycat[0].header:
-        #    xycat[0].header.remove('CRVAL2')
-
-        #if 'CRPIX1' in xycat[0].header:
-        #    xycat[0].header.remove('CRPIX1')
-
-        #if 'CRPIX2' in xycat[0].header:
-        #    xycat[0].header.remove('CRPIX2')
-
-        #if 'CDELT1' in xycat[0].header:
-        #    xycat[0].header.remove('CDELT1')
-
-        #if 'CDELT2' in xycat[0].header:
-        #    xycat[0].header.remove('CDELT2')
-
-        #if 'CROTA1' in xycat[0].header:
-        #    xycat[0].header.remove('CROTA1')
-
-        #if 'CROTA2' in xycat[0].header:
-        #    xycat[0].header.remove('CROTA2')
-
-        # Rename FLUX_AUTO to FLUX
-        #xycat[1].header['TTYPE9'] = 'FLUX'
 
         xycat = fits.HDUList()
-
         hdu = fits.PrimaryHDU()
         xycat.append(hdu)
 
@@ -1312,11 +1277,7 @@ class SolveProcess:
         fconf.write('inparallel\n')
         fconf.close()
 
-        # Solve the whole plate
-        #if not os.path.exists(os.path.join(self.scratch_dir, self.basefn + '.solved')):
-        #cmd = 'solve-field %s_inverted.fits' % self.basefn
-        #cmd += ' --downsample %i' % dsfactor
-
+        # Construct the solve-field call
         cmd = self.solve_field_path
         cmd += ' %s' % fnxy_short
         cmd += ' --no-fits2fits'
@@ -1397,17 +1358,6 @@ class SolveProcess:
         else:
             imheight_deg = c3.separation(c4).degrees
 
-        #imwidth_angle = angles.AngularSeparation(edge_midpoints[0,1], 
-        #                                         edge_midpoints[0,0],
-        #                                         edge_midpoints[1,1],
-        #                                         edge_midpoints[1,0],
-        #                                         units.degree)
-        #imheight_angle = angles.AngularSeparation(edge_midpoints[2,1], 
-        #                                          edge_midpoints[2,0],
-        #                                          edge_midpoints[3,1],
-        #                                          edge_midpoints[3,0],
-        #                                          units.degree)
-        #num_stars = len(self.xyclean.data)
         self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
         pixscale1 = imwidth_deg / self.imwidth * 3600.
         pixscale2 = imheight_deg / self.imheight * 3600.
