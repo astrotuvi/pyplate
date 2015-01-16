@@ -1358,6 +1358,7 @@ class SolveProcess:
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
+            self.log.write('Astrometry solved', level=3, event=41)
         else:
             self.log.write('Could not solve astrometry for the plate', 
                            level=2, event=40)
