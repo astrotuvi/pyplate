@@ -1279,15 +1279,15 @@ class SolveProcess:
 
         # Construct the solve-field call
         cmd = self.solve_field_path
-        cmd += ' %s' % fnxy_short
+        cmd += ' {}'.format(fnxy_short)
         cmd += ' --no-fits2fits'
-        cmd += ' --width %d' % self.imwidth
-        cmd += ' --height %d' % self.imheight
+        cmd += ' --width {:d}'.format(self.imwidth)
+        cmd += ' --height {:d}'.format(self.imheight)
         cmd += ' --x-column X_IMAGE'
         cmd += ' --y-column Y_IMAGE'
         cmd += ' --sort-column MAG_AUTO'
         cmd += ' --sort-ascending'
-        cmd += ' --backend-config %s_backend.cfg' % self.basefn
+        cmd += ' --backend-config {}_backend.cfg'.format(self.basefn)
 
         if sip > 0:
             cmd += ' --tweak-order %d' % sip
@@ -1296,10 +1296,10 @@ class SolveProcess:
             
         cmd += ' --crpix-center'
         #cmd += ' --pixel-error 3'
-        cmd += ' --scamp %s_scamp.cat' % self.basefn
-        cmd += ' --scamp-config %s_scamp.conf' % self.basefn
+        cmd += ' --scamp {}_scamp.cat'.format(self.basefn)
+        cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
         cmd += ' --no-plots'
-        cmd += ' --out %s' % self.basefn
+        cmd += ' --out {}'.format(self.basefn)
         #cmd += ' --solved none'
         cmd += ' --match none'
         cmd += ' --rdls none'
