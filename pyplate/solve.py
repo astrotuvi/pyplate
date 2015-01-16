@@ -1091,9 +1091,9 @@ class SolveProcess:
                                      min_yedgedist/self.imheight)
 
             # Avoid dividing by zero
-            if min_reldist < 1e-5:
-                min_reldist = 1e-5
-
+            min_reldist[np.where(min_reldist < 1e-5)] = 1e-5
+            
+            # Combine distance from edge with deviation from mean background
             borderbg = (1. / min_reldist) * (np.abs(bg - mean_bg) / std_bg)
 
         bclean = ((self.sources['flux_radius'] > 0) & 
