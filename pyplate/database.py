@@ -363,7 +363,7 @@ _schema['process'] = OrderedDict([
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', None)),
     ('timestamp_start',  ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
-    ('timestamp_end',    ('TIMESTAMP DEFAULT NULL', None)),
+    ('timestamp_end',    ('TIMESTAMP NULL', None)),
     ('duration',         ('INT UNSIGNED', None)),
     ('use_psf',          ('TINYINT(1)', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
