@@ -815,9 +815,10 @@ class PlateDB:
 
         """
 
-        sql = ('UPDATE process SET timestamp_end=%s,duration=%s,completed=%s '
+        sql = ('UPDATE process '
+               'SET timestamp_end=NOW(),duration=%s,completed=%s '
                'WHERE process_id=%s')
-        val_tuple = ('NOW()', duration, completed, process_id)
+        val_tuple = (duration, completed, process_id)
         self.cursor.execute(sql, val_tuple)
 
     def write_processlog(self, level, message, event=None, process_id=None,
