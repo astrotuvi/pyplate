@@ -1,6 +1,7 @@
 import numpy as np
 from collections import OrderedDict
 from .conf import read_conf
+from ._version import __version__
 
 try:
     import MySQLdb
@@ -359,9 +360,10 @@ _schema['solution'] = OrderedDict([
 _schema['process'] = OrderedDict([
     ('process_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           None)),
-    ('scan_id',          ('INT UNSIGNED NOT NULL', None)),
-    ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
-    ('archive_id',       ('INT UNSIGNED NOT NULL', None)),
+    ('scan_id',          ('INT UNSIGNED', None)),
+    ('plate_id',         ('INT UNSIGNED', None)),
+    ('archive_id',       ('INT UNSIGNED', None)),
+    ('filename',         ('VARCHAR(80)', None)),
     ('timestamp_start',  ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_end',    ('TIMESTAMP NULL', None)),
     ('duration',         ('INT UNSIGNED', None)),
@@ -369,9 +371,11 @@ _schema['process'] = OrderedDict([
     ('num_sources',      ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
     ('completed',        ('TINYINT(1)', None)),
+    ('pyplate_version',  ('VARCHAR(15)', None)),
+    ('INDEX scan_ind',   ('(scan_id)', None)),
     ('INDEX plate_ind',  ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
-    ('INDEX scan_ind',   ('(scan_id)', None))
+    ('INDEX filename_ind', ('(filename)', None))
     ])
 
 _schema['process_log'] = OrderedDict([
@@ -379,9 +383,9 @@ _schema['process_log'] = OrderedDict([
                           None)),
     ('process_id',       ('INT UNSIGNED NOT NULL', None)),
     ('timestamp_log',    ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
-    ('scan_id',          ('INT UNSIGNED NOT NULL', None)),
-    ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
-    ('archive_id',       ('INT UNSIGNED NOT NULL', None)),
+    ('scan_id',          ('INT UNSIGNED', None)),
+    ('plate_id',         ('INT UNSIGNED', None)),
+    ('archive_id',       ('INT UNSIGNED', None)),
     ('level',            ('TINYINT', None)),
     ('event',            ('SMALLINT', None)),
     ('message',          ('TEXT', None)),
@@ -767,21 +771,23 @@ class PlateDB:
             self.cursor.execute(sql, val_tuple)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
-                            archive_id=None, use_psf=None):
+                            archive_id=None, filename=None, use_psf=None):
         """
         Write plate-solve process to the database.
 
         """
 
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id', 
-                    'timestamp_start', 'use_psf']
+                    'filename', 'timestamp_start', 'use_psf', 
+                    'pyplate_version']
 
         if use_psf:
             use_psf = 1
         else:
             use_psf = 0
             
-        val_tuple = (None, scan_id, plate_id, archive_id, None, use_psf)
+        val_tuple = (None, scan_id, plate_id, archive_id, filename, None, 
+                     use_psf, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO process ({}) VALUES ({})'

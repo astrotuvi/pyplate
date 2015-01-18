@@ -294,12 +294,14 @@ class SolveProcessLog:
                                           plate_id=self.plate_id, 
                                           archive_id=self.archive_id)
 
-    def write_process_start(self, use_psf=None):
+    def write_process_start(self, filename=None, use_psf=None):
         """
         Write process start to the database.
 
         Parameters
         ----------
+        filename : str
+            Filename of the image to be processed
         use_psf : int
             A boolean value specifying whether PSF is used for source extraction
 
@@ -309,6 +311,7 @@ class SolveProcessLog:
             pid = self.platedb.write_process_start(scan_id=self.scan_id,
                                                    plate_id=self.plate_id,
                                                    archive_id=self.archive_id,
+                                                   filename=filename,
                                                    use_psf=use_psf)
             self.process_id = pid
 
@@ -673,7 +676,8 @@ class SolveProcess:
             self.log.archive_id = self.archive_id
             self.log.plate_id = plate_id
             self.log.scan_id = scan_id
-            self.log.write_process_start(use_psf=self.use_psf)
+            self.log.write_process_start(filename=self.filename, 
+                                         use_psf=self.use_psf)
             self.log.to_db(3, 'Setting up plate solve process', event=10)
 
         self.log.write('Using PyPlate v{}'.format(__version__), 
