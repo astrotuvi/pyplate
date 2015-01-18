@@ -294,7 +294,7 @@ class SolveProcessLog:
                                           plate_id=self.plate_id, 
                                           archive_id=self.archive_id)
 
-    def write_process_start(self, use_psf=use_psf):
+    def write_process_start(self, use_psf=None):
         """
         Write process start to the database.
 
@@ -326,7 +326,7 @@ class SolveProcessLog:
 
         """
 
-        if self.platedb is not None:
+        if self.platedb is not None and self.process_id is not None:
             self.platedb.update_process(self.process_id, 
                                         num_sources=num_sources, solved=solved)
 
@@ -341,7 +341,7 @@ class SolveProcessLog:
 
         """
 
-        if self.platedb is not None:
+        if self.platedb is not None and self.process_id is not None:
             self.platedb.update_process(self.process_id, completed=completed)
 
     def close(self):
