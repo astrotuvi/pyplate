@@ -340,8 +340,7 @@ _schema['solution'] = OrderedDict([
     ('dej2000_dms',      ('CHAR(11)', True)),
     ('fov1',             ('FLOAT', True)),
     ('fov2',             ('FLOAT', True)),
-    ('pixscale1',        ('FLOAT', True)),
-    ('pixscale2',        ('FLOAT', True)),
+    ('pixel_scale',      ('FLOAT', True)),
     ('source_density',   ('FLOAT', True)),
     ('stc_box',          ('VARCHAR(100)', True)),
     ('stc_polygon',      ('VARCHAR(200)', True)),
@@ -357,9 +356,28 @@ _schema['solution'] = OrderedDict([
     ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
 
-_schema['processlog'] = OrderedDict([
+_schema['process'] = OrderedDict([
+    ('process_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          None)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', None)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', None)),
+    ('timestamp_start',  ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_end',    ('TIMESTAMP DEFAULT NULL', None)),
+    ('duration',         ('INT UNSIGNED', None)),
+    ('use_psf',          ('TINYINT(1)', None)),
+    ('num_sources',      ('INT UNSIGNED', None)),
+    ('solved',           ('TINYINT(1)', None)),
+    ('completed',        ('TINYINT(1)', None)),
+    ('INDEX plate_ind',  ('(plate_id)', None)),
+    ('INDEX archive_ind', ('(archive_id)', None)),
+    ('INDEX scan_ind',   ('(scan_id)', None))
+    ])
+
+_schema['process_log'] = OrderedDict([
     ('processlog_id',    ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           None)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', None)),
     ('timestamp_log',    ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', None)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
@@ -367,9 +385,10 @@ _schema['processlog'] = OrderedDict([
     ('level',            ('TINYINT', None)),
     ('event',            ('SMALLINT', None)),
     ('message',          ('TEXT', None)),
+    ('INDEX process_ind', ('(process_id)', None)),
+    ('INDEX scan_ind',   ('(scan_id)', None)),
     ('INDEX plate_ind',  ('(plate_id)', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
-    ('INDEX scan_ind',   ('(scan_id)', None)),
     ('INDEX event_ind',  ('(event)', None))
     ])
 
@@ -747,20 +766,75 @@ class PlateDB:
                    .format(col_str, val_str))
             self.cursor.execute(sql, val_tuple)
 
-    def write_processlog(self, level, message, event=None, 
+    def write_process_start(self, scan_id=None, plate_id=None, 
+                            archive_id=None, use_psf=None):
+        """
+        Write plate-solve process to the database.
+
+        """
+
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id', 
+                    'timestamp_start', 'use_psf']
+        val_tuple = (None, scan_id, plate_id, archive_id, None, use_psf)
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO process ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.cursor.execute(sql, val_tuple)
+        process_id = self.cursor.lastrowid
+        return process_id
+
+    def update_process(self, process_id, num_sources=None, solved=None):
+        """
+        Update plate-solve process in the database.
+
+        """
+
+        if num_sources is None and solved is None:
+            return
+
+        col_list = []
+        val_tuple = ()
+
+        if num_sources is not None:
+            col_list.append('num_sources=%s')
+            val_tuple = val_tuple + (num_sources, )
+
+        if solved is not None:
+            col_list.append('solved=%s')
+            val_tuple = val_tuple + (solved, )
+
+        col_str = ','.join(col_list)
+        sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))
+        val_tuple = val_tuple + (process_id, )
+        self.cursor.execute(sql, val_tuple)
+
+    def write_process_end(self, process_id, completed=None):
+        """
+        Write plate-solve process end to the database.
+
+        """
+
+        sql = ('UPDATE process SET timestamp_end=%s, completed=%s '
+               'WHERE process_id=%s')
+        val_tuple = ('NOW()', completed, process_id)
+        self.cursor.execute(sql, val_tuple)
+
+    def write_processlog(self, level, message, event=None, process_id=None,
                          scan_id=None, plate_id=None, archive_id=None):
         """
         Write plate solve process log message to the database.
 
         """
 
-        col_list = ['processlog_id', 'timestamp_log', 'scan_id', 'plate_id', 
-                    'archive_id', 'level', 'event', 'message']
-        val_tuple = (None, None, scan_id, plate_id, archive_id, level, event, 
-                     message)
+        col_list = ['processlog_id', 'process_id', 'timestamp_log', 
+                    'scan_id', 'plate_id', 'archive_id', 
+                    'level', 'event', 'message']
+        val_tuple = (None, process_id, None, scan_id, plate_id, archive_id, 
+                     level, event, message)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO processlog ({}) VALUES ({})'
+        sql = ('INSERT INTO process_log ({}) VALUES ({})'
                .format(col_str, val_str))
         self.cursor.execute(sql, val_tuple)
 

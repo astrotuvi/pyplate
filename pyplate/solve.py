@@ -225,6 +225,7 @@ class SolveProcessLog:
         self.archive_id = None
         self.plate_id = None
         self.scan_id = None
+        self.process_id = None
 
     def open(self):
         """
@@ -287,10 +288,61 @@ class SolveProcessLog:
         """
 
         if self.platedb is not None:
-            self.platedb.write_processlog(level, message, event=event, 
+            self.platedb.write_processlog(level, message, event=event,
+                                          process_id=self.process_id,
                                           scan_id=self.scan_id, 
                                           plate_id=self.plate_id, 
                                           archive_id=self.archive_id)
+
+    def write_process_start(self, use_psf=use_psf):
+        """
+        Write process start to the database.
+
+        Parameters
+        ----------
+        use_psf : int
+            A boolean value specifying whether PSF is used for source extraction
+
+        """
+
+        if self.platedb is not None:
+            pid = self.platedb.write_process_start(scan_id=self.scan_id,
+                                                   plate_id=self.plate_id,
+                                                   archive_id=self.archive_id,
+                                                   use_psf=use_psf)
+            self.process_id = pid
+
+    def update_process(self, num_sources=None, solved=None):
+        """
+        Update process in the database.
+
+        Parameters
+        ----------
+        num_sources : int
+            Number of extracted sources
+        solved : int
+            A boolean value specifying whether plate was solved successfully
+            with Astrometry.net
+
+        """
+
+        if self.platedb is not None:
+            self.platedb.update_process(self.process_id, 
+                                        num_sources=num_sources, solved=solved)
+
+    def write_process_end(self, completed=None):
+        """
+        Write process end to the database.
+
+        Parameters
+        ----------
+        solved : int
+            A boolean value specifying whether the process was completed
+
+        """
+
+        if self.platedb is not None:
+            self.platedb.update_process(self.process_id, completed=completed)
 
     def close(self):
         """
@@ -617,6 +669,7 @@ class SolveProcess:
             self.log.plate_id = plate_id
             self.log.scan_id = scan_id
             self.log.to_db(3, 'Setting up plate solve process', event=10)
+            self.log.write_process_start(use_psf=self.use_psf)
 
         self.log.write('Using PyPlate v{}'.format(__version__), 
                        level=4, event=10)
@@ -661,6 +714,7 @@ class SolveProcess:
         # Close database connection used for logging
         if self.log.platedb is not None:
             self.log.to_db(3, 'Finish plate solve process', event=99)
+            self.log.write_process_end(completed=1)
             self.log.platedb.close_connection()
 
         # Close log file
@@ -962,6 +1016,7 @@ class SolveProcess:
         # Read the SExtractor output catalog
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
         self.num_sources = len(xycat[1].data)
+        self.log.update_process(num_sources=self.num_sources)
 
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
@@ -1320,9 +1375,11 @@ class SolveProcess:
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
             self.log.write('Astrometry solved', level=3, event=41)
+            self.log.update_process(solved=1)
         else:
             self.log.write('Could not solve astrometry for the plate', 
                            level=2, event=40)
+            self.log.update_process(solved=0)
             return
 
         # Read the .wcs file and calculate star density
@@ -1407,8 +1464,7 @@ class SolveProcess:
             ('dej2000_dms', dec_str),
             ('fov1', imwidth_deg),
             ('fov2', imheight_deg),
-            ('pixscale1', pixscale1),
-            ('pixscale2', pixscale2),
+            ('pixel_scale', self.mean_pixscale),
             ('source_density', self.stars_sqdeg),
             ('stc_box', stc_box),
             ('stc_polygon', stc_polygon),
