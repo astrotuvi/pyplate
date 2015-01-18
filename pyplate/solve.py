@@ -342,7 +342,7 @@ class SolveProcessLog:
         """
 
         if self.platedb is not None and self.process_id is not None:
-            self.platedb.update_process(self.process_id, completed=completed)
+            self.platedb.write_process_end(self.process_id, completed=completed)
 
     def close(self):
         """
