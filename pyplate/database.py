@@ -776,8 +776,10 @@ class PlateDB:
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id', 
                     'timestamp_start', 'use_psf']
 
-        if use_psf is not None:
-            use_psf = int(use_psf)
+        if use_psf:
+            use_psf = 1
+        else:
+            use_psf = 0
             
         val_tuple = (None, scan_id, plate_id, archive_id, None, use_psf)
         col_str = ','.join(col_list)
