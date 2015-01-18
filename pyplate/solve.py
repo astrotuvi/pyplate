@@ -562,6 +562,8 @@ class SolveProcess:
         self.ncp_in_plate = None
         self.scp_in_plate = None
         self.num_sources = None
+        self.num_sources_sixbins = None
+        self.rel_area_sixbins = None
         self.stars_sqdeg = None
 
         self.sources = None
@@ -1079,6 +1081,7 @@ class SolveProcess:
         imwidth_s = int(self.imwidth / sampling)
         imheight_s = int(self.imheight / sampling)
         dist_s = np.zeros((imheight_s, imwidth_s))
+        area_all = dist_s.size
 
         for x in np.arange(imwidth_s):
             for y in np.arange(imheight_s):
@@ -1100,6 +1103,7 @@ class SolveProcess:
 
         # Exclude bin9 from dist_s
         dist_s = dist_s[np.where(dist_s >= 0)]
+        self.rel_area_sixbins = 0.75 * dist_s.size / area_all
 
         # Divide the rest of pixels between 8 equal-area bins 1-8
         bin_dist = np.array([np.percentile(dist_s, perc)
@@ -1129,6 +1133,9 @@ class SolveProcess:
         if nbin > 0:
             indbin = np.where(bbin)
             self.sources['annular_bin'][indbin] = 9
+
+        indbin6 = (self.sources['annular_bin'] <= 6)
+        self.num_sources_sixbins = indbin6.sum()
 
         # Find and flag dubious stars at the edges
         if circular_film:
@@ -1419,7 +1426,9 @@ class SolveProcess:
         else:
             imheight_deg = c3.separation(c4).degrees
 
-        self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
+        #self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
+        self.stars_sqdeg = (self.num_sources_sixbins / 
+                            (imwidth_deg*imheight_deg*self.rel_area_sixbins))
         pixscale1 = imwidth_deg / self.imwidth * 3600.
         pixscale2 = imheight_deg / self.imheight * 3600.
         self.mean_pixscale = np.mean([pixscale1, pixscale2])
