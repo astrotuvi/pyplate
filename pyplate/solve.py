@@ -330,19 +330,21 @@ class SolveProcessLog:
             self.platedb.update_process(self.process_id, 
                                         num_sources=num_sources, solved=solved)
 
-    def write_process_end(self, completed=None):
+    def write_process_end(self, completed=None, duration=None):
         """
         Write process end to the database.
 
         Parameters
         ----------
-        solved : int
+        completed : int
             A boolean value specifying whether the process was completed
 
         """
 
         if self.platedb is not None and self.process_id is not None:
-            self.platedb.write_process_end(self.process_id, completed=completed)
+            self.platedb.write_process_end(self.process_id, 
+                                           completed=completed, 
+                                           duration=duration)
 
     def close(self):
         """
@@ -533,7 +535,8 @@ class SolveProcess:
         self.wcs_to_tan_path = 'wcs-to-tan'
         self.xy2sky_path = 'xy2sky'
 
-        self.timestamp = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
+        self.timestamp = dt.datetime.now()
+        self.timestamp_str = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
         self.scratch_dir = None
         self.enable_log = True
         self.log = None
@@ -643,12 +646,12 @@ class SolveProcess:
         # Create scratch directory
         self.scratch_dir = os.path.join(self.work_dir, 
                                         '{}_{}'.format(self.basefn,
-                                                       self.timestamp))
+                                                       self.timestamp_str))
         os.makedirs(self.scratch_dir)
 
         # Open log file
         if self.enable_log:
-            fn_log = '{}_{}.log'.format(self.basefn, self.timestamp)
+            fn_log = '{}_{}.log'.format(self.basefn, self.timestamp_str)
             log_path = os.path.join(self.write_log_dir, fn_log)
             self.log = SolveProcessLog(log_path)
             self.log.open()
@@ -714,7 +717,8 @@ class SolveProcess:
         # Close database connection used for logging
         if self.log.platedb is not None:
             self.log.to_db(3, 'Finish plate solve process', event=99)
-            self.log.write_process_end(completed=1)
+            duration = (dt.datetime.now()-self.timestamp).seconds
+            self.log.write_process_end(completed=1, duration=duration)
             self.log.platedb.close_connection()
 
         # Close log file

@@ -809,15 +809,15 @@ class PlateDB:
         val_tuple = val_tuple + (process_id, )
         self.cursor.execute(sql, val_tuple)
 
-    def write_process_end(self, process_id, completed=None):
+    def write_process_end(self, process_id, completed=None, duration=None):
         """
         Write plate-solve process end to the database.
 
         """
 
-        sql = ('UPDATE process SET timestamp_end=%s, completed=%s '
+        sql = ('UPDATE process SET timestamp_end=%s,duration=%s,completed=%s '
                'WHERE process_id=%s')
-        val_tuple = ('NOW()', completed, process_id)
+        val_tuple = ('NOW()', duration, completed, process_id)
         self.cursor.execute(sql, val_tuple)
 
     def write_processlog(self, level, message, event=None, process_id=None,
