@@ -287,7 +287,7 @@ class SolveProcessLog:
 
         """
 
-        if self.platedb is not None:
+        if self.platedb is not None and self.process_id is not None:
             self.platedb.write_processlog(level, message, event=event,
                                           process_id=self.process_id,
                                           scan_id=self.scan_id, 
@@ -668,8 +668,8 @@ class SolveProcess:
             self.log.archive_id = self.archive_id
             self.log.plate_id = plate_id
             self.log.scan_id = scan_id
-            self.log.to_db(3, 'Setting up plate solve process', event=10)
             self.log.write_process_start(use_psf=self.use_psf)
+            self.log.to_db(3, 'Setting up plate solve process', event=10)
 
         self.log.write('Using PyPlate v{}'.format(__version__), 
                        level=4, event=10)
