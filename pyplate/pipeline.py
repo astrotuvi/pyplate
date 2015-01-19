@@ -27,6 +27,7 @@ class PlateImagePipeline():
         self.invert_image = False
         self.extract_sources = False
         self.solve_plate = False
+        self.output_solution_db = False
         self.output_wcs_file = False
         self.solve_recursive = False
         self.output_sources_db = False
@@ -52,7 +53,8 @@ class PlateImagePipeline():
         for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
                      'output_header_file', 'output_header_fits', 
                      'invert_image', 'extract_sources', 'solve_plate', 
-                     'output_wcs_file', 'solve_recursive', 
+                     'output_solution_db', 'output_wcs_file', 
+                     'solve_recursive', 
                      'output_sources_db', 'output_sources_csv']:
             try:
                 setattr(self, attr, conf.getboolean('Pipeline', attr))
@@ -119,6 +121,9 @@ class PlateImagePipeline():
 
             if self.solve_plate:
                 proc.solve_plate()
+
+            if self.output_solution_db:
+                proc.output_solution_db()
 
             if self.output_wcs_file:
                 proc.output_wcs_header()

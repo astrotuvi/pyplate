@@ -7,13 +7,16 @@ import datetime as dt
 import subprocess as sp
 import numpy as np
 import ConfigParser
+import warnings
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
+from astropy.coordinates import Angle
 from astropy import units
 from collections import OrderedDict
-from database import PlateDB
-from conf import read_conf
+from .database import PlateDB
+from .conf import read_conf
+from ._version import __version__
 
 try:
     from astropy.coordinates import ICRS
@@ -218,6 +221,12 @@ class SolveProcessLog:
             
         self.handle = None
 
+        self.platedb = None
+        self.archive_id = None
+        self.plate_id = None
+        self.scan_id = None
+        self.process_id = None
+
     def open(self):
         """
         Open log file.
@@ -233,9 +242,10 @@ class SolveProcessLog:
         else:
             self.handle = sys.stdout
 
-    def write(self, message, timestamp=True, double_newline=True):
+    def write(self, message, timestamp=True, double_newline=True, 
+              level=None, event=None):
         """
-        Write a message to the log file.
+        Write a message to the log file and optionally to the database.
 
         Parameters
         ----------
@@ -258,6 +268,86 @@ class SolveProcessLog:
             log_message += '\n'
 
         self.handle.write('{}\n'.format(log_message))
+
+        if level is not None:
+            self.to_db(level, message, event=event)
+
+    def to_db(self, level, message, event=None):
+        """
+        Write a log message to the database.
+
+        Parameters
+        ----------
+        level : int
+            Log level (1 = error, 2 = warning, 3 = info, 4 = debug, 5 = trace)
+        message : str
+            Message to be written to the log file
+        event : int
+            Event code (default None)
+
+        """
+
+        if self.platedb is not None and self.process_id is not None:
+            self.platedb.write_processlog(level, message, event=event,
+                                          process_id=self.process_id,
+                                          scan_id=self.scan_id, 
+                                          plate_id=self.plate_id, 
+                                          archive_id=self.archive_id)
+
+    def write_process_start(self, filename=None, use_psf=None):
+        """
+        Write process start to the database.
+
+        Parameters
+        ----------
+        filename : str
+            Filename of the image to be processed
+        use_psf : int
+            A boolean value specifying whether PSF is used for source extraction
+
+        """
+
+        if self.platedb is not None:
+            pid = self.platedb.write_process_start(scan_id=self.scan_id,
+                                                   plate_id=self.plate_id,
+                                                   archive_id=self.archive_id,
+                                                   filename=filename,
+                                                   use_psf=use_psf)
+            self.process_id = pid
+
+    def update_process(self, num_sources=None, solved=None):
+        """
+        Update process in the database.
+
+        Parameters
+        ----------
+        num_sources : int
+            Number of extracted sources
+        solved : int
+            A boolean value specifying whether plate was solved successfully
+            with Astrometry.net
+
+        """
+
+        if self.platedb is not None and self.process_id is not None:
+            self.platedb.update_process(self.process_id, 
+                                        num_sources=num_sources, solved=solved)
+
+    def write_process_end(self, completed=None, duration=None):
+        """
+        Write process end to the database.
+
+        Parameters
+        ----------
+        completed : int
+            A boolean value specifying whether the process was completed
+
+        """
+
+        if self.platedb is not None and self.process_id is not None:
+            self.platedb.write_process_end(self.process_id, 
+                                           completed=completed, 
+                                           duration=duration)
 
     def close(self):
         """
@@ -448,10 +538,12 @@ class SolveProcess:
         self.wcs_to_tan_path = 'wcs-to-tan'
         self.xy2sky_path = 'xy2sky'
 
-        self.timestamp = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
+        self.timestamp = dt.datetime.now()
+        self.timestamp_str = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
         self.scratch_dir = None
         self.enable_log = True
         self.log = None
+        self.enable_db_log = False
     
         self.plate_epoch = 1950
         self.plate_year = int(self.plate_epoch)
@@ -473,6 +565,8 @@ class SolveProcess:
         self.ncp_in_plate = None
         self.scp_in_plate = None
         self.num_sources = None
+        self.num_sources_sixbins = None
+        self.rel_area_sixbins = None
         self.stars_sqdeg = None
 
         self.sources = None
@@ -480,6 +574,7 @@ class SolveProcess:
         self.scampcat = None
         self.wcshead = None
         self.wcs_plate = None
+        self.solution = None
 
     def assign_conf(self, conf):
         """
@@ -515,7 +610,7 @@ class SolveProcess:
         for attr in ['use_tycho2_fits', 'use_ucac4_db', 
                      'ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
                      'ucac4_db_passwd', 'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
+                     'output_db_name', 'output_db_passwd', 'enable_db_log']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except ConfigParser.Error:
@@ -540,7 +635,7 @@ class SolveProcess:
 
     def setup(self):
         """
-        Set up plate process.
+        Set up plate solve process.
 
         """
 
@@ -556,17 +651,37 @@ class SolveProcess:
         # Create scratch directory
         self.scratch_dir = os.path.join(self.work_dir, 
                                         '{}_{}'.format(self.basefn,
-                                                       self.timestamp))
+                                                       self.timestamp_str))
         os.makedirs(self.scratch_dir)
 
         # Open log file
         if self.enable_log:
-            fn_log = '{}_{}.log'.format(self.basefn, self.timestamp)
+            fn_log = '{}_{}.log'.format(self.basefn, self.timestamp_str)
             log_path = os.path.join(self.write_log_dir, fn_log)
             self.log = SolveProcessLog(log_path)
             self.log.open()
         else:
             self.log = SolveProcessLog(None)
+
+        # Open database connection for logs
+        if self.enable_db_log:
+            platedb = PlateDB()
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+            scan_id, plate_id = platedb.get_scan_id(self.filename, 
+                                                    self.archive_id)
+            self.log.platedb = platedb
+            self.log.archive_id = self.archive_id
+            self.log.plate_id = plate_id
+            self.log.scan_id = scan_id
+            self.log.write_process_start(filename=self.filename, 
+                                         use_psf=self.use_psf)
+            self.log.to_db(3, 'Setting up plate solve process', event=10)
+
+        self.log.write('Using PyPlate v{}'.format(__version__), 
+                       level=4, event=10)
 
         # Read FITS header
         if not self.plate_header:
@@ -605,6 +720,13 @@ class SolveProcess:
         if self.scratch_dir:
             shutil.rmtree(self.scratch_dir)
 
+        # Close database connection used for logging
+        if self.log.platedb is not None:
+            self.log.to_db(3, 'Finish plate solve process', event=99)
+            duration = (dt.datetime.now()-self.timestamp).seconds
+            self.log.write_process_end(completed=1, duration=duration)
+            self.log.platedb.close_connection()
+
         # Close log file
         self.log.close()
 
@@ -622,7 +744,7 @@ class SolveProcess:
             fn_inverted = os.path.join(self.work_dir, fn_inverted)
         
         if not os.path.exists(fn_inverted):
-            self.log.write('Inverting image, writing {}'.format(fn_inverted))
+            self.log.write('Inverting image', level=3, event=20)
 
             fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True)
 
@@ -630,15 +752,16 @@ class SolveProcess:
             invfits.header = fitsfile[0].header.copy()
             invfits.header.set('BZERO', 32768)
             invfits.header.set('BSCALE', 1.0)
-
-            if os.path.exists(fn_inverted):
-                print "Inverted file exists: %s" % fn_inverted
-            else:
-                invfits.writeto(fn_inverted)
+            self.log.write('Writing inverted image: {}'.format(fn_inverted), 
+                           level=4, event=21)
+            invfits.writeto(fn_inverted)
 
             fitsfile.close()
             del fitsfile
             del invfits
+        else:
+            self.log.write('Inverted file exists: {}'.format(fn_inverted), 
+                           level=4, event=20)
 
     def extract_sources(self, threshold_sigma=None, use_psf=None, 
                         psf_threshold_sigma=None, psf_model_sigma=None, 
@@ -675,10 +798,17 @@ class SolveProcess:
         if circular_film is None:
             circular_film = self.circular_film
 
+        self.log.write('Extracting sources from image', level=3, event=30)
+
         if use_psf:
             # If PSFEx input file does not exist then run SExtractor
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.cat')):
+                self.log.write('Running SExtractor to get sources for PSFEx', 
+                               level=3, event=31)
+                self.log.write('Using threshold {:.1f}'
+                               .format(psf_model_sigma), level=4, event=31)
+
                 # Create parameter file
                 fn_sex_param = self.basefn + '_sextractor.param'
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
@@ -697,31 +827,34 @@ class SolveProcess:
                 fconf.close()
 
                 # Create configuration file
+                cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
+                cnf += 'FILTER           N\n'
+                #cnf += 'PHOT_APERTURES   10\n'
+                #cnf += 'WEIGHT_IMAGE     %s_wmap.fits\n' % self.basefn
+                #cnf += 'WEIGHT_TYPE      MAP_WEIGHT\n'
+                #cnf += 'WEIGHT_THRESH    1\n'
+                cnf += 'SATUR_LEVEL      65000.0\n'
+                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                #cnf += 'BACKPHOTO_THICK  96\n'
+                cnf += 'MAG_ZEROPOINT    25.0\n'
+                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                cnf += 'CATALOG_TYPE     FITS_LDAC\n'
+                cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.basefn)
+
                 fn_sex_conf = self.basefn + '_sextractor.conf'
+                self.log.write('Writing SExtractor configuration file {}'
+                               .format(fn_sex_conf), level=4, event=31)
+                self.log.write('SExtractor configuration file:\n{}'
+                               .format(cnf), level=5, event=31)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-                fconf.write('DETECT_THRESH    %f\n' % psf_model_sigma)
-                fconf.write('ANALYSIS_THRESH  %f\n' % psf_model_sigma)
-                fconf.write('FILTER           N\n')
-                #fconf.write('PHOT_APERTURES   10\n')
-                #fconf.write('WEIGHT_IMAGE     %s_wmap.fits\n' % self.basefn)
-                #fconf.write('WEIGHT_TYPE      MAP_WEIGHT\n')
-                #fconf.write('WEIGHT_THRESH    1\n')
-                fconf.write('SATUR_LEVEL      65000.0\n')
-                fconf.write('BACKPHOTO_TYPE   LOCAL\n')
-                #fconf.write('BACKPHOTO_THICK  96\n')
-                fconf.write('MAG_ZEROPOINT    25.0\n')
-                fconf.write('PARAMETERS_NAME  %s\n' % fn_sex_param)
-                fconf.write('CATALOG_TYPE     FITS_LDAC\n')
-                fconf.write('CATALOG_NAME     %s_psfex.cat\n' % self.basefn)
+                fconf.write(cnf)
                 fconf.close()
 
                 cmd = self.sextractor_path
                 cmd += ' %s_inverted.fits' % self.basefn
                 cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Running SExtractor for extracting PSF model '
-                               'sources (threshold {:.1f})'
-                               ''.format(psf_model_sigma))
-                self.log.write(cmd)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=31)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -729,33 +862,41 @@ class SolveProcess:
             # Run PSFEx
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '_psfex.psf')):
+                self.log.write('Running PSFEx', level=3, event=32)
+
+                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
+                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
+                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
+                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
+                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
+                cnf += 'PSFVAR_GROUPS      1,1\n'
+                cnf += 'PSFVAR_DEGREES     3\n'
+                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
+                cnf += 'SAMPLE_VARIABILITY 3.0\n'
+                #cnf += 'PSF_SIZE           25,25\n'
+                cnf += 'PSF_SIZE           50,50\n'
+                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
+                cnf += 'CHECKPLOT_NAME     ellipticity\n'
+                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
+                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
+                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn
+                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
+                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
+                cnf += 'VERBOSE_TYPE       LOG\n'
+
                 fn_psfex_conf = self.basefn + '_psfex.conf'
+                self.log.write('Writing PSFEx configuration file {}'
+                               .format(fn_psfex_conf), level=4, event=32)
+                self.log.write('PSFEx configuration file:\n{}'
+                               .format(cnf), level=5, event=32)
                 fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
-                #fconf.write('PHOTFLUX_KEY       FLUX_APER(1)\n')
-                #fconf.write('PHOTFLUXERR_KEY    FLUXERR_APER(1)\n')
-                fconf.write('PHOTFLUX_KEY       FLUX_AUTO\n')
-                fconf.write('PHOTFLUXERR_KEY    FLUXERR_AUTO\n')
-                fconf.write('PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n')
-                fconf.write('PSFVAR_GROUPS      1,1\n')
-                fconf.write('PSFVAR_DEGREES     3\n')
-                fconf.write('SAMPLE_FWHMRANGE   3.0,50.0\n')
-                fconf.write('SAMPLE_VARIABILITY 3.0\n')
-                #fconf.write('PSF_SIZE           25,25\n')
-                fconf.write('PSF_SIZE           50,50\n')
-                fconf.write('CHECKPLOT_TYPE     ellipticity\n')
-                fconf.write('CHECKPLOT_NAME     ellipticity\n')
-                fconf.write('CHECKIMAGE_TYPE    SNAPSHOTS\n')
-                fconf.write('CHECKIMAGE_NAME    snap.fits\n')
-                #fconf.write('CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn)
-                #fconf.write('CHECKIMAGE_TYPE    NONE\n')
-                fconf.write('XML_NAME           %s_psfex.xml\n' % self.basefn)
-                fconf.write('VERBOSE_TYPE       LOG\n')
+                fconf.write(cnf)
                 fconf.close()
 
                 cmd = self.psfex_path
                 cmd += ' %s_psfex.cat' % self.basefn
                 cmd += ' -c %s' % fn_psfex_conf
-                self.log.write(cmd)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=32)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -763,6 +904,11 @@ class SolveProcess:
             # Run SExtractor with PSF
             if not os.path.exists(os.path.join(self.scratch_dir, 
                                                self.basefn + '.cat-psf')):
+                self.log.write('Running SExtractor with PSF model',
+                               level=3, event=33)
+                self.log.write('Using threshold {:.1f}'
+                               .format(psf_threshold_sigma), level=4, event=33)
+
                 fn_sex_param = self.basefn + '_sextractor.param'
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
                 fconf.write('XPEAK_IMAGE\n')
@@ -774,29 +920,32 @@ class SolveProcess:
                 fconf.write('ERRTHETAPSF_IMAGE\n')
                 fconf.close()
 
+                cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
+                cnf += 'FILTER           N\n'
+                cnf += 'SATUR_LEVEL      65000.0\n'
+                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                #cnf += 'BACKPHOTO_THICK  96\n'
+                cnf += 'MAG_ZEROPOINT    25.0\n'
+                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                cnf += 'CATALOG_TYPE     FITS_1.0\n'
+                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.basefn)
+                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.basefn)
+                cnf += 'NTHREADS         0\n'
+
                 fn_sex_conf = self.basefn + '_sextractor.conf'
+                self.log.write('Writing SExtractor configuration file {}'
+                               .format(fn_sex_conf), level=4, event=33)
+                self.log.write('SExtractor configuration file:\n{}'
+                               .format(cnf), level=5, event=33)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-                fconf.write('DETECT_THRESH    %f\n' % psf_threshold_sigma)
-                fconf.write('ANALYSIS_THRESH  %f\n' % psf_threshold_sigma)
-                fconf.write('FILTER           N\n')
-                fconf.write('SATUR_LEVEL      65000.0\n')
-                fconf.write('BACKPHOTO_TYPE   LOCAL\n')
-                #fconf.write('BACKPHOTO_THICK  96\n')
-                fconf.write('MAG_ZEROPOINT    25.0\n')
-                fconf.write('PARAMETERS_NAME  %s\n' % fn_sex_param)
-                fconf.write('CATALOG_TYPE     FITS_1.0\n')
-                fconf.write('CATALOG_NAME     %s.cat-psf\n' % self.basefn)
-                fconf.write('PSF_NAME         %s_psfex.psf\n' % self.basefn)
-                fconf.write('NTHREADS         0\n')
+                fconf.write(cnf)
                 fconf.close()
 
                 cmd = self.sextractor_path
                 cmd += ' %s_inverted.fits' % self.basefn
                 cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Running SExtractor with the PSF model '
-                               '(threshold {:.1f})'
-                               ''.format(psf_threshold_sigma))
-                self.log.write(cmd)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=33)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -804,6 +953,11 @@ class SolveProcess:
         # If SExtractor catalog does not exist then run SExtractor
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
+            self.log.write('Running SExtractor without PSF model',
+                           level=3, event=34)
+            self.log.write('Using threshold {:.1f}'.format(threshold_sigma),
+                           level=4, event=34)
+
             fn_sex_param = self.basefn + '_sextractor.param'
             fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
             fconf.write('NUMBER\n')
@@ -833,34 +987,38 @@ class SolveProcess:
             fconf.write('FLAGS')
             fconf.close()
 
+            cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
+            cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
+            cnf += 'FILTER           N\n'
+            cnf += 'SATUR_LEVEL      65000.0\n'
+            cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+            cnf += 'CLEAN            N\n'
+            #cnf += 'CLEAN_PARAM      0.2\n'
+            #cnf += 'BACKPHOTO_THICK  96\n'
+            cnf += 'MAG_ZEROPOINT    25.0\n'
+            cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+            cnf += 'CATALOG_TYPE     FITS_1.0\n'
+            cnf += 'CATALOG_NAME     {}.cat\n'.format(self.basefn)
+            cnf += 'NTHREADS         0\n'
+            #cnf += 'DETECT_TYPE      PHOTO\n'
+            #cnf += 'MAG_GAMMA        1.0\n'
+            #cnf += 'MEMORY_OBJSTACK  8000\n'
+            #cnf += 'MEMORY_PIXSTACK  800000\n'
+            #cnf += 'MEMORY_BUFSIZE   256\n'
+
             fn_sex_conf = self.basefn + '_sextractor.conf'
+            self.log.write('Writing SExtractor configuration file {}'
+                           .format(fn_sex_conf), level=4, event=34)
+            self.log.write('SExtractor configuration file:\n{}'.format(cnf), 
+                           level=5, event=34)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-            fconf.write('DETECT_THRESH    %f\n' % threshold_sigma)
-            fconf.write('ANALYSIS_THRESH  %f\n' % threshold_sigma)
-            fconf.write('FILTER           N\n')
-            fconf.write('SATUR_LEVEL      65000.0\n')
-            fconf.write('BACKPHOTO_TYPE   LOCAL\n')
-            fconf.write('CLEAN            N\n')
-            #fconf.write('CLEAN_PARAM      0.2\n')
-            #fconf.write('BACKPHOTO_THICK  96\n')
-            fconf.write('MAG_ZEROPOINT    25.0\n')
-            fconf.write('PARAMETERS_NAME  %s\n' % fn_sex_param)
-            fconf.write('CATALOG_TYPE     FITS_1.0\n')
-            fconf.write('CATALOG_NAME     %s.cat\n' % self.basefn)
-            fconf.write('NTHREADS         0\n')
-            #fconf.write('DETECT_TYPE      PHOTO\n')
-            #fconf.write('MAG_GAMMA        1.0\n')
-            #fconf.write('MEMORY_OBJSTACK  8000\n')
-            #fconf.write('MEMORY_PIXSTACK  800000\n')
-            #fconf.write('MEMORY_BUFSIZE   256\n')
+            fconf.write(cnf)
             fconf.close()
 
             cmd = self.sextractor_path
             cmd += ' %s_inverted.fits' % self.basefn
             cmd += ' -c %s' % fn_sex_conf
-            self.log.write('Running SExtractor without the PSF model '
-                           '(threshold {:.1f})'.format(threshold_sigma))
-            self.log.write(cmd)
+            self.log.write('Subprocess: {}'.format(cmd), level=4, event=34)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
@@ -868,6 +1026,7 @@ class SolveProcess:
         # Read the SExtractor output catalog
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
         self.num_sources = len(xycat[1].data)
+        self.log.update_process(num_sources=self.num_sources)
 
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
@@ -921,11 +1080,12 @@ class SolveProcess:
         self.sources['dist_edge'] = np.amin(distarr, 1)
         
         # Define 8 concentric annular bins + bin9 for edges
-        self.log.write('Calculate annular bins')
+        self.log.write('Flagging sources', level=3, event=35)
         sampling = 100
         imwidth_s = int(self.imwidth / sampling)
         imheight_s = int(self.imheight / sampling)
         dist_s = np.zeros((imheight_s, imwidth_s))
+        area_all = dist_s.size
 
         for x in np.arange(imwidth_s):
             for y in np.arange(imheight_s):
@@ -947,6 +1107,7 @@ class SolveProcess:
 
         # Exclude bin9 from dist_s
         dist_s = dist_s[np.where(dist_s >= 0)]
+        self.rel_area_sixbins = 0.75 * dist_s.size / area_all
 
         # Divide the rest of pixels between 8 equal-area bins 1-8
         bin_dist = np.array([np.percentile(dist_s, perc)
@@ -960,7 +1121,7 @@ class SolveProcess:
             nbin = bbin.sum()
             self.log.write('Annular bin {:d} (radius {:8.2f} pixels): '
                            '{:6d} sources'.format(b, bin_dist[b], nbin), 
-                           double_newline=False)
+                           double_newline=False, level=4, event=35)
 
             if nbin > 0:
                 indbin = np.where(bbin)
@@ -970,11 +1131,15 @@ class SolveProcess:
                 (self.sources['dist_center'] >= bin9_corner_dist))
         nbin = bbin.sum()
         self.log.write('Annular bin 9 (radius {:8.2f} pixels): '
-                       '{:6d} sources'.format(bin9_corner_dist, nbin))
+                       '{:6d} sources'.format(bin9_corner_dist, nbin), 
+                       level=4, event=35)
 
         if nbin > 0:
             indbin = np.where(bbin)
             self.sources['annular_bin'][indbin] = 9
+
+        indbin6 = (self.sources['annular_bin'] <= 6)
+        self.num_sources_sixbins = indbin6.sum()
 
         # Find and flag dubious stars at the edges
         if circular_film:
@@ -991,85 +1156,102 @@ class SolveProcess:
             borderbg = max_halfwidth / rim_dist * (np.abs(bg - mean_bg) / 
                                                    std_bg)
         else:
-            borderbg = ((1. / np.minimum(np.minimum(xim, self.imwidth-xim) / 
-                                         self.imwidth,
-                                         np.minimum(yim, self.imheight-yim) / 
-                                         self.imheight)) *
-                        (np.abs(bg - mean_bg) / std_bg))
+            min_xedgedist = np.minimum(xim, self.imwidth-xim)
+            min_yedgedist = np.minimum(yim, self.imheight-yim)
+            min_reldist = np.minimum(min_xedgedist/self.imwidth,
+                                     min_yedgedist/self.imheight)
+
+            # Avoid dividing by zero
+            min_reldist[np.where(min_reldist < 1e-5)] = 1e-5
+            
+            # Combine distance from edge with deviation from mean background
+            borderbg = (1. / min_reldist) * (np.abs(bg - mean_bg) / std_bg)
 
         bclean = ((self.sources['flux_radius'] > 0) & 
                   (self.sources['elongation'] < 5) & 
                   (borderbg < 100))
-        #self.num_sources = bclean.sum()
         indclean = np.where(bclean)[0]
         self.sources['flag_clean'][indclean] = 1
         self.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
-                       double_newline=False)
+                       double_newline=False, level=4, event=35)
 
         indrim = np.where(borderbg >= 100)[0]
         self.sources['flag_rim'][indrim] = 1
         self.log.write('Flagged {:d} sources at the plate rim'
-                       ''.format(len(indrim)), double_newline=False)
+                       ''.format(len(indrim)), double_newline=False, 
+                       level=4, event=35)
 
         indnegrad = np.where(self.sources['flux_radius'] <= 0)[0]
         self.sources['flag_negradius'][indnegrad] = 1
         self.log.write('Flagged {:d} sources with negative FLUX_RADIUS'
-                       ''.format(len(indnegrad)))
+                       ''.format(len(indnegrad)), level=4, event=35)
 
         # For bright stars, update coordinates with PSF coordinates
         if use_psf:
+            self.log.write('Updating coordinates with PSF coordinates '
+                           'for bright sources', level=3, event=36)
+
             fn_psfcat = os.path.join(self.scratch_dir, self.basefn + '.cat-psf')
 
             if os.path.exists(fn_psfcat):
-                psfcat = fits.open(fn_psfcat)
-                xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
-                ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
+                try:
+                    psfcat = fits.open(fn_psfcat)
+                except IOError:
+                    self.log.write('Cannot read PSF coordinates, file {} '
+                                   'is corrupt'.format(fn_psfcat), 
+                                   level=2, event=36)
+                    psfcat = None
 
-                # Match sources in two lists (distance < 1 px)
-                coords1 = np.empty((self.num_sources, 2))
-                coords1[:,0] = self.sources['x_peak']
-                coords1[:,1] = self.sources['y_peak']
-                coords2 = np.empty((xpeakpsf.size, 2))
-                coords2[:,0] = xpeakpsf
-                coords2[:,1] = ypeakpsf
-                kdt = KDT(coords2)
-                ds,ind2 = kdt.query(coords1)
-                ind1 = np.arange(self.num_sources)
-                indmask = ds < 1.
-                ind1 = ind1[indmask]
-                ind2 = ind2[indmask]
+                if psfcat is not None:
+                    xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
+                    ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
 
-                #ind1,ind2,ds = pyspherematch.xymatch(self.sources['x_peak'],
-                #                                     self.sources['y_peak'],
-                #                                     xpeakpsf,
-                #                                     ypeakpsf,
-                #                                     tol=1.)
+                    # Match sources in two lists (distance < 1 px)
+                    coords1 = np.empty((self.num_sources, 2))
+                    coords1[:,0] = self.sources['x_peak']
+                    coords1[:,1] = self.sources['y_peak']
+                    coords2 = np.empty((xpeakpsf.size, 2))
+                    coords2[:,0] = xpeakpsf
+                    coords2[:,1] = ypeakpsf
+                    kdt = KDT(coords2)
+                    ds,ind2 = kdt.query(coords1)
+                    ind1 = np.arange(self.num_sources)
+                    indmask = ds < 1.
+                    ind1 = ind1[indmask]
+                    ind2 = ind2[indmask]
 
-                self.log.write('Replacing x,y values from PSF photometry for '
-                               '{:d} sources'.format(len(ind1)))
-                self.sources[ind1]['x_psf'] = \
-                        psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                self.sources[ind1]['y_psf'] = \
-                        psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                self.sources[ind1]['erra_psf'] = \
-                        psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                self.sources[ind1]['errb_psf'] = \
-                        psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                self.sources[ind1]['errtheta_psf'] = \
-                        psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                self.sources[ind1]['x_source'] = \
-                        psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                self.sources[ind1]['y_source'] = \
-                        psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                self.sources[ind1]['erra_source'] = \
-                        psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                self.sources[ind1]['errb_source'] = \
-                        psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                self.sources[ind1]['errtheta_source'] = \
-                        psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                    #ind1,ind2,ds = pyspherematch.xymatch(self.sources['x_peak'],
+                    #                                     self.sources['y_peak'],
+                    #                                     xpeakpsf,
+                    #                                     ypeakpsf,
+                    #                                     tol=1.)
+
+                    self.log.write('Replacing x,y values from PSF photometry '
+                                   'for {:d} sources'.format(len(ind1)), 
+                                   level=3, event=36)
+                    self.sources[ind1]['x_psf'] = \
+                            psfcat[1].data.field('XPSF_IMAGE')[ind2]
+                    self.sources[ind1]['y_psf'] = \
+                            psfcat[1].data.field('YPSF_IMAGE')[ind2]
+                    self.sources[ind1]['erra_psf'] = \
+                            psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errb_psf'] = \
+                            psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errtheta_psf'] = \
+                            psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                    self.sources[ind1]['x_source'] = \
+                            psfcat[1].data.field('XPSF_IMAGE')[ind2]
+                    self.sources[ind1]['y_source'] = \
+                            psfcat[1].data.field('YPSF_IMAGE')[ind2]
+                    self.sources[ind1]['erra_source'] = \
+                            psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errb_source'] = \
+                            psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+                    self.sources[ind1]['errtheta_source'] = \
+                            psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
             else:
                 self.log.write('Cannot read PSF coordinates, file {} does not '
-                               'exist!'.format(fn_psfcat))
+                               'exist!'.format(fn_psfcat), level=2, event=36)
 
         # Keep clean xy data for later use
         #self.xyclean = xycat[1].copy()
@@ -1101,6 +1283,8 @@ class SolveProcess:
 
         """
 
+        self.log.write('Solving astrometry', level=3, event=40)
+
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
@@ -1110,7 +1294,8 @@ class SolveProcess:
             except ValueError:
                 plate_year = self.plate_year
 
-        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch))
+        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
+                       level=4, event=40)
 
         if sip is None:
             sip = self.sip
@@ -1119,44 +1304,9 @@ class SolveProcess:
             skip_bright = self.skip_bright
 
         # Create another xy list for faster solving
-        #fnxy = os.path.join(self.scratch_dir, self.basefn + '.xy')
-        #xycat = fits.open(fnxy)
-
         # Keep 1000 stars in brightness order, skip the brightest
-        #indsort = np.argsort(xycat[1].data
-        #                     .field('MAG_AUTO'))[skip_bright:skip_bright+1000]
-        #xycat[1].data = xycat[1].data[indsort]
-
-        # Clean xycat header
-        #if 'CRVAL1' in xycat[0].header:
-        #    xycat[0].header.remove('CRVAL1')
-
-        #if 'CRVAL2' in xycat[0].header:
-        #    xycat[0].header.remove('CRVAL2')
-
-        #if 'CRPIX1' in xycat[0].header:
-        #    xycat[0].header.remove('CRPIX1')
-
-        #if 'CRPIX2' in xycat[0].header:
-        #    xycat[0].header.remove('CRPIX2')
-
-        #if 'CDELT1' in xycat[0].header:
-        #    xycat[0].header.remove('CDELT1')
-
-        #if 'CDELT2' in xycat[0].header:
-        #    xycat[0].header.remove('CDELT2')
-
-        #if 'CROTA1' in xycat[0].header:
-        #    xycat[0].header.remove('CROTA1')
-
-        #if 'CROTA2' in xycat[0].header:
-        #    xycat[0].header.remove('CROTA2')
-
-        # Rename FLUX_AUTO to FLUX
-        #xycat[1].header['TTYPE9'] = 'FLUX'
 
         xycat = fits.HDUList()
-
         hdu = fits.PrimaryHDU()
         xycat.append(hdu)
 
@@ -1197,21 +1347,17 @@ class SolveProcess:
         fconf.write('inparallel\n')
         fconf.close()
 
-        # Solve the whole plate
-        #if not os.path.exists(os.path.join(self.scratch_dir, self.basefn + '.solved')):
-        #cmd = 'solve-field %s_inverted.fits' % self.basefn
-        #cmd += ' --downsample %i' % dsfactor
-
+        # Construct the solve-field call
         cmd = self.solve_field_path
-        cmd += ' %s' % fnxy_short
+        cmd += ' {}'.format(fnxy_short)
         cmd += ' --no-fits2fits'
-        cmd += ' --width %d' % self.imwidth
-        cmd += ' --height %d' % self.imheight
+        cmd += ' --width {:d}'.format(self.imwidth)
+        cmd += ' --height {:d}'.format(self.imheight)
         cmd += ' --x-column X_IMAGE'
         cmd += ' --y-column Y_IMAGE'
         cmd += ' --sort-column MAG_AUTO'
         cmd += ' --sort-ascending'
-        cmd += ' --backend-config %s_backend.cfg' % self.basefn
+        cmd += ' --backend-config {}_backend.cfg'.format(self.basefn)
 
         if sip > 0:
             cmd += ' --tweak-order %d' % sip
@@ -1220,10 +1366,10 @@ class SolveProcess:
             
         cmd += ' --crpix-center'
         #cmd += ' --pixel-error 3'
-        cmd += ' --scamp %s_scamp.cat' % self.basefn
-        cmd += ' --scamp-config %s_scamp.conf' % self.basefn
+        cmd += ' --scamp {}_scamp.cat'.format(self.basefn)
+        cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
         cmd += ' --no-plots'
-        cmd += ' --out %s' % self.basefn
+        cmd += ' --out {}'.format(self.basefn)
         #cmd += ' --solved none'
         cmd += ' --match none'
         cmd += ' --rdls none'
@@ -1232,7 +1378,7 @@ class SolveProcess:
         #cmd += ' --timestamp'
         #cmd += ' --verbose'
         cmd += ' --cpulimit 120'
-        self.log.write(cmd)
+        self.log.write('Subprocess: {}'.format(cmd), level=4, event=40)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1243,8 +1389,12 @@ class SolveProcess:
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
+            self.log.write('Astrometry solved', level=3, event=41)
+            self.log.update_process(solved=1)
         else:
-            self.log.write('Could not solve astrometry for the plate!')
+            self.log.write('Could not solve astrometry for the plate', 
+                           level=2, event=40)
+            self.log.update_process(solved=0)
             return
 
         # Read the .wcs file and calculate star density
@@ -1280,23 +1430,63 @@ class SolveProcess:
         else:
             imheight_deg = c3.separation(c4).degrees
 
-        #imwidth_angle = angles.AngularSeparation(edge_midpoints[0,1], 
-        #                                         edge_midpoints[0,0],
-        #                                         edge_midpoints[1,1],
-        #                                         edge_midpoints[1,0],
-        #                                         units.degree)
-        #imheight_angle = angles.AngularSeparation(edge_midpoints[2,1], 
-        #                                          edge_midpoints[2,0],
-        #                                          edge_midpoints[3,1],
-        #                                          edge_midpoints[3,0],
-        #                                          units.degree)
-        #num_stars = len(self.xyclean.data)
-        self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
-        self.mean_pixscale = np.mean([imwidth_deg/self.imwidth, 
-                                     imheight_deg/self.imheight]) * 3600.
+        #self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
+        self.stars_sqdeg = (self.num_sources_sixbins / 
+                            (imwidth_deg*imheight_deg*self.rel_area_sixbins))
+        pixscale1 = imwidth_deg / self.imwidth * 3600.
+        pixscale2 = imheight_deg / self.imheight * 3600.
+        self.mean_pixscale = np.mean([pixscale1, pixscale2])
         half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
         self.ncp_in_plate = 90. - self.wcshead['CRVAL2'] <= half_diag
         self.scp_in_plate = 90. + self.wcshead['CRVAL2'] <= half_diag
+
+        ra_angle = Angle(self.wcshead['CRVAL1'], units.deg)
+        dec_angle = Angle(self.wcshead['CRVAL2'], units.deg)
+
+        try:
+            ra_str = ra_angle.to_string(unit=units.hour, sep=':', precision=1, 
+                                        pad=True)
+            dec_str = dec_angle.to_string(unit=units.deg, sep=':', precision=1,
+                                          pad=True)
+        except AttributeError:
+            ra_str = ra_angle.format(unit='hour', sep=':', precision=1, 
+                                     pad=True)
+            dec_str = dec_angle.format(sep=':', precision=1, pad=True)
+
+        stc_box = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
+                   .format(self.wcshead['CRVAL1'], self.wcshead['CRVAL2'], 
+                           imwidth_deg, imheight_deg))
+
+        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
+                                [self.imwidth, self.imheight], 
+                                [1., self.imheight]])
+        corners = self.wcs_plate.all_pix2world(pix_corners, 1)
+        stc_polygon = ('Polygon ICRS {:.5f} {:.5f} {:.5f} {:.5f} '
+                       '{:.5f} {:.5f} {:.5f} {:.5f}'
+                       .format(corners[0,0], corners[0,1], 
+                               corners[1,0], corners[1,1],
+                               corners[2,0], corners[2,1],
+                               corners[3,0], corners[3,1]))
+
+        wcshead_strip = fits.Header()
+
+        for c in self.wcshead.cards:
+            if c[0] != 'COMMENT':
+                wcshead_strip.append(c, bottom=True)
+
+        self.solution = OrderedDict([
+            ('raj2000', self.wcshead['CRVAL1']),
+            ('dej2000', self.wcshead['CRVAL2']),
+            ('raj2000_hms', ra_str),
+            ('dej2000_dms', dec_str),
+            ('fov1', imwidth_deg),
+            ('fov2', imheight_deg),
+            ('pixel_scale', self.mean_pixscale),
+            ('source_density', self.stars_sqdeg),
+            ('stc_box', stc_box),
+            ('stc_polygon', stc_polygon),
+            ('wcs', wcshead_strip)
+        ])
 
         self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
                        ''.format(imwidth_deg, imheight_deg),
@@ -1321,15 +1511,50 @@ class SolveProcess:
         """
 
         if self.plate_solved:
+            self.log.write('Writing WCS header to a file', level=3, event=48)
+
             # Create output directory, if missing
             if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
                 self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir))
+                               ''.format(self.write_wcs_dir), level=4, event=48)
                 os.makedirs(self.write_wcs_dir)
 
             fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
-            self.log.write('Writing WCS output file {}'.format(fn_wcshead))
+            self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
+                           level=4, event=48)
             self.wcshead.tofile(fn_wcshead, clobber=True)
+
+    def output_solution_db(self):
+        """
+        Write plate solution to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing astrometric solution to the database', 
+                       event=49)
+
+        if self.solution is None:
+            self.log.write('No plate solution to write to the database', 
+                           level=2, event=49)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'solution table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+        scan_id, plate_id = platedb.get_scan_id(self.filename, self.archive_id)
+
+        if (scan_id is not None and plate_id is not None and 
+            self.archive_id is not None):
+            platedb.write_solution(self.solution, scan_id=scan_id, 
+                                   plate_id=plate_id, 
+                                   archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
 
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
@@ -1352,9 +1577,12 @@ class SolveProcess:
 
         """
 
+        self.log.write('Recursive solving of astrometry', level=3, event=50)
+
         if not self.plate_solved:
             self.log.write('Missing initial solution, '
-                           'recursive solving not possible!')
+                           'recursive solving not possible!', 
+                           level=2, event=50)
             return
 
         if plate_epoch is None:
@@ -1366,7 +1594,8 @@ class SolveProcess:
             except ValueError:
                 plate_year = self.plate_year
 
-        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch))
+        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
+                       level=4, event=50)
 
         if sip is None:
             sip = self.sip
@@ -1388,7 +1617,7 @@ class SolveProcess:
         # Check UCAC4 database name
         if self.use_ucac4_db and (self.ucac4_db_name == ''):
             self.use_ucac4_db = False
-            self.log.write('UCAC-4 database name missing!')
+            self.log.write('UCAC-4 database name missing!', level=2, event=50)
 
         # Read the SCAMP input catalog
         self.scampcat = fits.open(os.path.join(self.scratch_dir,
@@ -1550,7 +1779,7 @@ class SolveProcess:
                 cmd += ' -SOLVE_PHOTOM N'
                 cmd += ' -VERBOSE_TYPE LOG'
                 cmd += ' -CHECKPLOT_TYPE NONE'
-                self.log.write(cmd)
+                self.log.write('Subprocess: {}'.format(cmd), level=4)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -1675,9 +1904,6 @@ class SolveProcess:
         yoffset = np.array([0., 0., 1., 1.])
 
         for sub in subrange:
-            #flog.write('***** %s ***** Grid: %dx%d  Row, column: %d, %d\n\n' % 
-            #           (str(dt.datetime.now()), nsubx, nsuby, i+1, j+1))
-
             xmin = in_head['XMIN'] + xoffset[sub] * xsize
             ymin = in_head['YMIN'] + yoffset[sub] * ysize
             xmax = xmin + xsize
@@ -1686,10 +1912,10 @@ class SolveProcess:
             width = xmax - xmin
             height = ymax - ymin
 
-            self.log.write('Sub-field ({:d}x{:d}) {:.2f} : {:.2f} , '
+            self.log.write('Sub-field ({:d}x{:d}) {:.2f} : {:.2f}, '
                            '{:.2f} : {:.2f}'.format(2**recdepth, 2**recdepth, 
                                                     xmin, xmax, ymin, ymax))
-
+            
             xmin_ext = xmin - 0.1 * xsize
             xmax_ext = xmax + 0.1 * xsize
             ymin_ext = ymin - 0.1 * ysize
@@ -1702,86 +1928,27 @@ class SolveProcess:
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
                     (self.sources['flag_clean'] == 1))
 
-            self.log.write('Found {:d} stars in the '
-                           'sub-field'.format(bsub.sum()),
-                           double_newline=False)
+            db_log_msg = ('Sub-field: {:d}x{:d}, '
+                          'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
+                          'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
+                          '#stars: {:d}'
+                          .format(2**recdepth, 2**recdepth, 
+                                  xmin, xmax, ymin, ymax, 
+                                  xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
+                                  bsub.sum()))
+
+            self.log.write('Found {:d} stars in the sub-field'
+                           .format(bsub.sum()), double_newline=False)
 
             if bsub.sum() < 50:
                 self.log.write('Fewer stars than the threshold (50)')
+                db_log_msg = '{} (<50)'.format(db_log_msg)
+                self.log.to_db(4, db_log_msg, event=51)
                 continue
 
             indsub = np.where(bsub)
 
-            if False:
-            #if recdepth <= 1:
-                subxyfits = fits.HDUList()
-                subxyfits.append(xyfits[0].copy())
-                subxyfits.append(xyfits[1].copy())
-                subxyfits[1].data = subxyfits[1].data[indsub]
-                subxyfits[1].data.field(0)[:] -= xmin_ext
-                subxyfits[1].data.field(1)[:] -= ymin_ext
-                #subxyfits[0].header.remove('CRVAL1')
-                #subxyfits[0].header.remove('CRVAL2')
-                #subxyfits[0].header.remove('CRPIX1')
-                #subxyfits[0].header.remove('CRPIX2')
-                #subxyfits[0].header.remove('CDELT1')
-                #subxyfits[0].header.remove('CDELT2')
-                #subxyfits[0].header.remove('CROTA1')
-                #subxyfits[0].header.remove('CROTA2')
-
-                subxyfile = os.path.join(self.scratch_dir, fnsub + '.xy')
-
-                if os.path.exists(subxyfile):
-                    os.remove(subxyfile)
-                    
-                subxyfits.writeto(subxyfile)
-
-                cmd = self.solve_field_path
-                cmd += ' %s.xy' % fnsub
-                cmd += ' --no-fits2fits'
-                cmd += ' --width %d' % width_ext
-                cmd += ' --height %d' % height_ext
-                #cmd += ' --width %d' % wcshead['IMAGEW']
-                #cmd += ' --height %d' % wcshead['IMAGEH']
-                cmd += ' --x-column X_IMAGE'
-                cmd += ' --y-column Y_IMAGE'
-                cmd += ' --sort-column MAG_AUTO'
-                cmd += ' --sort-ascending'
-                cmd += ' --backend-config %s_backend.cfg' % self.basefn
-                cmd += ' --tweak-order %d' % 3
-                #cmd += ' --no-tweak'
-                cmd += ' --crpix-center'
-                cmd += ' --no-plots'
-                cmd += ' --out %s' % fnsub
-                cmd += ' --solved none'
-                cmd += ' --match none'
-                cmd += ' --rdls none'
-                cmd += ' --corr none'
-                cmd += ' --index-xyls none'
-                cmd += ' --overwrite'
-                #cmd += ' --timestamp'
-                #cmd += ' --verbose'
-                self.log.write(cmd)
-                sp.call(cmd, shell=True, stdout=self.log.handle, 
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
-
-                subwcsfile = os.path.join(self.scratch_dir, fnsub + '.wcs')
-
-                if os.path.exists(subwcsfile):
-                    subwcshead = fits.getheader(subwcsfile)
-                    subwcshead['CRPIX1'] += xmin_ext
-                    subwcshead['CRPIX2'] += ymin_ext
-                    subwcshead['IMAGEW'] = self.imwidth
-                    subwcshead['IMAGEH'] = self.imheight
-                    os.remove(subwcsfile)
-                    subwcshead.tofile(subwcsfile, sep='', endcard=True, 
-                                      padding=True, clobber=True)
-
-
             # Create a SCAMP catalog for the sub-field
-            #scampdata = self.scampcat[2].data[:0].copy()
-            #scampdata.resize(bsub.sum())
             scampdata = fits.new_table(self.scampcat[2].columns, 
                                        nrows=bsub.sum()).data
             scampdata.field('X_IMAGE')[:] = x[indsub] - xmin_ext
@@ -1811,14 +1978,17 @@ class SolveProcess:
                     (dec_ref > corners[:,1].min()) & 
                     (dec_ref < corners[:,1].max()))
 
-            self.log.write('Found {:d} reference stars in the '
-                           'sub-field'.format(bref.sum()),
-                           double_newline=False)
+            self.log.write('Found {:d} reference stars in the sub-field'
+                           .format(bref.sum()), double_newline=False)
+            db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, bref.sum())
 
             if bref.sum() < 50:
                 self.log.write('Fewer reference stars than the threshold (50)')
+                db_log_msg = '{} (<50)'.format(db_log_msg)
+                self.log.to_db(4, db_log_msg, event=51)
                 continue
 
+            self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
             indref = np.where(bref)
@@ -1852,7 +2022,7 @@ class SolveProcess:
             cmd += ' -H %f' % ymax_ext
             cmd += ' -N 10'
             cmd += ' -o %s_tan.wcs' % fnsub
-            self.log.write(cmd)
+            self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -1909,13 +2079,16 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            self.log.write(cmd)
+            db_log_msg = 'SCAMP: CROSSID_RADIUS: {:.2f}'.format(crossid_radius)
+            self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
             # Read statistics from SCAMP XML file
+            warnings.simplefilter('ignore')
             scampxml = votable.parse(os.path.join(self.scratch_dir, 
                                                   scampxml_file))
+            warnings.resetwarnings()
             xmltab = scampxml.get_first_table()
             ndetect = xmltab.array['NDeg_Reference'].data[0]
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
@@ -1977,13 +2150,16 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            self.log.write(cmd)
+            db_log_msg = '{} {:.2f}'.format(db_log_msg, crossid_radius)
+            self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
             # Read statistics from SCAMP XML file
+            warnings.simplefilter('ignore')
             scampxml = votable.parse(os.path.join(self.scratch_dir, 
                                                   scampxml_file))
+            warnings.resetwarnings()
             xmltab = scampxml.get_first_table()
             ndetect = xmltab.array['NDeg_Reference'].data[0]
             astromsigma = xmltab.array['AstromSigma_Reference'].data[0]
@@ -1995,11 +2171,19 @@ class SolveProcess:
                            ''.format(astromsigma[0], astromsigma[1],
                                      in_astromsigma[0], in_astromsigma[1]),
                            double_newline=False)
+            mean_diff = (astromsigma-in_astromsigma).mean()
+            mean_diff_ratio = mean_diff / in_astromsigma.mean()
             self.log.write('Mean astrometric sigma difference: '
                            '{:.3f} ({:+.1f}%)'
-                           ''.format((astromsigma-in_astromsigma).mean(),
-                                     (astromsigma-in_astromsigma).mean() /
-                                     in_astromsigma.mean() * 100.))
+                           ''.format(mean_diff, mean_diff_ratio*100.))
+            db_log_msg = ('{}, #detections: {:d}, sigmas: {:.3f} {:.3f}, '
+                          'previous: {:.3f} {:.3f}, '
+                          'mean difference: {:.3f} ({:+.1f}%)'
+                          .format(db_log_msg, ndetect, 
+                                  astromsigma[0], astromsigma[1], 
+                                  in_astromsigma[0], in_astromsigma[1], 
+                                  mean_diff, mean_diff_ratio*100.))
+            self.log.to_db(5, db_log_msg, event=52)
 
             # Use decreasing threshold for astrometric sigmas
             astrom_threshold = 2. - (recdepth - 1) * 0.2
@@ -2061,7 +2245,7 @@ class SolveProcess:
                     cmd = self.xy2sky_path
                     cmd += (' -d -o rd {} @{}_xy.txt > {}_world.txt'
                             ''.format(hdrfile, fnsub, fnsub))
-                    self.log.write(cmd)
+                    self.log.write('Subprocess: {}'.format(cmd))
                     sp.call(cmd, shell=True, stdout=self.log.handle, 
                             stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2140,6 +2324,8 @@ class SolveProcess:
 
         """
 
+        self.log.to_db(3, 'Processing source coordinates', event=60)
+
         self.sources['raj2000'] = self.sources['raj2000_wcs']
         self.sources['dej2000'] = self.sources['dej2000_wcs']
 
@@ -2174,10 +2360,12 @@ class SolveProcess:
 
         """
 
+        self.log.to_db(3, 'Writing sources to a file', event=62)
+
         # Create output directory, if missing
         if self.write_source_dir and not os.path.isdir(self.write_source_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir))
+                           .format(self.write_source_dir), level=4)
             os.makedirs(self.write_source_dir)
 
         if filename:
@@ -2211,7 +2399,7 @@ class SolveProcess:
         delimiter = ','
 
         # Output ascii file with refined coordinates
-        self.log.write('Writing output file {}'.format(fn_world))
+        self.log.write('Writing output file {}'.format(fn_world), level=4)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
@@ -2221,6 +2409,7 @@ class SolveProcess:
 
         """
 
+        self.log.to_db(3, 'Writing sources to the database', event=61)
         self.log.write('Open database connection for writing to the '
                        'source and source_calib tables.')
         platedb = PlateDB()

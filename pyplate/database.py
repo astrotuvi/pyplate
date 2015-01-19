@@ -1,6 +1,7 @@
 import numpy as np
 from collections import OrderedDict
-from conf import read_conf
+from .conf import read_conf
+from ._version import __version__
 
 try:
     import MySQLdb
@@ -92,7 +93,6 @@ _schema['exposure'] = OrderedDict([
     ('flag_wcs',         ('TINYINT UNSIGNED', None)),
     ('fov1',             ('FLOAT', None)),
     ('fov2',             ('FLOAT', None)),
-    ('footprint',        ('VARCHAR(200)', None)),
     ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
     ('date_orig_end',    ('VARCHAR(10)', None)),
     ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
@@ -326,6 +326,74 @@ _schema['source_calib'] = OrderedDict([
     ('INDEX healpix256_ind', ('(healpix256)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
+    ])
+
+_schema['solution'] = OrderedDict([
+    ('solution_id',      ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('raj2000',          ('DOUBLE', True)),
+    ('dej2000',          ('DOUBLE', True)),
+    ('raj2000_hms',      ('CHAR(11)', True)),
+    ('dej2000_dms',      ('CHAR(11)', True)),
+    ('fov1',             ('FLOAT', True)),
+    ('fov2',             ('FLOAT', True)),
+    ('pixel_scale',      ('FLOAT', True)),
+    ('source_density',   ('FLOAT', True)),
+    ('stc_box',          ('VARCHAR(100)', True)),
+    ('stc_polygon',      ('VARCHAR(200)', True)),
+    ('wcs',              ('TEXT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX raj2000_ind',  ('(raj2000)', None)),
+    ('INDEX dej2000_ind',  ('(dej2000)', None))
+    ])
+
+_schema['process'] = OrderedDict([
+    ('process_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          None)),
+    ('scan_id',          ('INT UNSIGNED', None)),
+    ('plate_id',         ('INT UNSIGNED', None)),
+    ('archive_id',       ('INT UNSIGNED', None)),
+    ('filename',         ('VARCHAR(80)', None)),
+    ('timestamp_start',  ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_end',    ('TIMESTAMP NULL', None)),
+    ('duration',         ('INT UNSIGNED', None)),
+    ('use_psf',          ('TINYINT(1)', None)),
+    ('num_sources',      ('INT UNSIGNED', None)),
+    ('solved',           ('TINYINT(1)', None)),
+    ('completed',        ('TINYINT(1)', None)),
+    ('pyplate_version',  ('VARCHAR(15)', None)),
+    ('INDEX scan_ind',   ('(scan_id)', None)),
+    ('INDEX plate_ind',  ('(plate_id)', None)),
+    ('INDEX archive_ind', ('(archive_id)', None)),
+    ('INDEX filename_ind', ('(filename)', None))
+    ])
+
+_schema['process_log'] = OrderedDict([
+    ('processlog_id',    ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          None)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', None)),
+    ('timestamp_log',    ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('scan_id',          ('INT UNSIGNED', None)),
+    ('plate_id',         ('INT UNSIGNED', None)),
+    ('archive_id',       ('INT UNSIGNED', None)),
+    ('level',            ('TINYINT', None)),
+    ('event',            ('SMALLINT', None)),
+    ('message',          ('TEXT', None)),
+    ('INDEX process_ind', ('(process_id)', None)),
+    ('INDEX scan_ind',   ('(scan_id)', None)),
+    ('INDEX plate_ind',  ('(plate_id)', None)),
+    ('INDEX archive_ind', ('(archive_id)', None)),
+    ('INDEX event_ind',  ('(event)', None))
     ])
 
 def _get_columns_sql(table):
@@ -625,6 +693,28 @@ class PlateDB:
         logpage_id = self.cursor.lastrowid
         return logpage_id
 
+    def write_solution(self, solution, scan_id=None, plate_id=None, 
+                       archive_id=None):
+        """
+        Write plate solution to the database.
+
+        """
+
+        col_list = ['solution_id', 'plate_id', 'archive_id', 'exposure_id', 
+                    'scan_id']
+        val_tuple = (None, plate_id, archive_id, None, scan_id)
+
+        for k,v in _schema['solution'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (solution[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO solution ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.cursor.execute(sql, val_tuple)
+
     def write_sources(self, sources, scan_id=None, plate_id=None, 
                       archive_id=None):
         """
@@ -679,6 +769,87 @@ class PlateDB:
             sql = ('INSERT INTO source_calib ({}) VALUES ({})'
                    .format(col_str, val_str))
             self.cursor.execute(sql, val_tuple)
+
+    def write_process_start(self, scan_id=None, plate_id=None, 
+                            archive_id=None, filename=None, use_psf=None):
+        """
+        Write plate-solve process to the database.
+
+        """
+
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id', 
+                    'filename', 'timestamp_start', 'use_psf', 
+                    'pyplate_version']
+
+        if use_psf:
+            use_psf = 1
+        else:
+            use_psf = 0
+            
+        val_tuple = (None, scan_id, plate_id, archive_id, filename, None, 
+                     use_psf, __version__)
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO process ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.cursor.execute(sql, val_tuple)
+        process_id = self.cursor.lastrowid
+        return process_id
+
+    def update_process(self, process_id, num_sources=None, solved=None):
+        """
+        Update plate-solve process in the database.
+
+        """
+
+        if num_sources is None and solved is None:
+            return
+
+        col_list = []
+        val_tuple = ()
+
+        if num_sources is not None:
+            col_list.append('num_sources=%s')
+            val_tuple = val_tuple + (num_sources, )
+
+        if solved is not None:
+            col_list.append('solved=%s')
+            val_tuple = val_tuple + (solved, )
+
+        col_str = ','.join(col_list)
+        sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))
+        val_tuple = val_tuple + (process_id, )
+        self.cursor.execute(sql, val_tuple)
+
+    def write_process_end(self, process_id, completed=None, duration=None):
+        """
+        Write plate-solve process end to the database.
+
+        """
+
+        sql = ('UPDATE process '
+               'SET timestamp_end=NOW(),duration=%s,completed=%s '
+               'WHERE process_id=%s')
+        val_tuple = (duration, completed, process_id)
+        self.cursor.execute(sql, val_tuple)
+
+    def write_processlog(self, level, message, event=None, process_id=None,
+                         scan_id=None, plate_id=None, archive_id=None):
+        """
+        Write plate solve process log message to the database.
+
+        """
+
+        col_list = ['processlog_id', 'process_id', 'timestamp_log', 
+                    'scan_id', 'plate_id', 'archive_id', 
+                    'level', 'event', 'message']
+        val_tuple = (None, process_id, None, scan_id, plate_id, archive_id, 
+                     level, event, message)
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO process_log ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.cursor.execute(sql, val_tuple)
 
     def get_plate_id(self, plate_num, archive_id):
         """
