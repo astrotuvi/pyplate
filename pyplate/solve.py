@@ -617,8 +617,8 @@ class SolveProcess:
                                     passwd=self.output_db_passwd)
             self.log.platedb = platedb
             self.log.archive_id = self.archive_id
-            self.log.plate_id = plate_id
-            self.log.scan_id = scan_id
+            self.log.plate_id = self.plate_id
+            self.log.scan_id = self.scan_id
             self.log.process_id = self.process_id
             self.log.to_db(3, 'Setting up plate solve process', event=10)
 
