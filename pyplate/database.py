@@ -68,6 +68,7 @@ _schema['plate'] = OrderedDict([
     ('notes',            ('VARCHAR(255)', 'notes')),
     ('bibcode',          ('VARCHAR(80)', 'bibcode')),
     ('filename_preview', ('VARCHAR(80)', 'fn_pre')),
+    ('filename_thumbnail', ('VARCHAR(80)', None)),
     ('filename_cover',   ('VARCHAR(80)', 'fn_cover')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
@@ -92,8 +93,6 @@ _schema['exposure'] = OrderedDict([
     ('raj2000_hms',      ('CHAR(11)', 'ra')),
     ('dej2000_dms',      ('CHAR(11)', 'dec')),
     ('flag_wcs',         ('TINYINT UNSIGNED', None)),
-    ('fov1',             ('FLOAT', None)),
-    ('fov2',             ('FLOAT', None)),
     ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
     ('date_orig_end',    ('VARCHAR(10)', None)),
     ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
@@ -226,6 +225,7 @@ _schema['plate_logpage'] = OrderedDict([
 _schema['source'] = OrderedDict([
     ('source_id',        ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
@@ -276,15 +276,17 @@ _schema['source'] = OrderedDict([
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',    ('(process_id)', None)),
+    ('INDEX scan_ind',       ('(scan_id)', None)),
+    ('INDEX exposure_ind',   ('(exposure_id)', None)),
     ('INDEX plate_ind',      ('(plate_id)', None)),
     ('INDEX archive_ind',    ('(archive_id)', None)),
-    ('INDEX exposure_ind',   ('(exposure_id)', None)),
-    ('INDEX scan_ind',       ('(scan_id)', None)),
     ('INDEX annularbin_ind', ('(annular_bin)', None))
     ])
 
 _schema['source_calib'] = OrderedDict([
     ('source_id',        ('INT UNSIGNED NOT NULL PRIMARY KEY', False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
@@ -315,10 +317,11 @@ _schema['source_calib'] = OrderedDict([
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
-    ('INDEX exposure_ind', ('(exposure_id)', None)),
-    ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None)),
     ('INDEX x_ind',        ('(x_sphere)', None)),
@@ -332,6 +335,7 @@ _schema['source_calib'] = OrderedDict([
 _schema['solution'] = OrderedDict([
     ('solution_id',      ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
@@ -350,10 +354,11 @@ _schema['solution'] = OrderedDict([
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
-    ('INDEX exposure_ind', ('(exposure_id)', None)),
-    ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
@@ -512,10 +517,14 @@ class PlateDB:
                 if e.args[0] == 1040:
                     print 'MySQL server reports too many connections, trying again'
                     time.sleep(10)
+                elif e.args[0] == 1045:
+                    print 'MySQL error {:d}: {}'.format(e.args[0], e.args[1])
+                    break
                 else:
                     raise
 
-        self.cursor = self.db.cursor()
+        if self.db is not None:
+            self.cursor = self.db.cursor()
 
     def execute_query(self, *args):
         """
@@ -525,6 +534,8 @@ class PlateDB:
 
         try:
             numrows = self.cursor.execute(*args)
+        except AttributeError:
+            numrows = None
         except MySQLdb.OperationalError, e:
             if e.args[0] == 2006:
                 print 'MySQL server has gone away, trying to reconnect'
@@ -545,9 +556,10 @@ class PlateDB:
 
         """
 
-        self.cursor.close()
-        self.db.commit()
-        self.db.close()
+        if self.db is not None:
+            self.cursor.close()
+            self.db.commit()
+            self.db.close()
         
     def write_plate(self, platemeta):
         """
@@ -726,16 +738,16 @@ class PlateDB:
         logpage_id = self.cursor.lastrowid
         return logpage_id
 
-    def write_solution(self, solution, scan_id=None, plate_id=None, 
-                       archive_id=None):
+    def write_solution(self, solution, process_id=None, scan_id=None, 
+                       plate_id=None, archive_id=None):
         """
         Write plate solution to the database.
 
         """
 
-        col_list = ['solution_id', 'plate_id', 'archive_id', 'exposure_id', 
-                    'scan_id']
-        val_tuple = (None, plate_id, archive_id, None, scan_id)
+        col_list = ['solution_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
         for k,v in _schema['solution'].items():
             if v[1]:
@@ -748,17 +760,17 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
-    def write_sources(self, sources, scan_id=None, plate_id=None, 
-                      archive_id=None):
+    def write_sources(self, sources, process_id=None, scan_id=None, 
+                      plate_id=None, archive_id=None):
         """
         Write source list with calibrated RA and Dec to the database.
 
         """
 
         for i in np.arange(len(sources)):
-            col_list = ['source_id', 'plate_id', 'archive_id', 'exposure_id', 
-                        'scan_id']
-            val_tuple = (None, plate_id, archive_id, None, scan_id)
+            col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
+                        'plate_id', 'archive_id']
+            val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
             for k,v in _schema['source'].items():
                 if v[1]:
@@ -774,9 +786,10 @@ class PlateDB:
             self.execute_query(sql, val_tuple)
             source_id = self.cursor.lastrowid
 
-            col_list = ['source_id', 'plate_id', 'archive_id', 'exposure_id', 
-                        'scan_id']
-            val_tuple = (source_id, plate_id, archive_id, None, scan_id)
+            col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
+                        'plate_id', 'archive_id']
+            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
+                         archive_id)
 
             for k,v in _schema['source_calib'].items():
                 if v[1]:
@@ -825,8 +838,13 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO process ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-        process_id = self.cursor.lastrowid
+        numrows = self.execute_query(sql, val_tuple)
+
+        if numrows is not None:
+            process_id = self.cursor.lastrowid
+        else:
+            process_id = None
+
         return process_id
 
     def update_process(self, process_id, num_sources=None, solved=None):
@@ -930,8 +948,7 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT plate_id FROM plate '
-               'WHERE wfpdb_id=%s')
+        sql = 'SELECT plate_id FROM plate WHERE wfpdb_id=%s'
         numrows = self.execute_query(sql, (wfpdb_id,))
 
         if numrows == 1:
@@ -967,7 +984,7 @@ class PlateDB:
         if numrows == 1:
             result = self.cursor.fetchone()
         else:
-            return (None, None)
+            result = (None, None)
 
         return result
 
@@ -997,7 +1014,7 @@ class PlateDB:
             result = self.cursor.fetchone()
             logbook_id = result[0]
         else:
-            return None
+            logbook_id = None
 
         return logbook_id
 
@@ -1026,7 +1043,7 @@ class PlateDB:
         if numrows == 1:
             result = self.cursor.fetchone()[0]
         else:
-            return None
+            result = None
 
         return result
 

@@ -294,61 +294,6 @@ class SolveProcessLog:
                                           plate_id=self.plate_id, 
                                           archive_id=self.archive_id)
 
-    def write_process_start(self, filename=None, use_psf=None):
-        """
-        Write process start to the database.
-
-        Parameters
-        ----------
-        filename : str
-            Filename of the image to be processed
-        use_psf : int
-            A boolean value specifying whether PSF is used for source extraction
-
-        """
-
-        if self.platedb is not None:
-            pid = self.platedb.write_process_start(scan_id=self.scan_id,
-                                                   plate_id=self.plate_id,
-                                                   archive_id=self.archive_id,
-                                                   filename=filename,
-                                                   use_psf=use_psf)
-            self.process_id = pid
-
-    def update_process(self, num_sources=None, solved=None):
-        """
-        Update process in the database.
-
-        Parameters
-        ----------
-        num_sources : int
-            Number of extracted sources
-        solved : int
-            A boolean value specifying whether plate was solved successfully
-            with Astrometry.net
-
-        """
-
-        if self.platedb is not None and self.process_id is not None:
-            self.platedb.update_process(self.process_id, 
-                                        num_sources=num_sources, solved=solved)
-
-    def write_process_end(self, completed=None, duration=None):
-        """
-        Write process end to the database.
-
-        Parameters
-        ----------
-        completed : int
-            A boolean value specifying whether the process was completed
-
-        """
-
-        if self.platedb is not None and self.process_id is not None:
-            self.platedb.write_process_end(self.process_id, 
-                                           completed=completed, 
-                                           duration=duration)
-
     def close(self):
         """
         Close log file.
@@ -511,6 +456,9 @@ class SolveProcess:
         self.archive_id = archive_id
         self.basefn = ''
         self.fn_fits = ''
+        self.process_id = None
+        self.scan_id = None
+        self.plate_id = None
 
         self.fits_dir = ''
         self.tycho2_dir = ''
@@ -648,12 +596,6 @@ class SolveProcess:
         else:
             self.fn_fits = os.path.join(self.fits_dir, self.filename)
 
-        # Create scratch directory
-        self.scratch_dir = os.path.join(self.work_dir, 
-                                        '{}_{}'.format(self.basefn,
-                                                       self.timestamp_str))
-        os.makedirs(self.scratch_dir)
-
         # Open log file
         if self.enable_log:
             fn_log = '{}_{}.log'.format(self.basefn, self.timestamp_str)
@@ -663,6 +605,9 @@ class SolveProcess:
         else:
             self.log = SolveProcessLog(None)
 
+        # Get process_id from the database
+        self.db_process_start()
+
         # Open database connection for logs
         if self.enable_db_log:
             platedb = PlateDB()
@@ -670,22 +615,30 @@ class SolveProcess:
                                     user=self.output_db_user,
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
-            scan_id, plate_id = platedb.get_scan_id(self.filename, 
-                                                    self.archive_id)
             self.log.platedb = platedb
             self.log.archive_id = self.archive_id
             self.log.plate_id = plate_id
             self.log.scan_id = scan_id
-            self.log.write_process_start(filename=self.filename, 
-                                         use_psf=self.use_psf)
+            self.log.process_id = self.process_id
             self.log.to_db(3, 'Setting up plate solve process', event=10)
 
         self.log.write('Using PyPlate v{}'.format(__version__), 
                        level=4, event=10)
 
+        # Check if FITS file exists
+        if not os.path.exists(self.fn_fits):
+            self.log.write('FITS file does not exist: {}'.format(self.fn_fits), 
+                           level=1, event=11)
+            return
+
         # Read FITS header
         if not self.plate_header:
-            self.plate_header = fits.getheader(self.fn_fits)
+            try:
+                self.plate_header = fits.getheader(self.fn_fits)
+            except IOError:
+                self.log.write('Cannot read FITS file {}'.format(self.fn_fits), 
+                               level=1, event=11)
+                return
 
         self.imwidth = self.plate_header['NAXIS1']
         self.imheight = self.plate_header['NAXIS2']
@@ -699,6 +652,12 @@ class SolveProcess:
             self.plate_epoch = float(self.plate_year) + 0.5
 
         self.plate_year = int(self.plate_epoch)
+
+        # Create scratch directory
+        self.scratch_dir = os.path.join(self.work_dir, 
+                                        '{}_{}'.format(self.basefn,
+                                                       self.timestamp_str))
+        os.makedirs(self.scratch_dir)
 
     def finish(self):
         """
@@ -720,15 +679,84 @@ class SolveProcess:
         if self.scratch_dir:
             shutil.rmtree(self.scratch_dir)
 
+        # Write process end to the database
+        self.db_process_end(completed=1)
+
         # Close database connection used for logging
         if self.log.platedb is not None:
             self.log.to_db(3, 'Finish plate solve process', event=99)
-            duration = (dt.datetime.now()-self.timestamp).seconds
-            self.log.write_process_end(completed=1, duration=duration)
             self.log.platedb.close_connection()
 
         # Close log file
         self.log.close()
+
+    def db_process_start(self):
+        """
+        Write process start to the database.
+
+        """
+
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+        self.scan_id, self.plate_id = platedb.get_scan_id(self.filename, 
+                                                          self.archive_id)
+        pid = platedb.write_process_start(scan_id=self.scan_id,
+                                          plate_id=self.plate_id,
+                                          archive_id=self.archive_id,
+                                          filename=self.filename, 
+                                          use_psf=self.use_psf)
+        self.process_id = pid
+        platedb.close_connection()
+
+    def db_update_process(self, num_sources=None, solved=None):
+        """
+        Update process in the database.
+
+        Parameters
+        ----------
+        num_sources : int
+            Number of extracted sources
+        solved : int
+            A boolean value specifying whether plate was solved successfully
+            with Astrometry.net
+
+        """
+
+        if self.process_id is not None:
+            platedb = PlateDB()
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+            platedb.update_process(self.process_id, num_sources=num_sources, 
+                                   solved=solved)
+            platedb.close_connection()
+
+    def db_process_end(self, completed=None):
+        """
+        Write process end to the database.
+
+        Parameters
+        ----------
+        completed : int
+            A boolean value specifying whether the process was completed
+
+        """
+
+        if self.process_id is not None:
+            platedb = PlateDB()
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+            duration = (dt.datetime.now()-self.timestamp).seconds
+            platedb.write_process_end(self.process_id, 
+                                      completed=completed, 
+                                      duration=duration)
+            platedb.close_connection()
 
     def invert_plate(self):
         """
@@ -1026,7 +1054,7 @@ class SolveProcess:
         # Read the SExtractor output catalog
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
         self.num_sources = len(xycat[1].data)
-        self.log.update_process(num_sources=self.num_sources)
+        self.db_update_process(num_sources=self.num_sources)
 
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
@@ -1390,11 +1418,11 @@ class SolveProcess:
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
             self.log.write('Astrometry solved', level=3, event=41)
-            self.log.update_process(solved=1)
+            self.db_update_process(solved=1)
         else:
             self.log.write('Could not solve astrometry for the plate', 
                            level=2, event=40)
-            self.log.update_process(solved=0)
+            self.db_update_process(solved=0)
             return
 
         # Read the .wcs file and calculate star density
@@ -1545,12 +1573,12 @@ class SolveProcess:
                                 user=self.output_db_user,
                                 dbname=self.output_db_name,
                                 passwd=self.output_db_passwd)
-        scan_id, plate_id = platedb.get_scan_id(self.filename, self.archive_id)
 
-        if (scan_id is not None and plate_id is not None and 
-            self.archive_id is not None):
-            platedb.write_solution(self.solution, scan_id=scan_id, 
-                                   plate_id=plate_id, 
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            platedb.write_solution(self.solution, process_id=self.process_id,
+                                   scan_id=self.scan_id,
+                                   plate_id=self.plate_id,
                                    archive_id=self.archive_id)
             
         platedb.close_connection()
@@ -2417,12 +2445,11 @@ class SolveProcess:
                                 user=self.output_db_user,
                                 dbname=self.output_db_name,
                                 passwd=self.output_db_passwd)
-        scan_id, plate_id = platedb.get_scan_id(self.filename, self.archive_id)
 
-        if (scan_id is not None and plate_id is not None and 
-            self.archive_id is not None):
-            platedb.write_sources(self.sources, scan_id=scan_id, 
-                                  plate_id=plate_id, 
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            platedb.write_sources(self.sources, process_id=self.process_id,
+                                  scan_id=self.scan_id, plate_id=self.plate_id,
                                   archive_id=self.archive_id)
             
         platedb.close_connection()
