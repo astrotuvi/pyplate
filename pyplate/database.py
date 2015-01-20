@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from collections import OrderedDict
 from .conf import read_conf
 from ._version import __version__
@@ -502,9 +503,41 @@ class PlateDB:
         if dbname is None:
             dbname = self.dbname
 
-        self.db = MySQLdb.connect(host=host, user=user, passwd=passwd, 
-                                  db=dbname)
+        while True:
+            try:
+                self.db = MySQLdb.connect(host=host, user=user, passwd=passwd, 
+                                          db=dbname)
+                break
+            except MySQLdb.OperationalError, e:
+                if e.args[0] == 1040:
+                    print 'MySQL server reports too many connections, trying again'
+                    time.sleep(10)
+                else:
+                    raise
+
         self.cursor = self.db.cursor()
+
+    def execute_query(self, *args):
+        """
+        Execute SQL query and reopen connection if connection has been lost.
+
+        """
+
+        try:
+            numrows = self.cursor.execute(*args)
+        except MySQLdb.OperationalError, e:
+            if e.args[0] == 2006:
+                print 'MySQL server has gone away, trying to reconnect'
+
+                # Wait for 10 seconds, then open new connection and execute 
+                # query again
+                time.sleep(10)
+                self.open_connection()
+                numrows = self.cursor.execute(*args)
+            else:
+                raise
+
+        return numrows
 
     def close_connection(self):
         """
@@ -547,7 +580,7 @@ class PlateDB:
 
         sql = ('INSERT INTO plate ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
         plate_id = self.cursor.lastrowid
         platemeta['plate_id'] = plate_id
 
@@ -568,7 +601,7 @@ class PlateDB:
 
             sql = ('INSERT INTO exposure ({}) VALUES ({})'
                    .format(col_str, val_str))
-            self.cursor.execute(sql, val_tuple)
+            self.execute_query(sql, val_tuple)
             exposure_id = self.cursor.lastrowid
 
         return plate_id
@@ -601,7 +634,7 @@ class PlateDB:
                     val_str = ','.join(['%s'] * len(col_list))
                     sql = ('INSERT INTO plate_logpage ({}) VALUES ({})'
                            .format(col_str, val_str))
-                    self.cursor.execute(sql, val_tuple)
+                    self.execute_query(sql, val_tuple)
 
     def write_scan(self, platemeta):
         """
@@ -639,7 +672,7 @@ class PlateDB:
 
         sql = ('INSERT INTO scan ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
         scan_id = self.cursor.lastrowid
 
         return scan_id
@@ -662,7 +695,7 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO logbook ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
         logbook_id = self.cursor.lastrowid
         return logbook_id
 
@@ -689,7 +722,7 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO logpage ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
         logpage_id = self.cursor.lastrowid
         return logpage_id
 
@@ -713,7 +746,7 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO solution ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
 
     def write_sources(self, sources, scan_id=None, plate_id=None, 
                       archive_id=None):
@@ -738,7 +771,7 @@ class PlateDB:
             val_str = ','.join(['%s'] * len(col_list))
             sql = ('INSERT INTO source ({}) VALUES ({})'
                    .format(col_str, val_str))
-            self.cursor.execute(sql, val_tuple)
+            self.execute_query(sql, val_tuple)
             source_id = self.cursor.lastrowid
 
             col_list = ['source_id', 'plate_id', 'archive_id', 'exposure_id', 
@@ -768,7 +801,7 @@ class PlateDB:
             val_str = ','.join(['%s'] * len(col_list))
             sql = ('INSERT INTO source_calib ({}) VALUES ({})'
                    .format(col_str, val_str))
-            self.cursor.execute(sql, val_tuple)
+            self.execute_query(sql, val_tuple)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):
@@ -792,7 +825,7 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO process ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
         process_id = self.cursor.lastrowid
         return process_id
 
@@ -819,7 +852,7 @@ class PlateDB:
         col_str = ','.join(col_list)
         sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))
         val_tuple = val_tuple + (process_id, )
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
 
     def write_process_end(self, process_id, completed=None, duration=None):
         """
@@ -831,7 +864,7 @@ class PlateDB:
                'SET timestamp_end=NOW(),duration=%s,completed=%s '
                'WHERE process_id=%s')
         val_tuple = (duration, completed, process_id)
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
 
     def write_processlog(self, level, message, event=None, process_id=None,
                          scan_id=None, plate_id=None, archive_id=None):
@@ -849,7 +882,7 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO process_log ({}) VALUES ({})'
                .format(col_str, val_str))
-        self.cursor.execute(sql, val_tuple)
+        self.execute_query(sql, val_tuple)
 
     def get_plate_id(self, plate_num, archive_id):
         """
@@ -871,7 +904,7 @@ class PlateDB:
 
         sql = ('SELECT plate_id FROM plate '
                'WHERE archive_id=%s AND plate_num=%s')
-        numrows = self.cursor.execute(sql, (archive_id,plate_num))
+        numrows = self.execute_query(sql, (archive_id,plate_num))
 
         if numrows == 1:
             result = self.cursor.fetchone()
@@ -899,7 +932,7 @@ class PlateDB:
 
         sql = ('SELECT plate_id FROM plate '
                'WHERE wfpdb_id=%s')
-        numrows = self.cursor.execute(sql, (wfpdb_id,))
+        numrows = self.execute_query(sql, (wfpdb_id,))
 
         if numrows == 1:
             result = self.cursor.fetchone()
@@ -929,7 +962,7 @@ class PlateDB:
 
         sql = ('SELECT scan_id, plate_id FROM scan '
                'WHERE filename_scan=%s AND archive_id=%s')
-        numrows = self.cursor.execute(sql, (filename,archive_id))
+        numrows = self.execute_query(sql, (filename,archive_id))
 
         if numrows == 1:
             result = self.cursor.fetchone()
@@ -958,7 +991,7 @@ class PlateDB:
 
         sql = ('SELECT logbook_id FROM logbook '
                'WHERE archive_id=%s AND logbook_num=%s')
-        numrows = self.cursor.execute(sql, (archive_id,logbook_num))
+        numrows = self.execute_query(sql, (archive_id,logbook_num))
 
         if numrows == 1:
             result = self.cursor.fetchone()
@@ -988,7 +1021,7 @@ class PlateDB:
 
         sql = ('SELECT logpage_id FROM logpage '
                'WHERE filename=%s AND archive_id=%s')
-        numrows = self.cursor.execute(sql, (filename, archive_id))
+        numrows = self.execute_query(sql, (filename, archive_id))
 
         if numrows == 1:
             result = self.cursor.fetchone()[0]
