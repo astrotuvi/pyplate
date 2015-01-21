@@ -724,7 +724,8 @@ class SolveProcess:
         self.process_id = pid
         platedb.close_connection()
 
-    def db_update_process(self, num_sources=None, solved=None):
+    def db_update_process(self, num_sources=None, num_ucac4=None, 
+                          num_tycho2=None, solved=None):
         """
         Update process in the database.
 
@@ -745,6 +746,7 @@ class SolveProcess:
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
             platedb.update_process(self.process_id, num_sources=num_sources, 
+                                   num_ucac4=num_ucac4, num_tycho2=num_tycho2,
                                    solved=solved)
             platedb.close_connection()
 
