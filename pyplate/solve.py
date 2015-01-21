@@ -69,14 +69,19 @@ class AstrometryNetIndex:
     def __init__(self, *args):
         self.vizquery_path = 'vizquery'
         self.build_index_path = 'build-index'
-        self.index_dir = ''
+        self.index_dir = './'
         
         if len(args) == 1:
             self.index_dir = args[0]
 
-    def download_tycho2(self):
+    def download_tycho2(self, site=None):
         """
         Download full Tycho-2 catalogue with vizquery.
+
+        Parameters
+        ----------
+        site : str
+            A site name that vizquery recognizes
 
         """
 
@@ -92,8 +97,12 @@ class AstrometryNetIndex:
             cmd = self.vizquery_path
             cmd += (' -mime=binfits'
                     ' -source=I/259/tyc2'
-                    ' -out="_RA _DE pmRA pmDE BTmag VTmag"'
+                    ' -out="_RA _DE pmRA pmDE BTmag VTmag e_BTmag e_VTmag '
+                    'TYC1 TYC2 TYC3"'
                     ' -out.max=unlimited')
+
+            if site:
+                cmd += ' -site={}'.format(site)
 
             # Download Tycho-2 catalogue to a temporary FITS file
             fn_vizout = os.path.join(self.index_dir, 'vizout.fits')
@@ -1844,12 +1853,12 @@ class SolveProcess:
                        np.isfinite(self.sources['dej2000_sub']))
         num_finite = bool_finite.sum()
 
-        # Match sources with the UCAC4 catalogue
         if num_finite > 0:
             ind_finite = np.where(bool_finite)[0]
             ra_finite = self.sources['raj2000_sub'][ind_finite]
             dec_finite = self.sources['dej2000_sub'][ind_finite]
 
+            # Match sources with the UCAC4 catalogue
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -1874,6 +1883,88 @@ class SolveProcess:
                     self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
+
+            # Match sources with the Tycho-2 catalogue
+            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+
+            try:
+                tycho2 = fits.open(fn_tycho2)
+                tycho2_available = True
+            except IOError:
+                tycho2_available = False
+
+            if tycho2_available:
+                ra_tyc = tycho2[1].data.field(0)
+                dec_tyc = tycho2[1].data.field(1)
+                pmra_tyc = tycho2[1].data.field(2)
+                pmdec_tyc = tycho2[1].data.field(3)
+                btmag_tyc = tycho2[1].data.field(4)
+                vtmag_tyc = tycho2[1].data.field(5)
+                ebtmag_tyc = tycho2[1].data.field(6)
+                evtmag_tyc = tycho2[1].data.field(7)
+                tyc1 = tycho2[1].data.field(8)
+                tyc2 = tycho2[1].data.field(9)
+                tyc3 = tycho2[1].data.field(10)
+
+                if self.ncp_in_plate:
+                    btyc = (dec_tyc > corners[:,1].min())
+                elif self.scp_in_plate:
+                    btyc = (dec_tyc < corners[:,1].max())
+                elif corners[:,0].max()-corners[:,0].min() > 180:
+                    btyc = (((ra_tyc < corners[:,0].min()) |
+                            (ra_tyc > corners[:,0].max())) &
+                            (dec_tyc > corners[:,1].min()) & 
+                            (dec_tyc < corners[:,1].max()))
+                else:
+                    btyc = ((ra_tyc > corners[:,0].min()) & 
+                            (ra_tyc < corners[:,0].max()) &
+                            (dec_tyc > corners[:,1].min()) & 
+                            (dec_tyc < corners[:,1].max()))
+
+                indtyc = np.where(btyc)
+                numtyc = btyc.sum()
+
+                ra_tyc = (ra_tyc[indtyc] 
+                          + (plate_epoch - 2000.) * pmra_tyc[indtyc]
+                          / np.cos(dec_tyc[indtyc] * np.pi / 180.) / 3600000.)
+                dec_tyc = (dec_tyc[indtyc] 
+                           + (plate_epoch - 2000.) * pmdec_tyc[indtyc] 
+                           / 3600000.)
+                btmag_tyc = btmag_tyc[indtyc]
+                vtmag_tyc = vtmag_tyc[indtyc]
+                ebtmag_tyc = ebtmag_tyc[indtyc]
+                evtmag_tyc = evtmag_tyc[indtyc]
+                id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
+                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
+                                   for i in indtyc])
+
+                self.log.write('Fetched {:d} entries from Tycho-2'
+                               ''.format(numtyc))
+
+                if have_match_coord:
+                    coords = ICRS(ra_finite, dec_finite, 
+                                  unit=(units.degree, units.degree))
+                    catalog = ICRS(ra_tyc, dec_tyc, 
+                                  unit=(units.degree, units.degree))
+                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
+                                                                nthneighbor=1)
+                    ind_plate = np.arange(ind_tyc.size)
+                    indmask = ds2d < 5.*units.arcsec
+                    ind_plate = ind_plate[indmask]
+                    ind_tyc = ind_tyc[indmask]
+                elif have_pyspherematch:
+                    ind_plate,ind_tyc,ds_tyc = \
+                        spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
+                                    tol=5./3600., nnearest=1)
+
+                if have_match_coord or have_pyspherematch:
+                    num_match = len(ind_plate)
+
+                    if num_match > 0:
+                        ind = ind_finite[ind_plate]
+                        self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
+                        self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
+                        self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
