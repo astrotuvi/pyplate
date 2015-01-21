@@ -308,9 +308,9 @@ _schema['source_calib'] = OrderedDict([
     ('err_bmag',         ('FLOAT', False)),
     ('vmag',             ('FLOAT', False)),
     ('err_vmag',         ('FLOAT', False)),
-    ('tycho2_id',        ('CHAR(12)', False)),
-    ('tycho2_btmag',     ('FLOAT', False)),
-    ('tycho2_vtmag',     ('FLOAT', False)),
+    ('tycho2_id',        ('CHAR(12)', True)),
+    ('tycho2_btmag',     ('FLOAT', True)),
+    ('tycho2_vtmag',     ('FLOAT', True)),
     ('ucac4_id',         ('CHAR(10)', True)),
     ('ucac4_bmag',       ('FLOAT', True)),
     ('ucac4_vmag',       ('FLOAT', True)),
@@ -806,6 +806,9 @@ class PlateDB:
                         source_val = None
                         
                     if 'ucac4_id' in k and source_val == '':
+                        source_val = None
+                        
+                    if 'tycho2_id' in k and source_val == '':
                         source_val = None
                         
                     val_tuple = val_tuple + (source_val, )

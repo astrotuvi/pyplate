@@ -98,7 +98,7 @@ class AstrometryNetIndex:
             cmd += (' -mime=binfits'
                     ' -source=I/259/tyc2'
                     ' -out="_RA _DE pmRA pmDE BTmag VTmag e_BTmag e_VTmag '
-                    'TYC1 TYC2 TYC3"'
+                    'TYC1 TYC2 TYC3 HIP"'
                     ' -out.max=unlimited')
 
             if site:
@@ -450,7 +450,11 @@ _source_meta = OrderedDict([
     ('gridsize_sub',        ('i2', '%3d', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_bmag',          ('f8', '%7.4f', '')),
-    ('ucac4_vmag',          ('f8', '%7.4f', ''))
+    ('ucac4_vmag',          ('f8', '%7.4f', '')),
+    ('tycho2_id',           ('a12', '%s', '')),
+    ('tycho2_btmag',        ('f8', '%7.4f', '')),
+    ('tycho2_vtmag',        ('f8', '%7.4f', '')),
+    ('tycho2_hip',          ('i4', '%6d', ''))
 ])
 
 
@@ -1905,6 +1909,7 @@ class SolveProcess:
                 tyc1 = tycho2[1].data.field(8)
                 tyc2 = tycho2[1].data.field(9)
                 tyc3 = tycho2[1].data.field(10)
+                hip_tyc = tycho2[1].data.field(11)
 
                 # For stars that have proper motion data, calculate RA, Dec
                 # for the plate epoch
@@ -1945,6 +1950,7 @@ class SolveProcess:
                 id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
                                    .format(tyc1[i], tyc2[i], tyc3[i]) 
                                    for i in indtyc])
+                hip_tyc = hip_tyc[indtyc]
 
                 self.log.write('Fetched {:d} entries from Tycho-2'
                                ''.format(numtyc))
@@ -1973,6 +1979,7 @@ class SolveProcess:
                         self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
                         self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
                         self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
+                        self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
