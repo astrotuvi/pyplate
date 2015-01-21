@@ -311,6 +311,7 @@ _schema['source_calib'] = OrderedDict([
     ('tycho2_id',        ('CHAR(12)', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
     ('tycho2_vtmag',     ('FLOAT', True)),
+    ('tycho2_hip',       ('INT UNSIGNED', True)),
     ('ucac4_id',         ('CHAR(10)', True)),
     ('ucac4_bmag',       ('FLOAT', True)),
     ('ucac4_vmag',       ('FLOAT', True)),
@@ -329,6 +330,7 @@ _schema['source_calib'] = OrderedDict([
     ('INDEX z_ind',        ('(z_sphere)', None)),
     ('INDEX healpix256_ind', ('(healpix256)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
+    ('INDEX hip_ind',      ('(tycho2_hip)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
     ])
 
@@ -348,6 +350,10 @@ _schema['solution'] = OrderedDict([
     ('fov2',             ('FLOAT', True)),
     ('pixel_scale',      ('FLOAT', True)),
     ('source_density',   ('FLOAT', True)),
+    ('cd1_1',            ('DOUBLE', True)),
+    ('cd1_2',            ('DOUBLE', True)),
+    ('cd2_1',            ('DOUBLE', True)),
+    ('cd2_2',            ('DOUBLE', True)),
     ('stc_box',          ('VARCHAR(100)', True)),
     ('stc_polygon',      ('VARCHAR(200)', True)),
     ('wcs',              ('TEXT', True)),
@@ -376,6 +382,8 @@ _schema['process'] = OrderedDict([
     ('use_psf',          ('TINYINT(1)', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
+    ('num_ucac4',        ('INT UNSIGNED', None)),
+    ('num_tycho2',       ('INT UNSIGNED', None)),
     ('completed',        ('TINYINT(1)', None)),
     ('pyplate_version',  ('VARCHAR(15)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
@@ -850,7 +858,8 @@ class PlateDB:
 
         return process_id
 
-    def update_process(self, process_id, num_sources=None, solved=None):
+    def update_process(self, process_id, num_sources=None, num_ucac4=None, 
+                       num_tycho2=None, solved=None):
         """
         Update plate-solve process in the database.
 
@@ -865,6 +874,14 @@ class PlateDB:
         if num_sources is not None:
             col_list.append('num_sources=%s')
             val_tuple = val_tuple + (num_sources, )
+
+        if num_ucac4 is not None:
+            col_list.append('num_ucac4=%s')
+            val_tuple = val_tuple + (num_ucac4, )
+
+        if num_tycho2 is not None:
+            col_list.append('num_tycho2=%s')
+            val_tuple = val_tuple + (num_tycho2, )
 
         if solved is not None:
             col_list.append('solved=%s')

@@ -1524,6 +1524,10 @@ class SolveProcess:
             ('fov2', imheight_deg),
             ('pixel_scale', self.mean_pixscale),
             ('source_density', self.stars_sqdeg),
+            ('cd1_1', self.wcshead['CD1_1']),
+            ('cd1_2', self.wcshead['CD1_2']),
+            ('cd2_1', self.wcshead['CD2_1']),
+            ('cd2_2', self.wcshead['CD2_2']),
             ('stc_box', stc_box),
             ('stc_polygon', stc_polygon),
             ('wcs', wcshead_strip)
@@ -1881,6 +1885,7 @@ class SolveProcess:
 
             if have_match_coord or have_pyspherematch:
                 num_match = len(ind_plate)
+                self.db_update_process(num_ucac4=num_match)
 
                 if num_match > 0:
                     ind = ind_finite[ind_plate]
@@ -1973,6 +1978,7 @@ class SolveProcess:
 
                 if have_match_coord or have_pyspherematch:
                     num_match = len(ind_plate)
+                    self.db_update_process(num_tycho2=num_match)
 
                     if num_match > 0:
                         ind = ind_finite[ind_plate]
