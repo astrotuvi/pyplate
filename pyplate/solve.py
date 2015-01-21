@@ -1906,6 +1906,18 @@ class SolveProcess:
                 tyc2 = tycho2[1].data.field(9)
                 tyc3 = tycho2[1].data.field(10)
 
+                # For stars that have proper motion data, calculate RA, Dec
+                # for the plate epoch
+                indpm = np.where(np.isfinite(pmra_tyc) & 
+                                  np.isfinite(pmdec_tyc))[0]
+                ra_tyc[indpm] = (ra_tyc[indpm] 
+                                 + (plate_epoch - 2000.) * pmra_tyc[indpm]
+                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
+                                 / 3600000.)
+                dec_tyc[indpm] = (dec_tyc[indpm] 
+                                  + (plate_epoch - 2000.) * pmdec_tyc[indpm]
+                                  / 3600000.)
+
                 if self.ncp_in_plate:
                     btyc = (dec_tyc > corners[:,1].min())
                 elif self.scp_in_plate:
@@ -1924,12 +1936,8 @@ class SolveProcess:
                 indtyc = np.where(btyc)[0]
                 numtyc = btyc.sum()
 
-                ra_tyc = (ra_tyc[indtyc] 
-                          + (plate_epoch - 2000.) * pmra_tyc[indtyc]
-                          / np.cos(dec_tyc[indtyc] * np.pi / 180.) / 3600000.)
-                dec_tyc = (dec_tyc[indtyc] 
-                           + (plate_epoch - 2000.) * pmdec_tyc[indtyc] 
-                           / 3600000.)
+                ra_tyc = ra_tyc[indtyc] 
+                dec_tyc = dec_tyc[indtyc] 
                 btmag_tyc = btmag_tyc[indtyc]
                 vtmag_tyc = vtmag_tyc[indtyc]
                 ebtmag_tyc = ebtmag_tyc[indtyc]
