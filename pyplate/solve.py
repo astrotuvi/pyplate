@@ -1936,7 +1936,7 @@ class SolveProcess:
                 evtmag_tyc = evtmag_tyc[indtyc]
                 id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
                                    .format(tyc1[i], tyc2[i], tyc3[i]) 
-                                   for i in indtyc])
+                                   for i in indtyc[0]])
 
                 self.log.write('Fetched {:d} entries from Tycho-2'
                                ''.format(numtyc))
