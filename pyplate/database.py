@@ -865,7 +865,8 @@ class PlateDB:
 
         """
 
-        if num_sources is None and solved is None:
+        if (num_sources is None and num_ucac4 is None and num_tycho2 is None 
+            and solved is None):
             return
 
         col_list = []
