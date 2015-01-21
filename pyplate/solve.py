@@ -1921,7 +1921,7 @@ class SolveProcess:
                             (dec_tyc > corners[:,1].min()) & 
                             (dec_tyc < corners[:,1].max()))
 
-                indtyc = np.where(btyc)
+                indtyc = np.where(btyc)[0]
                 numtyc = btyc.sum()
 
                 ra_tyc = (ra_tyc[indtyc] 
@@ -1936,7 +1936,7 @@ class SolveProcess:
                 evtmag_tyc = evtmag_tyc[indtyc]
                 id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
                                    .format(tyc1[i], tyc2[i], tyc3[i]) 
-                                   for i in indtyc[0]])
+                                   for i in indtyc])
 
                 self.log.write('Fetched {:d} entries from Tycho-2'
                                ''.format(numtyc))
