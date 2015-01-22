@@ -520,6 +520,10 @@ class PlateDB:
             try:
                 self.db = MySQLdb.connect(host=host, user=user, passwd=passwd, 
                                           db=dbname)
+                self.host = host
+                self.user = user
+                self.passwd = passwd
+                self.dbname = dbname
                 break
             except MySQLdb.OperationalError, e:
                 if e.args[0] == 1040:
