@@ -449,9 +449,13 @@ _source_meta = OrderedDict([
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
     ('ucac4_id',            ('a10', '%s', '')),
+    ('ucac4_ra',            ('f8', '%11.7f', '')),
+    ('ucac4_dec',           ('f8', '%11.7f', '')),
     ('ucac4_bmag',          ('f8', '%7.4f', '')),
     ('ucac4_vmag',          ('f8', '%7.4f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
+    ('tycho2_ra',           ('f8', '%11.7f', '')),
+    ('tycho2_dec',          ('f8', '%11.7f', '')),
     ('tycho2_btmag',        ('f8', '%7.4f', '')),
     ('tycho2_vtmag',        ('f8', '%7.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', ''))
@@ -1087,8 +1091,14 @@ class SolveProcess:
         self.sources['y_sphere'] = np.nan
         self.sources['z_sphere'] = np.nan
         self.sources['healpix256'] = -1
+        self.sources['ucac4_ra'] = np.nan
+        self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
         self.sources['ucac4_vmag'] = np.nan
+        self.sources['tycho2_ra'] = np.nan
+        self.sources['tycho2_dec'] = np.nan
+        self.sources['tycho2_btmag'] = np.nan
+        self.sources['tycho2_vtmag'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -1892,6 +1902,8 @@ class SolveProcess:
                 if num_match > 0:
                     ind = ind_finite[ind_plate]
                     self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
+                    self.sources['ucac4_ra'][ind] = ra_ucac[ind_ucac]
+                    self.sources['ucac4_dec'][ind] = dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
 
@@ -1985,6 +1997,8 @@ class SolveProcess:
                     if num_match > 0:
                         ind = ind_finite[ind_plate]
                         self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
+                        self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
+                        self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
                         self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
                         self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
                         self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
@@ -2534,7 +2548,10 @@ class SolveProcess:
                      'sextractor_flags', 
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
-                     'ucac4_id', 'ucac4_bmag', 'ucac4_vmag']
+                     'ucac4_id', 'ucac4_ra', 'ucac4_dec',
+                     'ucac4_bmag', 'ucac4_vmag',
+                     'tycho2_id', 'tycho2_ra', 'tycho2_dec',
+                     'tycho2_btmag', 'tycho2_vtmag']
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
         #outhdr = ','.join(['"{}"'.format(f) for f in outfields])
