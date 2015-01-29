@@ -521,6 +521,7 @@ class SolveProcess:
         self.max_recursion_depth = 5
         self.force_recursion_depth = 0
         self.circular_film = False
+        self.crossmatch_radius = 5.
 
         self.plate_header = None
         self.imwidth = None
@@ -584,7 +585,8 @@ class SolveProcess:
         for attr in ['plate_epoch', 'threshold_sigma', 'use_psf', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
                      'sip', 'skip_bright', 'max_recursion_depth', 
-                     'force_recursion_depth', 'circular_film']:
+                     'force_recursion_depth', 'circular_film',
+                     'crossmatch_radius']:
             try:
                 setattr(self, attr, conf.get('Solve', attr))
             except ConfigParser.Error:
@@ -1887,13 +1889,14 @@ class SolveProcess:
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
                 ind_plate = np.arange(ind_ucac.size)
-                indmask = ds2d < 5.*units.arcsec
+                indmask = ds2d < self.crossmatch_radius*units.arcsec
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
             elif have_pyspherematch:
                 ind_plate,ind_ucac,ds_ucac = \
                         spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
-                                    tol=5./3600., nnearest=1)
+                                    tol=self.crossmatch_radius/3600., 
+                                    nnearest=1)
 
             if have_match_coord or have_pyspherematch:
                 num_match = len(ind_plate)
@@ -1982,13 +1985,14 @@ class SolveProcess:
                     ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
                                                                 nthneighbor=1)
                     ind_plate = np.arange(ind_tyc.size)
-                    indmask = ds2d < 5.*units.arcsec
+                    indmask = ds2d < self.crossmatch_radius*units.arcsec
                     ind_plate = ind_plate[indmask]
                     ind_tyc = ind_tyc[indmask]
                 elif have_pyspherematch:
                     ind_plate,ind_tyc,ds_tyc = \
                         spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
-                                    tol=5./3600., nnearest=1)
+                                    tol=self.crossmatch_radius/3600., 
+                                    nnearest=1)
 
                 if have_match_coord or have_pyspherematch:
                     num_match = len(ind_plate)
