@@ -426,7 +426,7 @@ _source_meta = OrderedDict([
     ('flux_max',            ('f4', '%12.5e', 'FLUX_MAX')),
     ('flux_radius',         ('f4', '%12.5e', 'FLUX_RADIUS')),
     ('isoarea',             ('i4', '%6d', 'ISOAREA_IMAGE')),
-    ('sqrt_isoarea',        ('i4', '%12.5e', '')),
+    ('sqrt_isoarea',        ('f4', '%12.5e', '')),
     ('background',          ('f4', '%12.5e', 'BACKGROUND')),
     ('sextractor_flags',    ('i2', '%3d', 'FLAGS')),
     ('dist_center',         ('f4', '%9.3f', '')),
