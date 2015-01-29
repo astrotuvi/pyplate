@@ -1889,13 +1889,13 @@ class SolveProcess:
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
                 ind_plate = np.arange(ind_ucac.size)
-                indmask = ds2d < self.crossmatch_radius*units.arcsec
+                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
             elif have_pyspherematch:
                 ind_plate,ind_ucac,ds_ucac = \
                         spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
-                                    tol=self.crossmatch_radius/3600., 
+                                    tol=float(self.crossmatch_radius)/3600., 
                                     nnearest=1)
 
             if have_match_coord or have_pyspherematch:
@@ -1985,13 +1985,13 @@ class SolveProcess:
                     ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
                                                                 nthneighbor=1)
                     ind_plate = np.arange(ind_tyc.size)
-                    indmask = ds2d < self.crossmatch_radius*units.arcsec
+                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
                     ind_plate = ind_plate[indmask]
                     ind_tyc = ind_tyc[indmask]
                 elif have_pyspherematch:
                     ind_plate,ind_tyc,ds_tyc = \
                         spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
-                                    tol=self.crossmatch_radius/3600., 
+                                    tol=float(self.crossmatch_radius)/3600., 
                                     nnearest=1)
 
                 if have_match_coord or have_pyspherematch:
