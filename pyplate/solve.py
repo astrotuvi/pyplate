@@ -534,6 +534,10 @@ class SolveProcess:
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
         self.stars_sqdeg = None
+        self.min_ra = None
+        self.max_ra = None
+        self.min_dec = None
+        self.max_dec = None
 
         self.sources = None
         self.scampref = None
@@ -1563,6 +1567,11 @@ class SolveProcess:
         self.sources['raj2000_wcs'] = worldcrd[:,0]
         self.sources['dej2000_wcs'] = worldcrd[:,1]
 
+        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
+        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
+        self.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
+        self.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
+
     def output_wcs_header(self):
         """
         Write WCS header to an ASCII file.
@@ -1696,12 +1705,6 @@ class SolveProcess:
             elif self.use_tycho2_fits:
                 astref_catalog = 'Tycho-2'
 
-            pixcorners = np.array([[1., 1.],
-                                   [self.imwidth, 1.],
-                                   [1., self.imheight],
-                                   [self.imwidth, self.imheight]])
-            corners = self.wcs_plate.all_pix2world(pixcorners, 1)
-        
             if astref_catalog == 'Tycho-2':
                 # Build custom SCAMP reference catalog from Tycho-2 FITS file
                 fn_tycho = os.path.join(self.tycho2_dir, 'tycho2_{:d}.fits'
@@ -1712,19 +1715,19 @@ class SolveProcess:
                 mag_tyc = tycho[1].data.field(2)
 
                 if self.ncp_in_plate:
-                    btyc = (dec_tyc > corners[:,1].min())
+                    btyc = (dec_tyc > self.min_dec)
                 elif self.scp_in_plate:
-                    btyc = (dec_tyc < corners[:,1].max())
-                elif corners[:,0].max()-corners[:,0].min() > 180:
-                    btyc = (((ra_tyc < corners[:,0].min()) |
-                            (ra_tyc > corners[:,0].max())) &
-                            (dec_tyc > corners[:,1].min()) & 
-                            (dec_tyc < corners[:,1].max()))
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra-self.min_ra > 180:
+                    btyc = (((ra_tyc < self.min_ra) |
+                            (ra_tyc > self.max_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
                 else:
-                    btyc = ((ra_tyc > corners[:,0].min()) & 
-                            (ra_tyc < corners[:,0].max()) &
-                            (dec_tyc > corners[:,1].min()) & 
-                            (dec_tyc < corners[:,1].max()))
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
 
                 indtyc = np.where(btyc)
                 numtyc = btyc.sum()
@@ -1765,19 +1768,19 @@ class SolveProcess:
                 sql2 += ' FORCE INDEX (idx_radecmag)'
 
                 if self.ncp_in_plate:
-                    sql2 += ' WHERE DEJ2000 > {}'.format(corners[:,1].min())
+                    sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
                 elif self.scp_in_plate:
-                    sql2 += ' WHERE DEJ2000 < {}'.format(corners[:,1].max())
-                elif corners[:,0].max()-corners[:,0].min() > 180:
+                    sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
+                elif self.max_ra-self.min_ra > 180:
                     sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
                              ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(corners[:,0].min(), corners[:,0].max(),
-                                       corners[:,1].min(), corners[:,1].max()))
+                             ''.format(self.min_ra, self.max_ra,
+                                       self.min_dec, self.max_dec))
                 else:
                     sql2 += (' WHERE RAJ2000 BETWEEN {} AND {}'
                              ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(corners[:,0].min(), corners[:,0].max(), 
-                                       corners[:,1].min(), corners[:,1].max()))
+                             ''.format(self.min_ra, self.max_ra, 
+                                       self.min_dec, self.max_dec))
 
                 sql3 = ''
 
@@ -1946,19 +1949,19 @@ class SolveProcess:
                                   / 3600000.)
 
                 if self.ncp_in_plate:
-                    btyc = (dec_tyc > corners[:,1].min())
+                    btyc = (dec_tyc > self.min_dec)
                 elif self.scp_in_plate:
-                    btyc = (dec_tyc < corners[:,1].max())
-                elif corners[:,0].max()-corners[:,0].min() > 180:
-                    btyc = (((ra_tyc < corners[:,0].min()) |
-                            (ra_tyc > corners[:,0].max())) &
-                            (dec_tyc > corners[:,1].min()) & 
-                            (dec_tyc < corners[:,1].max()))
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra-self.min_ra > 180:
+                    btyc = (((ra_tyc < self.min_ra) |
+                            (ra_tyc > self.max_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
                 else:
-                    btyc = ((ra_tyc > corners[:,0].min()) & 
-                            (ra_tyc < corners[:,0].max()) &
-                            (dec_tyc > corners[:,1].min()) & 
-                            (dec_tyc < corners[:,1].max()))
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
 
                 indtyc = np.where(btyc)[0]
                 numtyc = btyc.sum()
