@@ -1103,10 +1103,12 @@ class SolveProcess:
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
         self.sources['ucac4_vmag'] = np.nan
+        self.sources['ucac4_dist'] = np.nan
         self.sources['tycho2_ra'] = np.nan
         self.sources['tycho2_dec'] = np.nan
         self.sources['tycho2_btmag'] = np.nan
         self.sources['tycho2_vtmag'] = np.nan
+        self.sources['tycho2_dist'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
