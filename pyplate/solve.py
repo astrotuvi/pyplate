@@ -453,12 +453,14 @@ _source_meta = OrderedDict([
     ('ucac4_dec',           ('f8', '%11.7f', '')),
     ('ucac4_bmag',          ('f8', '%7.4f', '')),
     ('ucac4_vmag',          ('f8', '%7.4f', '')),
+    ('ucac4_dist',          ('f4', '%6.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
     ('tycho2_btmag',        ('f8', '%7.4f', '')),
     ('tycho2_vtmag',        ('f8', '%7.4f', '')),
-    ('tycho2_hip',          ('i4', '%6d', ''))
+    ('tycho2_hip',          ('i4', '%6d', '')),
+    ('tycho2_dist',         ('f4', '%6.3f', ''))
 ])
 
 
@@ -1895,11 +1897,13 @@ class SolveProcess:
                 indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
+                matchdist = ds2d[indmask].to(units.arcsec).value
             elif have_pyspherematch:
-                ind_plate,ind_ucac,ds_ucac = \
+                ind_plate,ind_ucac,ds = \
                         spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
                                     tol=float(self.crossmatch_radius)/3600., 
                                     nnearest=1)
+                matchdist = ds * 3600.
 
             if have_match_coord or have_pyspherematch:
                 num_match = len(ind_plate)
@@ -1912,6 +1916,7 @@ class SolveProcess:
                     self.sources['ucac4_dec'][ind] = dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
+                    self.sources['ucac4_dist'][ind] = matchdist
 
             # Match sources with the Tycho-2 catalogue
             fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
@@ -1991,11 +1996,13 @@ class SolveProcess:
                     indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
                     ind_plate = ind_plate[indmask]
                     ind_tyc = ind_tyc[indmask]
+                    matchdist = ds2d[indmask].to(units.arcsec).value
                 elif have_pyspherematch:
-                    ind_plate,ind_tyc,ds_tyc = \
+                    ind_plate,ind_tyc,ds = \
                         spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
                                     tol=float(self.crossmatch_radius)/3600., 
                                     nnearest=1)
+                    matchdist = ds * 3600.
 
                 if have_match_coord or have_pyspherematch:
                     num_match = len(ind_plate)
@@ -2009,6 +2016,7 @@ class SolveProcess:
                         self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
                         self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
                         self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
+                        self.sources['tycho2_dist'][ind] = matchdist
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
@@ -2556,9 +2564,9 @@ class SolveProcess:
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
-                     'ucac4_bmag', 'ucac4_vmag',
+                     'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
-                     'tycho2_btmag', 'tycho2_vtmag']
+                     'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist']
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
         #outhdr = ','.join(['"{}"'.format(f) for f in outfields])

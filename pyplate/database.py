@@ -312,9 +312,11 @@ _schema['source_calib'] = OrderedDict([
     ('tycho2_btmag',     ('FLOAT', True)),
     ('tycho2_vtmag',     ('FLOAT', True)),
     ('tycho2_hip',       ('INT UNSIGNED', True)),
+    ('tycho2_dist',      ('FLOAT', True)),
     ('ucac4_id',         ('CHAR(10)', True)),
     ('ucac4_bmag',       ('FLOAT', True)),
     ('ucac4_vmag',       ('FLOAT', True)),
+    ('ucac4_dist',       ('FLOAT', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
