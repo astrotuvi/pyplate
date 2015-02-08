@@ -1525,14 +1525,14 @@ class SolveProcess:
         self.scp_on_plate = False
 
         if self.ncp_close:
-            ncp_pix = wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+            ncp_pix = self.wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
 
             if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth 
                 and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
                 self.ncp_on_plate = True
 
         if self.scp_close:
-            scp_pix = wcs_plate.wcs_world2pix([[ra_deg,-90.]], 1)
+            scp_pix = self.wcs_plate.wcs_world2pix([[ra_deg,-90.]], 1)
 
             if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth 
                 and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
