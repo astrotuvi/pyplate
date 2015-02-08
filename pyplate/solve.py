@@ -1627,7 +1627,7 @@ class SolveProcess:
             ('cd2_1', self.wcshead['CD2_1']),
             ('cd2_2', self.wcshead['CD2_2']),
             ('rotation_angle', rotation_angle),
-            ('mirrored', plate_mirrored),
+            ('plate_mirrored', plate_mirrored),
             ('ncp_on_plate', self.ncp_on_plate),
             ('scp_on_plate', self.scp_on_plate),
             ('stc_box', stc_box),
