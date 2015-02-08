@@ -530,8 +530,6 @@ class SolveProcess:
         self.imheight = None
         self.plate_solved = False
         self.mean_pixscale = None
-        self.ncp_in_plate = None
-        self.scp_in_plate = None
         self.num_sources = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
@@ -540,6 +538,10 @@ class SolveProcess:
         self.max_ra = None
         self.min_dec = None
         self.max_dec = None
+        self.ncp_close = None
+        self.scp_close = None
+        self.ncp_on_plate = None
+        self.scp_on_plate = None
 
         self.sources = None
         self.scampref = None
@@ -1466,6 +1468,8 @@ class SolveProcess:
         self.wcshead.set('NAXIS1', self.imwidth, after='NAXIS')
         self.wcshead.set('NAXIS2', self.imheight, after='NAXIS1')
         self.wcs_plate = wcs.WCS(self.wcshead)
+        ra_deg = self.wcshead['CRVAL1']
+        dec_deg = self.wcshead['CRVAL2']
 
         pix_edge_midpoints = np.array([[1., (self.imheight+1.)/2.],
                                        [self.imwidth, (self.imheight+1.)/2.],
@@ -1499,12 +1503,31 @@ class SolveProcess:
         pixscale1 = imwidth_deg / self.imwidth * 3600.
         pixscale2 = imheight_deg / self.imheight * 3600.
         self.mean_pixscale = np.mean([pixscale1, pixscale2])
-        half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
-        self.ncp_in_plate = 90. - self.wcshead['CRVAL2'] <= half_diag
-        self.scp_in_plate = 90. + self.wcshead['CRVAL2'] <= half_diag
 
-        ra_angle = Angle(self.wcshead['CRVAL1'], units.deg)
-        dec_angle = Angle(self.wcshead['CRVAL2'], units.deg)
+        # Check if a celestial pole is nearby or on the plate
+        half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
+        self.ncp_close = 90. - dec_deg <= half_diag
+        self.scp_close = 90. + dec_deg <= half_diag
+        self.ncp_on_plate = False
+        self.scp_on_plate = False
+
+        if self.ncp_close:
+            ncp_pix = wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+
+            if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth 
+                and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
+                self.ncp_on_plate = True
+
+        if self.scp_close:
+            scp_pix = wcs_plate.wcs_world2pix([[ra_deg,-90.]], 1)
+
+            if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth 
+                and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
+                self.scp_on_plate = True
+
+        # Construct coordinate strings
+        ra_angle = Angle(ra_deg, units.deg)
+        dec_angle = Angle(dec_deg, units.deg)
 
         try:
             ra_str = ra_angle.to_string(unit=units.hour, sep=':', precision=1, 
@@ -1531,6 +1554,40 @@ class SolveProcess:
                                corners[2,0], corners[2,1],
                                corners[3,0], corners[3,1]))
 
+        # Calculate plate rotation angle
+        cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
+
+        if dec_angle.deg > 89.:
+            cn = wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+        else:
+            cn = wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
+
+        if ra_angle.deg > 359.:
+            ce = wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
+        else:
+            ce = wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
+
+        naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
+        eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
+
+        if naz < 0:
+            naz += 360.
+
+        if eaz < 0:
+            eaz += 360.
+
+        rotation_angle = naz - 180.
+        ne_angle = naz - eaz
+
+        if ne_angle < 0:
+            ne_angle += 360.
+
+        if ne_angle > 180:
+            plate_mirrored = True
+        else:
+            plate_mirrored = False
+
+        # Prepare WCS header for output
         wcshead_strip = fits.Header()
 
         for c in self.wcshead.cards:
@@ -1538,8 +1595,8 @@ class SolveProcess:
                 wcshead_strip.append(c, bottom=True)
 
         self.solution = OrderedDict([
-            ('raj2000', self.wcshead['CRVAL1']),
-            ('dej2000', self.wcshead['CRVAL2']),
+            ('raj2000', ra_deg),
+            ('dej2000', dec_deg),
             ('raj2000_hms', ra_str),
             ('dej2000_dms', dec_str),
             ('fov1', imwidth_deg),
@@ -1550,6 +1607,10 @@ class SolveProcess:
             ('cd1_2', self.wcshead['CD1_2']),
             ('cd2_1', self.wcshead['CD2_1']),
             ('cd2_2', self.wcshead['CD2_2']),
+            ('rotation_angle', rotation_angle),
+            ('mirrored', plate_mirrored),
+            ('ncp_on_plate', self.ncp_on_plate),
+            ('scp_on_plate', self.scp_on_plate),
             ('stc_box', stc_box),
             ('stc_polygon', stc_polygon),
             ('wcs', wcshead_strip)
@@ -1563,6 +1624,12 @@ class SolveProcess:
                        double_newline=False)
         self.log.write('The image has {:.0f} stars per square degree'
                        ''.format(self.stars_sqdeg))
+        self.log.write('Plate rotation angle: {:.3f}'.format(rotation_angle))
+        self.log.write('Plate is mirrored: {}'.format(plate_mirrored))
+        self.log.write('North Celestial Pole is on the plate: {}'
+                       ''.format(self.ncp_on_plate))
+        self.log.write('South Celestial Pole is on the plate: {}'
+                       ''.format(self.scp_on_plate))
 
         # Convert x,y to RA/Dec with the global WCS solution
         pixcrd = np.column_stack((self.sources['x_source'], 
@@ -1718,9 +1785,9 @@ class SolveProcess:
                 dec_tyc = tycho[1].data.field(1)
                 mag_tyc = tycho[1].data.field(2)
 
-                if self.ncp_in_plate:
+                if self.ncp_close:
                     btyc = (dec_tyc > self.min_dec)
-                elif self.scp_in_plate:
+                elif self.scp_close:
                     btyc = (dec_tyc < self.max_dec)
                 elif self.max_ra-self.min_ra > 180:
                     btyc = (((ra_tyc < self.min_ra) |
@@ -1771,9 +1838,9 @@ class SolveProcess:
                 sql2 = ' FROM ucac4'
                 sql2 += ' FORCE INDEX (idx_radecmag)'
 
-                if self.ncp_in_plate:
+                if self.ncp_close:
                     sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
-                elif self.scp_in_plate:
+                elif self.scp_close:
                     sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
                 elif self.max_ra-self.min_ra > 180:
                     sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
@@ -1955,9 +2022,9 @@ class SolveProcess:
                                   + (plate_epoch - 2000.) * pmdec_tyc[indpm]
                                   / 3600000.)
 
-                if self.ncp_in_plate:
+                if self.ncp_close:
                     btyc = (dec_tyc > self.min_dec)
-                elif self.scp_in_plate:
+                elif self.scp_close:
                     btyc = (dec_tyc < self.max_dec)
                 elif self.max_ra-self.min_ra > 180:
                     btyc = (((ra_tyc < self.min_ra) |
