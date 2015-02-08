@@ -1462,6 +1462,9 @@ class SolveProcess:
             self.db_update_process(solved=0)
             return
 
+        self.log.write('Calculating plate-solution related parameters', 
+                       level=3, event=42)
+
         # Read the .wcs file and calculate star density
         self.wcshead = fits.getheader(fn_wcs)
         self.wcshead.set('NAXIS', 2)
@@ -1555,37 +1558,43 @@ class SolveProcess:
                                corners[3,0], corners[3,1]))
 
         # Calculate plate rotation angle
-        cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
+        try:
+            cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
 
-        if dec_angle.deg > 89.:
-            cn = wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
-        else:
-            cn = wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
+            if dec_angle.deg > 89.:
+                cn = wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+            else:
+                cn = wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
 
-        if ra_angle.deg > 359.:
-            ce = wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
-        else:
-            ce = wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
+            if ra_angle.deg > 359.:
+                ce = wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
+            else:
+                ce = wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
 
-        naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
-        eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
+            naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
+            eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
 
-        if naz < 0:
-            naz += 360.
+            if naz < 0:
+                naz += 360.
 
-        if eaz < 0:
-            eaz += 360.
+            if eaz < 0:
+                eaz += 360.
 
-        rotation_angle = naz - 180.
-        ne_angle = naz - eaz
+            rotation_angle = naz - 180.
+            ne_angle = naz - eaz
 
-        if ne_angle < 0:
-            ne_angle += 360.
+            if ne_angle < 0:
+                ne_angle += 360.
 
-        if ne_angle > 180:
-            plate_mirrored = True
-        else:
-            plate_mirrored = False
+            if ne_angle > 180:
+                plate_mirrored = True
+            else:
+                plate_mirrored = False
+        except Exception:
+            rotation_angle = None
+            plate_mirrored = None
+            self.log.write('Could not calculate plate rotation angle', 
+                           level=2, event=42)
 
         # Prepare WCS header for output
         wcshead_strip = fits.Header()
