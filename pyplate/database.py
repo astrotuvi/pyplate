@@ -1091,11 +1091,12 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT year_start FROM exposure WHERE plate_id=%s')
+        sql = ('SELECT year_start FROM exposure WHERE plate_id=%s '
+               'AND year_start IS NOT NULL ORDER BY year_start')
         numrows = self.execute_query(sql, (plate_id))
 
         if numrows > 0:
-            result = self.cursor.fetchone()
+            result = self.cursor.fetchone()[0]
         else:
             result = None
 
