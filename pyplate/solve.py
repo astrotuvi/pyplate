@@ -671,7 +671,10 @@ class SolveProcess:
         self.imheight = self.plate_header['NAXIS2']
 
         # Look for observation date in the FITS header.
-        if 'DATEORIG' in self.plate_header:
+        if ('YEAR' in self.plate_header and 
+            isinstance(self.plate_header['YEAR'], float)):
+            self.plate_epoch = self.plate_header['YEAR']
+        elif 'DATEORIG' in self.plate_header:
             self.plate_year = int(self.plate_header['DATEORIG'].split('-')[0])
             self.plate_epoch = float(self.plate_year) + 0.5
         elif 'DATE-OBS' in self.plate_header:
@@ -736,6 +739,13 @@ class SolveProcess:
                                           filename=self.filename, 
                                           use_psf=self.use_psf)
         self.process_id = pid
+
+        plate_epoch = platedb.get_plate_epoch(self.plate_id)
+
+        if plate_epoch:
+            self.plate_epoch = plate_epoch
+            self.plate_year = int(plate_epoch)
+
         platedb.close_connection()
 
     def db_update_process(self, num_sources=None, num_ucac4=None, 

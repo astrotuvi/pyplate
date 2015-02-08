@@ -1075,4 +1075,29 @@ class PlateDB:
 
         return result
 
+    def get_plate_epoch(self, plate_id):
+        """
+        Get plate epoch from the database.
+
+        Parameters
+        ----------
+        plate_id : int
+            Plate ID number
+
+        Returns
+        -------
+        result : float
+            Plate epoch as a float
+
+        """
+
+        sql = ('SELECT year_start FROM exposure WHERE plate_id=%s')
+        numrows = self.execute_query(sql, (plate_id))
+
+        if numrows > 0:
+            result = self.cursor.fetchone()
+        else:
+            result = None
+
+        return result
 
