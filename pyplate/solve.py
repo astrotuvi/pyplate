@@ -1572,14 +1572,14 @@ class SolveProcess:
             cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
 
             if dec_angle.deg > 89.:
-                cn = wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+                cn = self.wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
             else:
-                cn = wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
+                cn = self.wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
 
             if ra_angle.deg > 359.:
-                ce = wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
+                ce = self.wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
             else:
-                ce = wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
+                ce = self.wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
 
             naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
             eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
@@ -1643,7 +1643,7 @@ class SolveProcess:
                        double_newline=False)
         self.log.write('The image has {:.0f} stars per square degree'
                        ''.format(self.stars_sqdeg))
-        self.log.write('Plate rotation angle: {:.3f}'.format(rotation_angle))
+        self.log.write('Plate rotation angle: {}'.format(rotation_angle))
         self.log.write('Plate is mirrored: {}'.format(plate_mirrored))
         self.log.write('North Celestial Pole is on the plate: {}'
                        ''.format(self.ncp_on_plate))
