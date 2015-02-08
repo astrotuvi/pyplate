@@ -1971,7 +1971,13 @@ class SolveProcess:
                        np.isfinite(self.sources['dej2000_sub']))
         num_finite = bool_finite.sum()
 
-        if num_finite > 0:
+        self.log.write('Cross-matching sources with the UCAC-4 catalogue', 
+                       level=3, event=53)
+
+        if num_finite == 0:
+            self.log.write('No sources with improved coordinates', 
+                           level=2, event=53)
+        else:
             ind_finite = np.where(bool_finite)[0]
             ra_finite = self.sources['raj2000_sub'][ind_finite]
             dec_finite = self.sources['dej2000_sub'][ind_finite]
@@ -2010,6 +2016,8 @@ class SolveProcess:
                     self.sources['ucac4_dist'][ind] = matchdist
 
             # Match sources with the Tycho-2 catalogue
+            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
+                           level=3, event=54)
             fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
 
             try:
