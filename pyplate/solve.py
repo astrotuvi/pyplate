@@ -2635,7 +2635,7 @@ class SolveProcess:
         # Create output directory, if missing
         if self.write_source_dir and not os.path.isdir(self.write_source_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4)
+                           .format(self.write_source_dir), level=4, event=62)
             os.makedirs(self.write_source_dir)
 
         if filename:
@@ -2672,7 +2672,8 @@ class SolveProcess:
         delimiter = ','
 
         # Output ascii file with refined coordinates
-        self.log.write('Writing output file {}'.format(fn_world), level=4)
+        self.log.write('Writing output file {}'.format(fn_world), level=4, 
+                       event=62)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
