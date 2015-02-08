@@ -1590,8 +1590,11 @@ class SolveProcess:
             if eaz < 0:
                 eaz += 360.
 
-            rotation_angle = naz - 180.
+            rotation_angle = naz
             ne_angle = naz - eaz
+
+            if rotation_angle > 180:
+                rotation_angle -= 360.
 
             if ne_angle < 0:
                 ne_angle += 360.
