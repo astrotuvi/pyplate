@@ -1643,10 +1643,13 @@ class SolveProcess:
                        double_newline=False)
         self.log.write('The image has {:.0f} stars per square degree'
                        ''.format(self.stars_sqdeg))
-        self.log.write('Plate rotation angle: {}'.format(rotation_angle))
-        self.log.write('Plate is mirrored: {}'.format(plate_mirrored))
+        self.log.write('Plate rotation angle: {}'.format(rotation_angle),
+                       double_newline=False)
+        self.log.write('Plate is mirrored: {}'.format(plate_mirrored),
+                       double_newline=False)
         self.log.write('North Celestial Pole is on the plate: {}'
-                       ''.format(self.ncp_on_plate))
+                       ''.format(self.ncp_on_plate),
+                       double_newline=False)
         self.log.write('South Celestial Pole is on the plate: {}'
                        ''.format(self.scp_on_plate))
 
