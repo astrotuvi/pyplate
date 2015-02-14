@@ -69,14 +69,19 @@ class AstrometryNetIndex:
     def __init__(self, *args):
         self.vizquery_path = 'vizquery'
         self.build_index_path = 'build-index'
-        self.index_dir = ''
+        self.index_dir = './'
         
         if len(args) == 1:
             self.index_dir = args[0]
 
-    def download_tycho2(self):
+    def download_tycho2(self, site=None):
         """
         Download full Tycho-2 catalogue with vizquery.
+
+        Parameters
+        ----------
+        site : str
+            A site name that vizquery recognizes
 
         """
 
@@ -92,8 +97,12 @@ class AstrometryNetIndex:
             cmd = self.vizquery_path
             cmd += (' -mime=binfits'
                     ' -source=I/259/tyc2'
-                    ' -out="_RA _DE pmRA pmDE BTmag VTmag"'
+                    ' -out="_RA _DE pmRA pmDE BTmag VTmag e_BTmag e_VTmag '
+                    'TYC1 TYC2 TYC3 HIP"'
                     ' -out.max=unlimited')
+
+            if site:
+                cmd += ' -site={}'.format(site)
 
             # Download Tycho-2 catalogue to a temporary FITS file
             fn_vizout = os.path.join(self.index_dir, 'vizout.fits')
@@ -294,61 +303,6 @@ class SolveProcessLog:
                                           plate_id=self.plate_id, 
                                           archive_id=self.archive_id)
 
-    def write_process_start(self, filename=None, use_psf=None):
-        """
-        Write process start to the database.
-
-        Parameters
-        ----------
-        filename : str
-            Filename of the image to be processed
-        use_psf : int
-            A boolean value specifying whether PSF is used for source extraction
-
-        """
-
-        if self.platedb is not None:
-            pid = self.platedb.write_process_start(scan_id=self.scan_id,
-                                                   plate_id=self.plate_id,
-                                                   archive_id=self.archive_id,
-                                                   filename=filename,
-                                                   use_psf=use_psf)
-            self.process_id = pid
-
-    def update_process(self, num_sources=None, solved=None):
-        """
-        Update process in the database.
-
-        Parameters
-        ----------
-        num_sources : int
-            Number of extracted sources
-        solved : int
-            A boolean value specifying whether plate was solved successfully
-            with Astrometry.net
-
-        """
-
-        if self.platedb is not None and self.process_id is not None:
-            self.platedb.update_process(self.process_id, 
-                                        num_sources=num_sources, solved=solved)
-
-    def write_process_end(self, completed=None, duration=None):
-        """
-        Write process end to the database.
-
-        Parameters
-        ----------
-        completed : int
-            A boolean value specifying whether the process was completed
-
-        """
-
-        if self.platedb is not None and self.process_id is not None:
-            self.platedb.write_process_end(self.process_id, 
-                                           completed=completed, 
-                                           duration=duration)
-
     def close(self):
         """
         Close log file.
@@ -472,7 +426,7 @@ _source_meta = OrderedDict([
     ('flux_max',            ('f4', '%12.5e', 'FLUX_MAX')),
     ('flux_radius',         ('f4', '%12.5e', 'FLUX_RADIUS')),
     ('isoarea',             ('i4', '%6d', 'ISOAREA_IMAGE')),
-    ('sqrt_isoarea',        ('i4', '%12.5e', '')),
+    ('sqrt_isoarea',        ('f4', '%12.5e', '')),
     ('background',          ('f4', '%12.5e', 'BACKGROUND')),
     ('sextractor_flags',    ('i2', '%3d', 'FLAGS')),
     ('dist_center',         ('f4', '%9.3f', '')),
@@ -495,8 +449,18 @@ _source_meta = OrderedDict([
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
     ('ucac4_id',            ('a10', '%s', '')),
+    ('ucac4_ra',            ('f8', '%11.7f', '')),
+    ('ucac4_dec',           ('f8', '%11.7f', '')),
     ('ucac4_bmag',          ('f8', '%7.4f', '')),
-    ('ucac4_vmag',          ('f8', '%7.4f', ''))
+    ('ucac4_vmag',          ('f8', '%7.4f', '')),
+    ('ucac4_dist',          ('f4', '%6.3f', '')),
+    ('tycho2_id',           ('a12', '%s', '')),
+    ('tycho2_ra',           ('f8', '%11.7f', '')),
+    ('tycho2_dec',          ('f8', '%11.7f', '')),
+    ('tycho2_btmag',        ('f8', '%7.4f', '')),
+    ('tycho2_vtmag',        ('f8', '%7.4f', '')),
+    ('tycho2_hip',          ('i4', '%6d', '')),
+    ('tycho2_dist',         ('f4', '%6.3f', ''))
 ])
 
 
@@ -511,6 +475,9 @@ class SolveProcess:
         self.archive_id = archive_id
         self.basefn = ''
         self.fn_fits = ''
+        self.process_id = None
+        self.scan_id = None
+        self.plate_id = None
 
         self.fits_dir = ''
         self.tycho2_dir = ''
@@ -556,18 +523,25 @@ class SolveProcess:
         self.max_recursion_depth = 5
         self.force_recursion_depth = 0
         self.circular_film = False
+        self.crossmatch_radius = 5.
 
         self.plate_header = None
         self.imwidth = None
         self.imheight = None
         self.plate_solved = False
         self.mean_pixscale = None
-        self.ncp_in_plate = None
-        self.scp_in_plate = None
         self.num_sources = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
         self.stars_sqdeg = None
+        self.min_ra = None
+        self.max_ra = None
+        self.min_dec = None
+        self.max_dec = None
+        self.ncp_close = None
+        self.scp_close = None
+        self.ncp_on_plate = None
+        self.scp_on_plate = None
 
         self.sources = None
         self.scampref = None
@@ -619,7 +593,8 @@ class SolveProcess:
         for attr in ['plate_epoch', 'threshold_sigma', 'use_psf', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
                      'sip', 'skip_bright', 'max_recursion_depth', 
-                     'force_recursion_depth', 'circular_film']:
+                     'force_recursion_depth', 'circular_film',
+                     'crossmatch_radius']:
             try:
                 setattr(self, attr, conf.get('Solve', attr))
             except ConfigParser.Error:
@@ -648,12 +623,6 @@ class SolveProcess:
         else:
             self.fn_fits = os.path.join(self.fits_dir, self.filename)
 
-        # Create scratch directory
-        self.scratch_dir = os.path.join(self.work_dir, 
-                                        '{}_{}'.format(self.basefn,
-                                                       self.timestamp_str))
-        os.makedirs(self.scratch_dir)
-
         # Open log file
         if self.enable_log:
             fn_log = '{}_{}.log'.format(self.basefn, self.timestamp_str)
@@ -663,6 +632,9 @@ class SolveProcess:
         else:
             self.log = SolveProcessLog(None)
 
+        # Get process_id from the database
+        self.db_process_start()
+
         # Open database connection for logs
         if self.enable_db_log:
             platedb = PlateDB()
@@ -670,28 +642,39 @@ class SolveProcess:
                                     user=self.output_db_user,
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
-            scan_id, plate_id = platedb.get_scan_id(self.filename, 
-                                                    self.archive_id)
             self.log.platedb = platedb
             self.log.archive_id = self.archive_id
-            self.log.plate_id = plate_id
-            self.log.scan_id = scan_id
-            self.log.write_process_start(filename=self.filename, 
-                                         use_psf=self.use_psf)
+            self.log.plate_id = self.plate_id
+            self.log.scan_id = self.scan_id
+            self.log.process_id = self.process_id
             self.log.to_db(3, 'Setting up plate solve process', event=10)
 
         self.log.write('Using PyPlate v{}'.format(__version__), 
                        level=4, event=10)
 
+        # Check if FITS file exists
+        if not os.path.exists(self.fn_fits):
+            self.log.write('FITS file does not exist: {}'.format(self.fn_fits), 
+                           level=1, event=11)
+            return
+
         # Read FITS header
         if not self.plate_header:
-            self.plate_header = fits.getheader(self.fn_fits)
+            try:
+                self.plate_header = fits.getheader(self.fn_fits)
+            except IOError:
+                self.log.write('Cannot read FITS file {}'.format(self.fn_fits), 
+                               level=1, event=11)
+                return
 
         self.imwidth = self.plate_header['NAXIS1']
         self.imheight = self.plate_header['NAXIS2']
 
         # Look for observation date in the FITS header.
-        if 'DATEORIG' in self.plate_header:
+        if ('YEAR' in self.plate_header and 
+            isinstance(self.plate_header['YEAR'], float)):
+            self.plate_epoch = self.plate_header['YEAR']
+        elif 'DATEORIG' in self.plate_header:
             self.plate_year = int(self.plate_header['DATEORIG'].split('-')[0])
             self.plate_epoch = float(self.plate_year) + 0.5
         elif 'DATE-OBS' in self.plate_header:
@@ -699,6 +682,12 @@ class SolveProcess:
             self.plate_epoch = float(self.plate_year) + 0.5
 
         self.plate_year = int(self.plate_epoch)
+
+        # Create scratch directory
+        self.scratch_dir = os.path.join(self.work_dir, 
+                                        '{}_{}'.format(self.basefn,
+                                                       self.timestamp_str))
+        os.makedirs(self.scratch_dir)
 
     def finish(self):
         """
@@ -720,15 +709,93 @@ class SolveProcess:
         if self.scratch_dir:
             shutil.rmtree(self.scratch_dir)
 
+        # Write process end to the database
+        self.db_process_end(completed=1)
+
         # Close database connection used for logging
         if self.log.platedb is not None:
             self.log.to_db(3, 'Finish plate solve process', event=99)
-            duration = (dt.datetime.now()-self.timestamp).seconds
-            self.log.write_process_end(completed=1, duration=duration)
             self.log.platedb.close_connection()
 
         # Close log file
         self.log.close()
+
+    def db_process_start(self):
+        """
+        Write process start to the database.
+
+        """
+
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+        self.scan_id, self.plate_id = platedb.get_scan_id(self.filename, 
+                                                          self.archive_id)
+        pid = platedb.write_process_start(scan_id=self.scan_id,
+                                          plate_id=self.plate_id,
+                                          archive_id=self.archive_id,
+                                          filename=self.filename, 
+                                          use_psf=self.use_psf)
+        self.process_id = pid
+
+        plate_epoch = platedb.get_plate_epoch(self.plate_id)
+
+        if plate_epoch:
+            self.plate_epoch = plate_epoch
+            self.plate_year = int(plate_epoch)
+
+        platedb.close_connection()
+
+    def db_update_process(self, num_sources=None, num_ucac4=None, 
+                          num_tycho2=None, solved=None):
+        """
+        Update process in the database.
+
+        Parameters
+        ----------
+        num_sources : int
+            Number of extracted sources
+        solved : int
+            A boolean value specifying whether plate was solved successfully
+            with Astrometry.net
+
+        """
+
+        if self.process_id is not None:
+            platedb = PlateDB()
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+            platedb.update_process(self.process_id, num_sources=num_sources, 
+                                   num_ucac4=num_ucac4, num_tycho2=num_tycho2,
+                                   solved=solved)
+            platedb.close_connection()
+
+    def db_process_end(self, completed=None):
+        """
+        Write process end to the database.
+
+        Parameters
+        ----------
+        completed : int
+            A boolean value specifying whether the process was completed
+
+        """
+
+        if self.process_id is not None:
+            platedb = PlateDB()
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+            duration = (dt.datetime.now()-self.timestamp).seconds
+            platedb.write_process_end(self.process_id, 
+                                      completed=completed, 
+                                      duration=duration)
+            platedb.close_connection()
 
     def invert_plate(self):
         """
@@ -1026,7 +1093,7 @@ class SolveProcess:
         # Read the SExtractor output catalog
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
         self.num_sources = len(xycat[1].data)
-        self.log.update_process(num_sources=self.num_sources)
+        self.db_update_process(num_sources=self.num_sources)
 
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
@@ -1044,8 +1111,16 @@ class SolveProcess:
         self.sources['y_sphere'] = np.nan
         self.sources['z_sphere'] = np.nan
         self.sources['healpix256'] = -1
+        self.sources['ucac4_ra'] = np.nan
+        self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
         self.sources['ucac4_vmag'] = np.nan
+        self.sources['ucac4_dist'] = np.nan
+        self.sources['tycho2_ra'] = np.nan
+        self.sources['tycho2_dec'] = np.nan
+        self.sources['tycho2_btmag'] = np.nan
+        self.sources['tycho2_vtmag'] = np.nan
+        self.sources['tycho2_dist'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -1390,12 +1465,15 @@ class SolveProcess:
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
             self.log.write('Astrometry solved', level=3, event=41)
-            self.log.update_process(solved=1)
+            self.db_update_process(solved=1)
         else:
             self.log.write('Could not solve astrometry for the plate', 
                            level=2, event=40)
-            self.log.update_process(solved=0)
+            self.db_update_process(solved=0)
             return
+
+        self.log.write('Calculating plate-solution related parameters', 
+                       level=3, event=42)
 
         # Read the .wcs file and calculate star density
         self.wcshead = fits.getheader(fn_wcs)
@@ -1403,6 +1481,8 @@ class SolveProcess:
         self.wcshead.set('NAXIS1', self.imwidth, after='NAXIS')
         self.wcshead.set('NAXIS2', self.imheight, after='NAXIS1')
         self.wcs_plate = wcs.WCS(self.wcshead)
+        ra_deg = self.wcshead['CRVAL1']
+        dec_deg = self.wcshead['CRVAL2']
 
         pix_edge_midpoints = np.array([[1., (self.imheight+1.)/2.],
                                        [self.imwidth, (self.imheight+1.)/2.],
@@ -1436,12 +1516,31 @@ class SolveProcess:
         pixscale1 = imwidth_deg / self.imwidth * 3600.
         pixscale2 = imheight_deg / self.imheight * 3600.
         self.mean_pixscale = np.mean([pixscale1, pixscale2])
-        half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
-        self.ncp_in_plate = 90. - self.wcshead['CRVAL2'] <= half_diag
-        self.scp_in_plate = 90. + self.wcshead['CRVAL2'] <= half_diag
 
-        ra_angle = Angle(self.wcshead['CRVAL1'], units.deg)
-        dec_angle = Angle(self.wcshead['CRVAL2'], units.deg)
+        # Check if a celestial pole is nearby or on the plate
+        half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
+        self.ncp_close = 90. - dec_deg <= half_diag
+        self.scp_close = 90. + dec_deg <= half_diag
+        self.ncp_on_plate = False
+        self.scp_on_plate = False
+
+        if self.ncp_close:
+            ncp_pix = self.wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+
+            if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth 
+                and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
+                self.ncp_on_plate = True
+
+        if self.scp_close:
+            scp_pix = self.wcs_plate.wcs_world2pix([[ra_deg,-90.]], 1)
+
+            if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth 
+                and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
+                self.scp_on_plate = True
+
+        # Construct coordinate strings
+        ra_angle = Angle(ra_deg, units.deg)
+        dec_angle = Angle(dec_deg, units.deg)
 
         try:
             ra_str = ra_angle.to_string(unit=units.hour, sep=':', precision=1, 
@@ -1468,6 +1567,49 @@ class SolveProcess:
                                corners[2,0], corners[2,1],
                                corners[3,0], corners[3,1]))
 
+        # Calculate plate rotation angle
+        try:
+            cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
+
+            if dec_angle.deg > 89.:
+                cn = self.wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
+            else:
+                cn = self.wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
+
+            if ra_angle.deg > 359.:
+                ce = self.wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
+            else:
+                ce = self.wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
+
+            naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
+            eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
+
+            if naz < 0:
+                naz += 360.
+
+            if eaz < 0:
+                eaz += 360.
+
+            rotation_angle = naz
+            ne_angle = naz - eaz
+
+            if rotation_angle > 180:
+                rotation_angle -= 360.
+
+            if ne_angle < 0:
+                ne_angle += 360.
+
+            if ne_angle > 180:
+                plate_mirrored = True
+            else:
+                plate_mirrored = False
+        except Exception:
+            rotation_angle = None
+            plate_mirrored = None
+            self.log.write('Could not calculate plate rotation angle', 
+                           level=2, event=42)
+
+        # Prepare WCS header for output
         wcshead_strip = fits.Header()
 
         for c in self.wcshead.cards:
@@ -1475,14 +1617,22 @@ class SolveProcess:
                 wcshead_strip.append(c, bottom=True)
 
         self.solution = OrderedDict([
-            ('raj2000', self.wcshead['CRVAL1']),
-            ('dej2000', self.wcshead['CRVAL2']),
+            ('raj2000', ra_deg),
+            ('dej2000', dec_deg),
             ('raj2000_hms', ra_str),
             ('dej2000_dms', dec_str),
             ('fov1', imwidth_deg),
             ('fov2', imheight_deg),
             ('pixel_scale', self.mean_pixscale),
             ('source_density', self.stars_sqdeg),
+            ('cd1_1', self.wcshead['CD1_1']),
+            ('cd1_2', self.wcshead['CD1_2']),
+            ('cd2_1', self.wcshead['CD2_1']),
+            ('cd2_2', self.wcshead['CD2_2']),
+            ('rotation_angle', rotation_angle),
+            ('plate_mirrored', plate_mirrored),
+            ('ncp_on_plate', self.ncp_on_plate),
+            ('scp_on_plate', self.scp_on_plate),
             ('stc_box', stc_box),
             ('stc_polygon', stc_polygon),
             ('wcs', wcshead_strip)
@@ -1496,6 +1646,15 @@ class SolveProcess:
                        double_newline=False)
         self.log.write('The image has {:.0f} stars per square degree'
                        ''.format(self.stars_sqdeg))
+        self.log.write('Plate rotation angle: {}'.format(rotation_angle),
+                       double_newline=False)
+        self.log.write('Plate is mirrored: {}'.format(plate_mirrored),
+                       double_newline=False)
+        self.log.write('North Celestial Pole is on the plate: {}'
+                       ''.format(self.ncp_on_plate),
+                       double_newline=False)
+        self.log.write('South Celestial Pole is on the plate: {}'
+                       ''.format(self.scp_on_plate))
 
         # Convert x,y to RA/Dec with the global WCS solution
         pixcrd = np.column_stack((self.sources['x_source'], 
@@ -1503,6 +1662,11 @@ class SolveProcess:
         worldcrd = self.wcs_plate.all_pix2world(pixcrd, 1)
         self.sources['raj2000_wcs'] = worldcrd[:,0]
         self.sources['dej2000_wcs'] = worldcrd[:,1]
+
+        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
+        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
+        self.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
+        self.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
 
     def output_wcs_header(self):
         """
@@ -1545,12 +1709,12 @@ class SolveProcess:
                                 user=self.output_db_user,
                                 dbname=self.output_db_name,
                                 passwd=self.output_db_passwd)
-        scan_id, plate_id = platedb.get_scan_id(self.filename, self.archive_id)
 
-        if (scan_id is not None and plate_id is not None and 
-            self.archive_id is not None):
-            platedb.write_solution(self.solution, scan_id=scan_id, 
-                                   plate_id=plate_id, 
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            platedb.write_solution(self.solution, process_id=self.process_id,
+                                   scan_id=self.scan_id,
+                                   plate_id=self.plate_id,
                                    archive_id=self.archive_id)
             
         platedb.close_connection()
@@ -1637,12 +1801,6 @@ class SolveProcess:
             elif self.use_tycho2_fits:
                 astref_catalog = 'Tycho-2'
 
-            pixcorners = np.array([[1., 1.],
-                                   [self.imwidth, 1.],
-                                   [1., self.imheight],
-                                   [self.imwidth, self.imheight]])
-            corners = self.wcs_plate.all_pix2world(pixcorners, 1)
-        
             if astref_catalog == 'Tycho-2':
                 # Build custom SCAMP reference catalog from Tycho-2 FITS file
                 fn_tycho = os.path.join(self.tycho2_dir, 'tycho2_{:d}.fits'
@@ -1652,20 +1810,20 @@ class SolveProcess:
                 dec_tyc = tycho[1].data.field(1)
                 mag_tyc = tycho[1].data.field(2)
 
-                if self.ncp_in_plate:
-                    btyc = (dec_tyc > corners[:,1].min())
-                elif self.scp_in_plate:
-                    btyc = (dec_tyc < corners[:,1].max())
-                elif corners[:,0].max()-corners[:,0].min() > 180:
-                    btyc = (((ra_tyc < corners[:,0].min()) |
-                            (ra_tyc > corners[:,0].max())) &
-                            (dec_tyc > corners[:,1].min()) & 
-                            (dec_tyc < corners[:,1].max()))
+                if self.ncp_close:
+                    btyc = (dec_tyc > self.min_dec)
+                elif self.scp_close:
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra-self.min_ra > 180:
+                    btyc = (((ra_tyc < self.min_ra) |
+                            (ra_tyc > self.max_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
                 else:
-                    btyc = ((ra_tyc > corners[:,0].min()) & 
-                            (ra_tyc < corners[:,0].max()) &
-                            (dec_tyc > corners[:,1].min()) & 
-                            (dec_tyc < corners[:,1].max()))
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
 
                 indtyc = np.where(btyc)
                 numtyc = btyc.sum()
@@ -1705,20 +1863,20 @@ class SolveProcess:
                 sql2 = ' FROM ucac4'
                 sql2 += ' FORCE INDEX (idx_radecmag)'
 
-                if self.ncp_in_plate:
-                    sql2 += ' WHERE DEJ2000 > {}'.format(corners[:,1].min())
-                elif self.scp_in_plate:
-                    sql2 += ' WHERE DEJ2000 < {}'.format(corners[:,1].max())
-                elif corners[:,0].max()-corners[:,0].min() > 180:
+                if self.ncp_close:
+                    sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
+                elif self.scp_close:
+                    sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
+                elif self.max_ra-self.min_ra > 180:
                     sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
                              ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(corners[:,0].min(), corners[:,0].max(),
-                                       corners[:,1].min(), corners[:,1].max()))
+                             ''.format(self.min_ra, self.max_ra,
+                                       self.min_dec, self.max_dec))
                 else:
                     sql2 += (' WHERE RAJ2000 BETWEEN {} AND {}'
                              ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(corners[:,0].min(), corners[:,0].max(), 
-                                       corners[:,1].min(), corners[:,1].max()))
+                             ''.format(self.min_ra, self.max_ra, 
+                                       self.min_dec, self.max_dec))
 
                 sql3 = ''
 
@@ -1816,12 +1974,18 @@ class SolveProcess:
                        np.isfinite(self.sources['dej2000_sub']))
         num_finite = bool_finite.sum()
 
-        # Match sources with the UCAC4 catalogue
-        if num_finite > 0:
+        self.log.write('Cross-matching sources with the UCAC-4 catalogue', 
+                       level=3, event=53)
+
+        if num_finite == 0:
+            self.log.write('No sources with improved coordinates', 
+                           level=2, event=53)
+        else:
             ind_finite = np.where(bool_finite)[0]
             ra_finite = self.sources['raj2000_sub'][ind_finite]
             dec_finite = self.sources['dej2000_sub'][ind_finite]
 
+            # Match sources with the UCAC4 catalogue
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -1830,22 +1994,131 @@ class SolveProcess:
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
                 ind_plate = np.arange(ind_ucac.size)
-                indmask = ds2d < 5.*units.arcsec
+                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
+                matchdist = ds2d[indmask].to(units.arcsec).value
             elif have_pyspherematch:
-                ind_plate,ind_ucac,ds_ucac = \
+                ind_plate,ind_ucac,ds = \
                         spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
-                                    tol=5./3600., nnearest=1)
+                                    tol=float(self.crossmatch_radius)/3600., 
+                                    nnearest=1)
+                matchdist = ds * 3600.
 
             if have_match_coord or have_pyspherematch:
                 num_match = len(ind_plate)
+                self.db_update_process(num_ucac4=num_match)
 
                 if num_match > 0:
                     ind = ind_finite[ind_plate]
                     self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
+                    self.sources['ucac4_ra'][ind] = ra_ucac[ind_ucac]
+                    self.sources['ucac4_dec'][ind] = dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
+                    self.sources['ucac4_dist'][ind] = matchdist
+
+            # Match sources with the Tycho-2 catalogue
+            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
+                           level=3, event=54)
+            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+
+            try:
+                tycho2 = fits.open(fn_tycho2)
+                tycho2_available = True
+            except IOError:
+                tycho2_available = False
+
+            if tycho2_available:
+                ra_tyc = tycho2[1].data.field(0)
+                dec_tyc = tycho2[1].data.field(1)
+                pmra_tyc = tycho2[1].data.field(2)
+                pmdec_tyc = tycho2[1].data.field(3)
+                btmag_tyc = tycho2[1].data.field(4)
+                vtmag_tyc = tycho2[1].data.field(5)
+                ebtmag_tyc = tycho2[1].data.field(6)
+                evtmag_tyc = tycho2[1].data.field(7)
+                tyc1 = tycho2[1].data.field(8)
+                tyc2 = tycho2[1].data.field(9)
+                tyc3 = tycho2[1].data.field(10)
+                hip_tyc = tycho2[1].data.field(11)
+
+                # For stars that have proper motion data, calculate RA, Dec
+                # for the plate epoch
+                indpm = np.where(np.isfinite(pmra_tyc) & 
+                                  np.isfinite(pmdec_tyc))[0]
+                ra_tyc[indpm] = (ra_tyc[indpm] 
+                                 + (plate_epoch - 2000.) * pmra_tyc[indpm]
+                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
+                                 / 3600000.)
+                dec_tyc[indpm] = (dec_tyc[indpm] 
+                                  + (plate_epoch - 2000.) * pmdec_tyc[indpm]
+                                  / 3600000.)
+
+                if self.ncp_close:
+                    btyc = (dec_tyc > self.min_dec)
+                elif self.scp_close:
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra-self.min_ra > 180:
+                    btyc = (((ra_tyc < self.min_ra) |
+                            (ra_tyc > self.max_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+                else:
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+
+                indtyc = np.where(btyc)[0]
+                numtyc = btyc.sum()
+
+                ra_tyc = ra_tyc[indtyc] 
+                dec_tyc = dec_tyc[indtyc] 
+                btmag_tyc = btmag_tyc[indtyc]
+                vtmag_tyc = vtmag_tyc[indtyc]
+                ebtmag_tyc = ebtmag_tyc[indtyc]
+                evtmag_tyc = evtmag_tyc[indtyc]
+                id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
+                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
+                                   for i in indtyc])
+                hip_tyc = hip_tyc[indtyc]
+
+                self.log.write('Fetched {:d} entries from Tycho-2'
+                               ''.format(numtyc))
+
+                if have_match_coord:
+                    coords = ICRS(ra_finite, dec_finite, 
+                                  unit=(units.degree, units.degree))
+                    catalog = ICRS(ra_tyc, dec_tyc, 
+                                  unit=(units.degree, units.degree))
+                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
+                                                                nthneighbor=1)
+                    ind_plate = np.arange(ind_tyc.size)
+                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                    ind_plate = ind_plate[indmask]
+                    ind_tyc = ind_tyc[indmask]
+                    matchdist = ds2d[indmask].to(units.arcsec).value
+                elif have_pyspherematch:
+                    ind_plate,ind_tyc,ds = \
+                        spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
+                                    tol=float(self.crossmatch_radius)/3600., 
+                                    nnearest=1)
+                    matchdist = ds * 3600.
+
+                if have_match_coord or have_pyspherematch:
+                    num_match = len(ind_plate)
+                    self.db_update_process(num_tycho2=num_match)
+
+                    if num_match > 0:
+                        ind = ind_finite[ind_plate]
+                        self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
+                        self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
+                        self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
+                        self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
+                        self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
+                        self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
+                        self.sources['tycho2_dist'][ind] = matchdist
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
@@ -2365,7 +2638,7 @@ class SolveProcess:
         # Create output directory, if missing
         if self.write_source_dir and not os.path.isdir(self.write_source_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4)
+                           .format(self.write_source_dir), level=4, event=62)
             os.makedirs(self.write_source_dir)
 
         if filename:
@@ -2392,14 +2665,18 @@ class SolveProcess:
                      'sextractor_flags', 
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
-                     'ucac4_id', 'ucac4_bmag', 'ucac4_vmag']
+                     'ucac4_id', 'ucac4_ra', 'ucac4_dec',
+                     'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
+                     'tycho2_id', 'tycho2_ra', 'tycho2_dec',
+                     'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist']
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
         #outhdr = ','.join(['"{}"'.format(f) for f in outfields])
         delimiter = ','
 
         # Output ascii file with refined coordinates
-        self.log.write('Writing output file {}'.format(fn_world), level=4)
+        self.log.write('Writing output file {}'.format(fn_world), level=4, 
+                       event=62)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
@@ -2417,12 +2694,11 @@ class SolveProcess:
                                 user=self.output_db_user,
                                 dbname=self.output_db_name,
                                 passwd=self.output_db_passwd)
-        scan_id, plate_id = platedb.get_scan_id(self.filename, self.archive_id)
 
-        if (scan_id is not None and plate_id is not None and 
-            self.archive_id is not None):
-            platedb.write_sources(self.sources, scan_id=scan_id, 
-                                  plate_id=plate_id, 
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            platedb.write_sources(self.sources, process_id=self.process_id,
+                                  scan_id=self.scan_id, plate_id=self.plate_id,
                                   archive_id=self.archive_id)
             
         platedb.close_connection()
