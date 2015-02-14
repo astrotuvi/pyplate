@@ -128,6 +128,15 @@ class PlateImagePipeline():
             if self.output_wcs_file:
                 proc.output_wcs_header()
 
+            if proc.solution is not None:
+                h.insert_wcs(proc.solution['wcs'])
+
+            if self.output_header_file:
+                h.output_to_file(fn_header)
+
+            if self.output_header_fits:
+                h.output_to_fits(fn)
+
             if self.solve_recursive:
                 proc.solve_recursive()
 
