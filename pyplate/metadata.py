@@ -13,7 +13,7 @@ import ephem
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from astropy.coordinates import Angle
 from astropy import units
 from collections import OrderedDict
@@ -54,6 +54,7 @@ _keyword_meta = OrderedDict([
     ('fits_maxval', (float, False, None, 'MAXVAL', None)),
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
     ('date_orig', (str, True, [], 'DATEORIG', 'DATEORn')),
+    ('date_orig_end', (str, True, [], None, None)),
     ('tms_orig', (str, True, [], 'TMS-ORIG', 'TMS-ORn')),
     ('tme_orig', (str, True, [], 'TME-ORIG', 'TME-ORn')),
     ('tz_orig', (str, False, None, None, None)),
@@ -1488,9 +1489,17 @@ class PlateMeta(OrderedDict):
                         ut_end_orig = self['ut_end_orig'][iexp]
 
                         if not ':' in ut_end_orig:
-                            ut_start_orig += ':00'
+                            ut_end_orig += ':00'
 
                         ut_end_isot = '{}T{}'.format(date_orig, ut_end_orig)
+
+                        # Check if end time is after midnight. If so, use next
+                        # date.
+                        if (self['ut_start_orig'] and 
+                            ut_end_orig < ut_start_orig):
+                            next_day = ut_end_isot + TimeDelta(1, format='jd')
+                            date_end = next_day.isot.split('T')[0]
+                            ut_end_isot = '{}T{}'.format(date_end, ut_end_orig)
 
                         # Make sure that ut_start_isot formatting is correct
                         if not '.' in ut_end_orig:
@@ -2219,6 +2228,8 @@ class PlateHeader(fits.Header):
             a = Angle(self['DEC'], units.degree)
             self.set('DEC_DEG', float('%.4f' % a.degrees))
 
+        self.set('DATE', dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
     def update_comments(self):
         """
         Add/modify keyword comments based on configuration.
@@ -2404,6 +2415,8 @@ class PlateHeader(fits.Header):
             self.add_history('WCS added with PyPlate v{} at {}'
                              .format(__version__, dt.datetime.utcnow()
                                      .strftime('%Y-%m-%dT%H:%M:%S')))
+            self.set('DATE', 
+                     dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
 
     def output_to_fits(self, filename):
         """

@@ -91,7 +91,7 @@ _schema['exposure'] = OrderedDict([
     ('dej2000_dms',      ('CHAR(11)', 'dec')),
     ('flag_wcs',         ('TINYINT UNSIGNED', None)),
     ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
-    ('date_orig_end',    ('VARCHAR(10)', None)),
+    ('date_orig_end',    ('VARCHAR(10)', 'date_orig_end')),
     ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
     ('time_orig_end',    ('VARCHAR(40)', 'tme_orig')),
     ('flag_time',        ('CHAR(1)', 'time_flag')),

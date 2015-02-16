@@ -243,10 +243,18 @@ class SolveProcessLog:
         """
 
         if self.enable:
+            log_dir = os.path.dirname(self.path)
+
+            try:
+                os.makedirs(log_dir)
+            except OSError:
+                if not os.path.isdir(log_dir):
+                    print ('Could not create directory {}'.format(log_dir))
+
             try:
                 self.handle = open(self.path, 'w', 1)
             except IOError:
-                print 'Cannot open log file {}'.format(self.path)
+                print 'Could not open log file {}'.format(self.path)
                 self.handle = sys.stdout
         else:
             self.handle = sys.stdout
@@ -663,7 +671,8 @@ class SolveProcess:
             try:
                 self.plate_header = fits.getheader(self.fn_fits)
             except IOError:
-                self.log.write('Cannot read FITS file {}'.format(self.fn_fits), 
+                self.log.write('Could not read FITS file {}'
+                               .format(self.fn_fits), 
                                level=1, event=11)
                 return
 
@@ -1272,7 +1281,7 @@ class SolveProcess:
                 try:
                     psfcat = fits.open(fn_psfcat)
                 except IOError:
-                    self.log.write('Cannot read PSF coordinates, file {} '
+                    self.log.write('Could not read PSF coordinates, file {} '
                                    'is corrupt'.format(fn_psfcat), 
                                    level=2, event=36)
                     psfcat = None
@@ -1325,8 +1334,9 @@ class SolveProcess:
                     self.sources[ind1]['errtheta_source'] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
             else:
-                self.log.write('Cannot read PSF coordinates, file {} does not '
-                               'exist!'.format(fn_psfcat), level=2, event=36)
+                self.log.write('Could not read PSF coordinates, '
+                               'file {} does not exist!'.format(fn_psfcat), 
+                               level=2, event=36)
 
         # Keep clean xy data for later use
         #self.xyclean = xycat[1].copy()
@@ -1675,17 +1685,17 @@ class SolveProcess:
         """
 
         if self.plate_solved:
-            self.log.write('Writing WCS header to a file', level=3, event=48)
+            self.log.write('Writing WCS header to a file', level=3, event=46)
 
             # Create output directory, if missing
             if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
                 self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir), level=4, event=48)
+                               ''.format(self.write_wcs_dir), level=4, event=46)
                 os.makedirs(self.write_wcs_dir)
 
             fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
             self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
-                           level=4, event=48)
+                           level=4, event=46)
             self.wcshead.tofile(fn_wcshead, clobber=True)
 
     def output_solution_db(self):
@@ -1695,11 +1705,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing astrometric solution to the database', 
-                       event=49)
+                       event=45)
 
         if self.solution is None:
             self.log.write('No plate solution to write to the database', 
-                           level=2, event=49)
+                           level=2, event=45)
             return
 
         self.log.write('Open database connection for writing to the '

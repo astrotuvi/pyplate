@@ -129,12 +129,18 @@ class PlateImagePipeline():
                 proc.output_wcs_header()
 
             if proc.solution is not None:
+                proc.log.write('Updating FITS header with the WCS', 
+                               level=3, event=47)
                 h.insert_wcs(proc.solution['wcs'])
 
             if self.output_header_file:
+                proc.log.write('Writing FITS header to a file', 
+                               level=3, event=48)
                 h.output_to_file(fn_header)
 
             if self.output_header_fits:
+                proc.log.write('Writing FITS header to the FITS file', 
+                               level=3, event=49)
                 h.output_to_fits(fn)
 
             if self.solve_recursive:
