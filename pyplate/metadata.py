@@ -1507,7 +1507,9 @@ class PlateMeta(OrderedDict):
                         # date.
                         if (self['ut_start_orig'] and 
                             ut_end_orig < ut_start_orig):
-                            next_day = ut_end_isot + TimeDelta(1, format='jd')
+                            next_day = (Time(ut_end_isot, format='isot', 
+                                             scale='ut1', precision=0) 
+                                        + TimeDelta(1, format='jd'))
                             date_end = next_day.isot.split('T')[0]
                             ut_end_isot = '{}T{}'.format(date_end, ut_end_orig)
 
