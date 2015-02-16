@@ -1353,12 +1353,22 @@ class PlateMeta(OrderedDict):
                     nkey = v[4].replace('n', str(i+1))
 
                     if nkey in header:
-                        self[k].append(header[nkey])
+                        val = header[nkey]
+
+                        if isinstance(val, fits.card.Undefined):
+                            val = None
+
+                        self[k].append(val)
             elif k == 'fits_history':
                 if 'HISTORY' in header:
                     self[k].extend(header['HISTORY'])
             elif v[3] and v[3] in header:
-                self[k] = header[v[3]]
+                val = header[v[3]]
+
+                if isinstance(val, fits.card.Undefined):
+                    val = None
+
+                self[k] = val
 
         if ('fits_bzero' in self and 'fits_bitpix' in self and 
             self['fits_bzero'] and self['fits_bitpix']):
