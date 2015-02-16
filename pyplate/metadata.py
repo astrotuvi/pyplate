@@ -13,7 +13,7 @@ import ephem
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from astropy.coordinates import Angle
 from astropy import units
 from collections import OrderedDict
@@ -54,6 +54,7 @@ _keyword_meta = OrderedDict([
     ('fits_maxval', (float, False, None, 'MAXVAL', None)),
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
     ('date_orig', (str, True, [], 'DATEORIG', 'DATEORn')),
+    ('date_orig_end', (str, True, [], None, None)),
     ('tms_orig', (str, True, [], 'TMS-ORIG', 'TMS-ORn')),
     ('tme_orig', (str, True, [], 'TME-ORIG', 'TME-ORn')),
     ('tz_orig', (str, False, None, None, None)),
@@ -1352,12 +1353,22 @@ class PlateMeta(OrderedDict):
                     nkey = v[4].replace('n', str(i+1))
 
                     if nkey in header:
-                        self[k].append(header[nkey])
+                        val = header[nkey]
+
+                        if isinstance(val, fits.card.Undefined):
+                            val = None
+
+                        self[k].append(val)
             elif k == 'fits_history':
                 if 'HISTORY' in header:
                     self[k].extend(header['HISTORY'])
             elif v[3] and v[3] in header:
-                self[k] = header[v[3]]
+                val = header[v[3]]
+
+                if isinstance(val, fits.card.Undefined):
+                    val = None
+
+                self[k] = val
 
         if ('fits_bzero' in self and 'fits_bitpix' in self and 
             self['fits_bzero'] and self['fits_bitpix']):
@@ -1488,9 +1499,19 @@ class PlateMeta(OrderedDict):
                         ut_end_orig = self['ut_end_orig'][iexp]
 
                         if not ':' in ut_end_orig:
-                            ut_start_orig += ':00'
+                            ut_end_orig += ':00'
 
                         ut_end_isot = '{}T{}'.format(date_orig, ut_end_orig)
+
+                        # Check if end time is after midnight. If so, use next
+                        # date.
+                        if (self['ut_start_orig'] and 
+                            ut_end_orig < ut_start_orig):
+                            next_day = (Time(ut_end_isot, format='isot', 
+                                             scale='ut1', precision=0) 
+                                        + TimeDelta(1, format='jd'))
+                            date_end = next_day.isot.split('T')[0]
+                            ut_end_isot = '{}T{}'.format(date_end, ut_end_orig)
 
                         # Make sure that ut_start_isot formatting is correct
                         if not '.' in ut_end_orig:
@@ -2219,6 +2240,8 @@ class PlateHeader(fits.Header):
             a = Angle(self['DEC'], units.degree)
             self.set('DEC_DEG', float('%.4f' % a.degrees))
 
+        self.set('DATE', dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
     def update_comments(self):
         """
         Add/modify keyword comments based on configuration.
@@ -2404,6 +2427,8 @@ class PlateHeader(fits.Header):
             self.add_history('WCS added with PyPlate v{} at {}'
                              .format(__version__, dt.datetime.utcnow()
                                      .strftime('%Y-%m-%dT%H:%M:%S')))
+            self.set('DATE', 
+                     dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
 
     def output_to_fits(self, filename):
         """
