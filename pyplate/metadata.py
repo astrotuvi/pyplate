@@ -660,8 +660,8 @@ class ArchiveMeta:
                 filename = os.path.join(self.fits_dir, filename)
 
             try:
-                header = fits.getheader(filename)
-            except:
+                header = fits.getheader(filename, ignore_missing_end=True)
+            except Exception:
                 print 'Error reading {}'.format(filename)
                 header = None
 
@@ -1535,7 +1535,7 @@ class PlateMeta(OrderedDict):
 
                     try:
                         exptime = self['exptime'][iexp]
-                    except:
+                    except Exception:
                         exptime = None
                         
                     if exptime and tms_orig:
