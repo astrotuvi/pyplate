@@ -669,7 +669,8 @@ class SolveProcess:
         # Read FITS header
         if not self.plate_header:
             try:
-                self.plate_header = fits.getheader(self.fn_fits)
+                self.plate_header = fits.getheader(self.fn_fits, 
+                                                   ignore_missing_end=True)
             except IOError:
                 self.log.write('Could not read FITS file {}'
                                .format(self.fn_fits), 
@@ -822,7 +823,8 @@ class SolveProcess:
         if not os.path.exists(fn_inverted):
             self.log.write('Inverting image', level=3, event=20)
 
-            fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True)
+            fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True, 
+                                 ignore_missing_end=True)
 
             invfits = fits.PrimaryHDU(-fitsfile[0].data)
             invfits.header = fitsfile[0].header.copy()

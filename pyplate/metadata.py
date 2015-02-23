@@ -2441,14 +2441,16 @@ class PlateHeader(fits.Header):
 
         if os.path.exists(fn_out):
             fitsfile = fits.open(fn_out, mode='update', 
-                                 do_not_scale_image_data=True)
+                                 do_not_scale_image_data=True, 
+                                 ignore_missing_end=True)
             fitsfile[0].header = self.copy()
             fitsfile.flush()
         else:
             if not os.path.exists(fn_fits):
                 print 'File does not exist: {}'.format(fn_fits)
 
-            fitsfile = fits.open(fn_fits, do_not_scale_image_data=True)
+            fitsfile = fits.open(fn_fits, do_not_scale_image_data=True, 
+                                 ignore_missing_end=True)
             fitsfile[0].header = self.copy()
 
             try:
