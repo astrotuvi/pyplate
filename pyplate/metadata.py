@@ -1331,6 +1331,10 @@ class PlateMeta(OrderedDict):
                         if key == 'numexp' and not val:
                             val = 1
 
+                        # Delete previous values for lists
+                        if isinstance(self[key], list):
+                            self[key] = []
+
                         try:
                             self[key].extend(val)
                         except TypeError:
