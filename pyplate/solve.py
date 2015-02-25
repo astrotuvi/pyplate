@@ -1689,8 +1689,8 @@ class SolveProcess:
             min_above180 = ra_all[np.where(ra_all>180)].min()
 
             if min_above180-max_below180 > 10:
-                self.min_ra = max_below180
-                self.max_ra = min_above180
+                self.min_ra = min_above180
+                self.max_ra = max_below180
 
     def output_wcs_header(self):
         """
