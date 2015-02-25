@@ -1392,13 +1392,16 @@ class SolveProcess:
 
         # Create another xy list for faster solving
         # Keep 1000 stars in brightness order, skip the brightest
+        # Use only sources from annular bins 1-6
 
         xycat = fits.HDUList()
         hdu = fits.PrimaryHDU()
         xycat.append(hdu)
 
-        indclean = np.where(self.sources['flag_clean'] == 1)[0]
-        indsort = np.argsort(self.sources[indclean]['mag_auto'])[skip_bright:skip_bright+1000]
+        indclean = np.where(self.sources['flag_clean'] == 1 & 
+                            self.sources['annular_bin'] <= 6)[0]
+        sb = skip_bright
+        indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+1000]
         indsel = indclean[indsort]
         nrows = len(indsel)
 
