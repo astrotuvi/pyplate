@@ -1398,8 +1398,8 @@ class SolveProcess:
         hdu = fits.PrimaryHDU()
         xycat.append(hdu)
 
-        indclean = np.where(self.sources['flag_clean'] == 1 & 
-                            self.sources['annular_bin'] <= 6)[0]
+        indclean = np.where((self.sources['flag_clean'] == 1) & 
+                            (self.sources['annular_bin'] <= 6))[0]
         sb = skip_bright
         indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+1000]
         indsel = indclean[indsort]
