@@ -1678,10 +1678,19 @@ class SolveProcess:
         self.sources['raj2000_wcs'] = worldcrd[:,0]
         self.sources['dej2000_wcs'] = worldcrd[:,1]
 
-        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
-        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
         self.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
         self.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
+        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
+        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
+
+        if self.max_ra-self.min_ra > 180:
+            ra_all = np.append(worldcrd[:,0], corners[:,0])
+            max_below180 = ra_all[np.where(ra_all<180)].max()
+            min_above180 = ra_all[np.where(ra_all>180)].min()
+
+            if min_above180-max_below180 > 10:
+                self.min_ra = max_below180
+                self.max_ra = min_above180
 
     def output_wcs_header(self):
         """
@@ -1829,9 +1838,9 @@ class SolveProcess:
                     btyc = (dec_tyc > self.min_dec)
                 elif self.scp_close:
                     btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra-self.min_ra > 180:
-                    btyc = (((ra_tyc < self.min_ra) |
-                            (ra_tyc > self.max_ra)) &
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
                             (dec_tyc > self.min_dec) & 
                             (dec_tyc < self.max_dec))
                 else:
@@ -1882,10 +1891,10 @@ class SolveProcess:
                     sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
                 elif self.scp_close:
                     sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
-                elif self.max_ra-self.min_ra > 180:
+                elif self.max_ra < self.min_ra:
                     sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
                              ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(self.min_ra, self.max_ra,
+                             ''.format(self.max_ra, self.min_ra,
                                        self.min_dec, self.max_dec))
                 else:
                     sql2 += (' WHERE RAJ2000 BETWEEN {} AND {}'
@@ -2074,9 +2083,9 @@ class SolveProcess:
                     btyc = (dec_tyc > self.min_dec)
                 elif self.scp_close:
                     btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra-self.min_ra > 180:
-                    btyc = (((ra_tyc < self.min_ra) |
-                            (ra_tyc > self.max_ra)) &
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
                             (dec_tyc > self.min_dec) & 
                             (dec_tyc < self.max_dec))
                 else:
