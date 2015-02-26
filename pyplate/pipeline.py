@@ -4,6 +4,7 @@ from solve import SolveProcess
 from database import PlateDB
 import multiprocessing as mp
 import time
+import ConfigParser
 
 
 class PlateImagePipeline():

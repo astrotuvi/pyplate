@@ -1,6 +1,7 @@
 import os
 import glob
 import numpy as np
+import ConfigParser
 from datetime import datetime
 from astropy.io import fits
 from .conf import read_conf

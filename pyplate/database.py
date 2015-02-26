@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import ConfigParser
 from collections import OrderedDict
 from .conf import read_conf
 from ._version import __version__

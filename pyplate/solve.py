@@ -669,7 +669,8 @@ class SolveProcess:
         # Read FITS header
         if not self.plate_header:
             try:
-                self.plate_header = fits.getheader(self.fn_fits)
+                self.plate_header = fits.getheader(self.fn_fits, 
+                                                   ignore_missing_end=True)
             except IOError:
                 self.log.write('Could not read FITS file {}'
                                .format(self.fn_fits), 
@@ -822,7 +823,8 @@ class SolveProcess:
         if not os.path.exists(fn_inverted):
             self.log.write('Inverting image', level=3, event=20)
 
-            fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True)
+            fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True, 
+                                 ignore_missing_end=True)
 
             invfits = fits.PrimaryHDU(-fitsfile[0].data)
             invfits.header = fitsfile[0].header.copy()
@@ -1390,13 +1392,16 @@ class SolveProcess:
 
         # Create another xy list for faster solving
         # Keep 1000 stars in brightness order, skip the brightest
+        # Use only sources from annular bins 1-6
 
         xycat = fits.HDUList()
         hdu = fits.PrimaryHDU()
         xycat.append(hdu)
 
-        indclean = np.where(self.sources['flag_clean'] == 1)[0]
-        indsort = np.argsort(self.sources[indclean]['mag_auto'])[skip_bright:skip_bright+1000]
+        indclean = np.where((self.sources['flag_clean'] == 1) & 
+                            (self.sources['annular_bin'] <= 6))[0]
+        sb = skip_bright
+        indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+1000]
         indsel = indclean[indsort]
         nrows = len(indsel)
 
@@ -1673,10 +1678,19 @@ class SolveProcess:
         self.sources['raj2000_wcs'] = worldcrd[:,0]
         self.sources['dej2000_wcs'] = worldcrd[:,1]
 
-        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
-        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
         self.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
         self.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
+        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
+        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
+
+        if self.max_ra-self.min_ra > 180:
+            ra_all = np.append(worldcrd[:,0], corners[:,0])
+            max_below180 = ra_all[np.where(ra_all<180)].max()
+            min_above180 = ra_all[np.where(ra_all>180)].min()
+
+            if min_above180-max_below180 > 10:
+                self.min_ra = min_above180
+                self.max_ra = max_below180
 
     def output_wcs_header(self):
         """
@@ -1824,9 +1838,9 @@ class SolveProcess:
                     btyc = (dec_tyc > self.min_dec)
                 elif self.scp_close:
                     btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra-self.min_ra > 180:
-                    btyc = (((ra_tyc < self.min_ra) |
-                            (ra_tyc > self.max_ra)) &
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
                             (dec_tyc > self.min_dec) & 
                             (dec_tyc < self.max_dec))
                 else:
@@ -1877,10 +1891,10 @@ class SolveProcess:
                     sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
                 elif self.scp_close:
                     sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
-                elif self.max_ra-self.min_ra > 180:
+                elif self.max_ra < self.min_ra:
                     sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
                              ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(self.min_ra, self.max_ra,
+                             ''.format(self.max_ra, self.min_ra,
                                        self.min_dec, self.max_dec))
                 else:
                     sql2 += (' WHERE RAJ2000 BETWEEN {} AND {}'
@@ -2069,9 +2083,9 @@ class SolveProcess:
                     btyc = (dec_tyc > self.min_dec)
                 elif self.scp_close:
                     btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra-self.min_ra > 180:
-                    btyc = (((ra_tyc < self.min_ra) |
-                            (ra_tyc > self.max_ra)) &
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
                             (dec_tyc > self.min_dec) & 
                             (dec_tyc < self.max_dec))
                 else:
