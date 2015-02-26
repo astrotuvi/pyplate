@@ -570,7 +570,10 @@ class SolveProcess:
         self.conf = conf
 
         try:
-            self.archive_id = conf.get('Archive', 'archive_id')
+            self.archive_id = conf.getint('Archive', 'archive_id')
+        except ValueError:
+            print ('Error in configuration file '
+                   '([{}], {})'.format('Archive', attr))
         except ConfigParser.Error:
             pass
 
@@ -589,22 +592,50 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['use_tycho2_fits', 'use_ucac4_db', 
-                     'ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
+        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'enable_db_log']:
+            try:
+                setattr(self, attr, conf.getboolean('Database', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Database', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
                      'ucac4_db_passwd', 'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd', 'enable_db_log']:
+                     'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except ConfigParser.Error:
                 pass
 
-        for attr in ['plate_epoch', 'threshold_sigma', 'use_psf', 
+        for attr in ['use_psf', 'circular_film']:
+            try:
+                setattr(self, attr, conf.getboolean('Solve', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Solve', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['plate_epoch', 'threshold_sigma', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
-                     'sip', 'skip_bright', 'max_recursion_depth', 
-                     'force_recursion_depth', 'circular_film',
                      'crossmatch_radius']:
             try:
-                setattr(self, attr, conf.get('Solve', attr))
+                setattr(self, attr, conf.getfloat('Solve', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Solve', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
+                     'force_recursion_depth']:
+            try:
+                setattr(self, attr, conf.getint('Solve', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Solve', attr))
             except ConfigParser.Error:
                 pass
 
