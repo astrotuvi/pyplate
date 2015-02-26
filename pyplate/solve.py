@@ -552,14 +552,18 @@ class SolveProcess:
         self.scp_on_plate = None
 
         self.sources = None
-        self.ra_ucac = None
-        self.dec_ucac = None
         self.scampref = None
         self.scampcat = None
         self.wcshead = None
         self.wcs_plate = None
         self.solution = None
 
+        self.ra_ucac = None
+        self.dec_ucac = None
+        self.id_ucac = None
+        self.bmag_ucac = None
+        self.vmag_ucac = None
+        
     def assign_conf(self, conf):
         """
         Parse configuration and set class attributes.
@@ -1959,9 +1963,9 @@ class SolveProcess:
                 self.dec_ucac = (res['f1'] + (plate_epoch - 2000.) * res['f7'] 
                                  / 3600000.)
 
-                id_ucac = res['f10']
-                bmag_ucac = res['f11']
-                vmag_ucac = res['f12']
+                self.id_ucac = res['f10']
+                self.bmag_ucac = res['f11']
+                self.vmag_ucac = res['f12']
 
                 self.scampref = new_scampref()
                 hduref = fits.new_table(self.scampref[2].columns, 
@@ -2580,11 +2584,11 @@ class SolveProcess:
 
                 if num_match > 0:
                     ind = ind_finite[ind_plate]
-                    self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
+                    self.sources['ucac4_id'][ind] = self.id_ucac[ind_ucac]
                     self.sources['ucac4_ra'][ind] = self.ra_ucac[ind_ucac]
                     self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
-                    self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
-                    self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
+                    self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
+                    self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
                     self.sources['ucac4_dist'][ind] = matchdist
 
             # Match sources with the Tycho-2 catalogue
