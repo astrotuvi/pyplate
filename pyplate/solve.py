@@ -558,6 +558,12 @@ class SolveProcess:
         self.wcs_plate = None
         self.solution = None
 
+        self.ra_ucac = None
+        self.dec_ucac = None
+        self.id_ucac = None
+        self.bmag_ucac = None
+        self.vmag_ucac = None
+        
     def assign_conf(self, conf):
         """
         Parse configuration and set class attributes.
@@ -570,7 +576,10 @@ class SolveProcess:
         self.conf = conf
 
         try:
-            self.archive_id = conf.get('Archive', 'archive_id')
+            self.archive_id = conf.getint('Archive', 'archive_id')
+        except ValueError:
+            print ('Error in configuration file '
+                   '([{}], {})'.format('Archive', attr))
         except ConfigParser.Error:
             pass
 
@@ -589,22 +598,50 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['use_tycho2_fits', 'use_ucac4_db', 
-                     'ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
+        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'enable_db_log']:
+            try:
+                setattr(self, attr, conf.getboolean('Database', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Database', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
                      'ucac4_db_passwd', 'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd', 'enable_db_log']:
+                     'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except ConfigParser.Error:
                 pass
 
-        for attr in ['plate_epoch', 'threshold_sigma', 'use_psf', 
+        for attr in ['use_psf', 'circular_film']:
+            try:
+                setattr(self, attr, conf.getboolean('Solve', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Solve', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['plate_epoch', 'threshold_sigma', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
-                     'sip', 'skip_bright', 'max_recursion_depth', 
-                     'force_recursion_depth', 'circular_film',
                      'crossmatch_radius']:
             try:
-                setattr(self, attr, conf.get('Solve', attr))
+                setattr(self, attr, conf.getfloat('Solve', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Solve', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
+                     'force_recursion_depth']:
+            try:
+                setattr(self, attr, conf.getint('Solve', attr))
+            except ValueError:
+                print ('Error in configuration file '
+                       '([{}], {})'.format('Solve', attr))
             except ConfigParser.Error:
                 pass
 
@@ -1376,6 +1413,8 @@ class SolveProcess:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
         else:
+            self.plate_epoch = plate_epoch
+            
             try:
                 plate_year = int(plate_epoch)
             except ValueError:
@@ -1777,6 +1816,8 @@ class SolveProcess:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
         else:
+            self.plate_epoch = plate_epoch
+            
             try:
                 plate_year = int(plate_epoch)
             except ValueError:
@@ -1921,20 +1962,20 @@ class SolveProcess:
                 db.commit()
                 db.close()
 
-                ra_ucac = (res['f0'] + (plate_epoch - 2000.) * res['f6'] / 
-                           np.cos(res['f1'] * np.pi / 180.) / 3600000.)
-                dec_ucac = (res['f1'] + (plate_epoch - 2000.) * res['f7'] / 
-                            3600000.)
+                self.ra_ucac = (res['f0'] + (plate_epoch - 2000.) * res['f6']
+                                / np.cos(res['f1'] * np.pi / 180.) / 3600000.)
+                self.dec_ucac = (res['f1'] + (plate_epoch - 2000.) * res['f7'] 
+                                 / 3600000.)
 
-                id_ucac = res['f10']
-                bmag_ucac = res['f11']
-                vmag_ucac = res['f12']
+                self.id_ucac = res['f10']
+                self.bmag_ucac = res['f11']
+                self.vmag_ucac = res['f12']
 
                 self.scampref = new_scampref()
                 hduref = fits.new_table(self.scampref[2].columns, 
                                         nrows=numrows)
-                hduref.data.field('X_WORLD')[:] = ra_ucac
-                hduref.data.field('Y_WORLD')[:] = dec_ucac
+                hduref.data.field('X_WORLD')[:] = self.ra_ucac
+                hduref.data.field('Y_WORLD')[:] = self.dec_ucac
                 hduref.data.field('ERRA_WORLD')[:] = res['f2']
                 hduref.data.field('ERRB_WORLD')[:] = res['f3']
                 hduref.data.field('MAG')[:] = res['f4']
@@ -1993,156 +2034,6 @@ class SolveProcess:
         self.sources['raerr_sub'] = radec[:,2]
         self.sources['decerr_sub'] = radec[:,3]
         self.sources['gridsize_sub'] = gridsize
-
-        bool_finite = (np.isfinite(self.sources['raj2000_sub']) &
-                       np.isfinite(self.sources['dej2000_sub']))
-        num_finite = bool_finite.sum()
-
-        self.log.write('Cross-matching sources with the UCAC-4 catalogue', 
-                       level=3, event=53)
-
-        if num_finite == 0:
-            self.log.write('No sources with improved coordinates', 
-                           level=2, event=53)
-        else:
-            ind_finite = np.where(bool_finite)[0]
-            ra_finite = self.sources['raj2000_sub'][ind_finite]
-            dec_finite = self.sources['dej2000_sub'][ind_finite]
-
-            # Match sources with the UCAC4 catalogue
-            if have_match_coord:
-                coords = ICRS(ra_finite, dec_finite, 
-                              unit=(units.degree, units.degree))
-                catalog = ICRS(ra_ucac, dec_ucac, 
-                              unit=(units.degree, units.degree))
-                ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                             nthneighbor=1)
-                ind_plate = np.arange(ind_ucac.size)
-                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                ind_plate = ind_plate[indmask]
-                ind_ucac = ind_ucac[indmask]
-                matchdist = ds2d[indmask].to(units.arcsec).value
-            elif have_pyspherematch:
-                ind_plate,ind_ucac,ds = \
-                        spherematch(ra_finite, dec_finite, ra_ucac, dec_ucac,
-                                    tol=float(self.crossmatch_radius)/3600., 
-                                    nnearest=1)
-                matchdist = ds * 3600.
-
-            if have_match_coord or have_pyspherematch:
-                num_match = len(ind_plate)
-                self.db_update_process(num_ucac4=num_match)
-
-                if num_match > 0:
-                    ind = ind_finite[ind_plate]
-                    self.sources['ucac4_id'][ind] = id_ucac[ind_ucac]
-                    self.sources['ucac4_ra'][ind] = ra_ucac[ind_ucac]
-                    self.sources['ucac4_dec'][ind] = dec_ucac[ind_ucac]
-                    self.sources['ucac4_bmag'][ind] = bmag_ucac[ind_ucac]
-                    self.sources['ucac4_vmag'][ind] = vmag_ucac[ind_ucac]
-                    self.sources['ucac4_dist'][ind] = matchdist
-
-            # Match sources with the Tycho-2 catalogue
-            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
-                           level=3, event=54)
-            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
-
-            try:
-                tycho2 = fits.open(fn_tycho2)
-                tycho2_available = True
-            except IOError:
-                tycho2_available = False
-
-            if tycho2_available:
-                ra_tyc = tycho2[1].data.field(0)
-                dec_tyc = tycho2[1].data.field(1)
-                pmra_tyc = tycho2[1].data.field(2)
-                pmdec_tyc = tycho2[1].data.field(3)
-                btmag_tyc = tycho2[1].data.field(4)
-                vtmag_tyc = tycho2[1].data.field(5)
-                ebtmag_tyc = tycho2[1].data.field(6)
-                evtmag_tyc = tycho2[1].data.field(7)
-                tyc1 = tycho2[1].data.field(8)
-                tyc2 = tycho2[1].data.field(9)
-                tyc3 = tycho2[1].data.field(10)
-                hip_tyc = tycho2[1].data.field(11)
-
-                # For stars that have proper motion data, calculate RA, Dec
-                # for the plate epoch
-                indpm = np.where(np.isfinite(pmra_tyc) & 
-                                  np.isfinite(pmdec_tyc))[0]
-                ra_tyc[indpm] = (ra_tyc[indpm] 
-                                 + (plate_epoch - 2000.) * pmra_tyc[indpm]
-                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
-                                 / 3600000.)
-                dec_tyc[indpm] = (dec_tyc[indpm] 
-                                  + (plate_epoch - 2000.) * pmdec_tyc[indpm]
-                                  / 3600000.)
-
-                if self.ncp_close:
-                    btyc = (dec_tyc > self.min_dec)
-                elif self.scp_close:
-                    btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra < self.min_ra:
-                    btyc = (((ra_tyc < self.max_ra) |
-                            (ra_tyc > self.min_ra)) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
-                else:
-                    btyc = ((ra_tyc > self.min_ra) & 
-                            (ra_tyc < self.max_ra) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
-
-                indtyc = np.where(btyc)[0]
-                numtyc = btyc.sum()
-
-                ra_tyc = ra_tyc[indtyc] 
-                dec_tyc = dec_tyc[indtyc] 
-                btmag_tyc = btmag_tyc[indtyc]
-                vtmag_tyc = vtmag_tyc[indtyc]
-                ebtmag_tyc = ebtmag_tyc[indtyc]
-                evtmag_tyc = evtmag_tyc[indtyc]
-                id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
-                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
-                                   for i in indtyc])
-                hip_tyc = hip_tyc[indtyc]
-
-                self.log.write('Fetched {:d} entries from Tycho-2'
-                               ''.format(numtyc))
-
-                if have_match_coord:
-                    coords = ICRS(ra_finite, dec_finite, 
-                                  unit=(units.degree, units.degree))
-                    catalog = ICRS(ra_tyc, dec_tyc, 
-                                  unit=(units.degree, units.degree))
-                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
-                                                                nthneighbor=1)
-                    ind_plate = np.arange(ind_tyc.size)
-                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                    ind_plate = ind_plate[indmask]
-                    ind_tyc = ind_tyc[indmask]
-                    matchdist = ds2d[indmask].to(units.arcsec).value
-                elif have_pyspherematch:
-                    ind_plate,ind_tyc,ds = \
-                        spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
-                                    tol=float(self.crossmatch_radius)/3600., 
-                                    nnearest=1)
-                    matchdist = ds * 3600.
-
-                if have_match_coord or have_pyspherematch:
-                    num_match = len(ind_plate)
-                    self.db_update_process(num_tycho2=num_match)
-
-                    if num_match > 0:
-                        ind = ind_finite[ind_plate]
-                        self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
-                        self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
-                        self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
-                        self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
-                        self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
-                        self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
-                        self.sources['tycho2_dist'][ind] = matchdist
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
@@ -2651,18 +2542,174 @@ class SolveProcess:
                 hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
                 self.sources['healpix256'][ind] = hp256
 
+        # Cross-match source coordinates with the UCAC4 and Tycho-2 catalogues
+
+        bool_finite = (np.isfinite(self.sources['raj2000']) &
+                       np.isfinite(self.sources['dej2000']))
+        num_finite = bool_finite.sum()
+
+        self.log.write('Cross-matching sources with the UCAC4 catalogue', 
+                       level=3, event=61)
+
+        if num_finite == 0:
+            self.log.write('No sources with usable coordinates', 
+                           level=2, event=61)
+        elif self.ra_ucac is None or self.dec_ucac is None:
+            self.log.write('Missing UCAC4 data', level=2, event=61)
+        else:
+            ind_finite = np.where(bool_finite)[0]
+            ra_finite = self.sources['raj2000'][ind_finite]
+            dec_finite = self.sources['dej2000'][ind_finite]
+
+            # Match sources with the UCAC4 catalogue
+            if have_match_coord:
+                coords = ICRS(ra_finite, dec_finite, 
+                              unit=(units.degree, units.degree))
+                catalog = ICRS(self.ra_ucac, self.dec_ucac, 
+                               unit=(units.degree, units.degree))
+                ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
+                                                             nthneighbor=1)
+                ind_plate = np.arange(ind_ucac.size)
+                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                ind_plate = ind_plate[indmask]
+                ind_ucac = ind_ucac[indmask]
+                matchdist = ds2d[indmask].to(units.arcsec).value
+            elif have_pyspherematch:
+                ind_plate,ind_ucac,ds = \
+                        spherematch(ra_finite, dec_finite, 
+                                    self.ra_ucac, self.dec_ucac,
+                                    tol=float(self.crossmatch_radius)/3600., 
+                                    nnearest=1)
+                matchdist = ds * 3600.
+
+            if have_match_coord or have_pyspherematch:
+                num_match = len(ind_plate)
+                self.db_update_process(num_ucac4=num_match)
+
+                if num_match > 0:
+                    ind = ind_finite[ind_plate]
+                    self.sources['ucac4_id'][ind] = self.id_ucac[ind_ucac]
+                    self.sources['ucac4_ra'][ind] = self.ra_ucac[ind_ucac]
+                    self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
+                    self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
+                    self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
+                    self.sources['ucac4_dist'][ind] = matchdist
+
+            # Match sources with the Tycho-2 catalogue
+            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
+                           level=3, event=62)
+            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+
+            try:
+                tycho2 = fits.open(fn_tycho2)
+                tycho2_available = True
+            except IOError:
+                self.log.write('Missing Tycho-2 data', level=2, event=62)
+                tycho2_available = False
+
+            if tycho2_available:
+                ra_tyc = tycho2[1].data.field(0)
+                dec_tyc = tycho2[1].data.field(1)
+                pmra_tyc = tycho2[1].data.field(2)
+                pmdec_tyc = tycho2[1].data.field(3)
+                btmag_tyc = tycho2[1].data.field(4)
+                vtmag_tyc = tycho2[1].data.field(5)
+                ebtmag_tyc = tycho2[1].data.field(6)
+                evtmag_tyc = tycho2[1].data.field(7)
+                tyc1 = tycho2[1].data.field(8)
+                tyc2 = tycho2[1].data.field(9)
+                tyc3 = tycho2[1].data.field(10)
+                hip_tyc = tycho2[1].data.field(11)
+
+                # For stars that have proper motion data, calculate RA, Dec
+                # for the plate epoch
+                indpm = np.where(np.isfinite(pmra_tyc) & 
+                                  np.isfinite(pmdec_tyc))[0]
+                ra_tyc[indpm] = (ra_tyc[indpm] 
+                                 + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
+                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
+                                 / 3600000.)
+                dec_tyc[indpm] = (dec_tyc[indpm] 
+                                  + (self.plate_epoch - 2000.) 
+                                  * pmdec_tyc[indpm] / 3600000.)
+
+                if self.ncp_close:
+                    btyc = (dec_tyc > self.min_dec)
+                elif self.scp_close:
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+                else:
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+
+                indtyc = np.where(btyc)[0]
+                numtyc = btyc.sum()
+
+                ra_tyc = ra_tyc[indtyc] 
+                dec_tyc = dec_tyc[indtyc] 
+                btmag_tyc = btmag_tyc[indtyc]
+                vtmag_tyc = vtmag_tyc[indtyc]
+                ebtmag_tyc = ebtmag_tyc[indtyc]
+                evtmag_tyc = evtmag_tyc[indtyc]
+                id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
+                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
+                                   for i in indtyc])
+                hip_tyc = hip_tyc[indtyc]
+
+                self.log.write('Fetched {:d} entries from Tycho-2'
+                               ''.format(numtyc))
+
+                if have_match_coord:
+                    coords = ICRS(ra_finite, dec_finite, 
+                                  unit=(units.degree, units.degree))
+                    catalog = ICRS(ra_tyc, dec_tyc, 
+                                  unit=(units.degree, units.degree))
+                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
+                                                                nthneighbor=1)
+                    ind_plate = np.arange(ind_tyc.size)
+                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                    ind_plate = ind_plate[indmask]
+                    ind_tyc = ind_tyc[indmask]
+                    matchdist = ds2d[indmask].to(units.arcsec).value
+                elif have_pyspherematch:
+                    ind_plate,ind_tyc,ds = \
+                        spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
+                                    tol=float(self.crossmatch_radius)/3600., 
+                                    nnearest=1)
+                    matchdist = ds * 3600.
+
+                if have_match_coord or have_pyspherematch:
+                    num_match = len(ind_plate)
+                    self.db_update_process(num_tycho2=num_match)
+
+                    if num_match > 0:
+                        ind = ind_finite[ind_plate]
+                        self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
+                        self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
+                        self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
+                        self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
+                        self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
+                        self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
+                        self.sources['tycho2_dist'][ind] = matchdist
+
     def output_sources_csv(self, filename=None):
         """
         Write source list with calibrated RA and Dec to an ASCII file.
 
         """
 
-        self.log.to_db(3, 'Writing sources to a file', event=62)
+        self.log.to_db(3, 'Writing sources to a file', event=64)
 
         # Create output directory, if missing
         if self.write_source_dir and not os.path.isdir(self.write_source_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4, event=62)
+                           .format(self.write_source_dir), level=4, event=64)
             os.makedirs(self.write_source_dir)
 
         if filename:
@@ -2700,7 +2747,7 @@ class SolveProcess:
 
         # Output ascii file with refined coordinates
         self.log.write('Writing output file {}'.format(fn_world), level=4, 
-                       event=62)
+                       event=64)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
@@ -2710,7 +2757,7 @@ class SolveProcess:
 
         """
 
-        self.log.to_db(3, 'Writing sources to the database', event=61)
+        self.log.to_db(3, 'Writing sources to the database', event=63)
         self.log.write('Open database connection for writing to the '
                        'source and source_calib tables.')
         platedb = PlateDB()
