@@ -1413,6 +1413,8 @@ class SolveProcess:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
         else:
+            self.plate_epoch = plate_epoch
+            
             try:
                 plate_year = int(plate_epoch)
             except ValueError:
@@ -1814,6 +1816,8 @@ class SolveProcess:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
         else:
+            self.plate_epoch = plate_epoch
+            
             try:
                 plate_year = int(plate_epoch)
             except ValueError:
@@ -2622,12 +2626,12 @@ class SolveProcess:
                 indpm = np.where(np.isfinite(pmra_tyc) & 
                                   np.isfinite(pmdec_tyc))[0]
                 ra_tyc[indpm] = (ra_tyc[indpm] 
-                                 + (plate_epoch - 2000.) * pmra_tyc[indpm]
+                                 + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
                                  / np.cos(dec_tyc[indpm] * np.pi / 180.) 
                                  / 3600000.)
                 dec_tyc[indpm] = (dec_tyc[indpm] 
-                                  + (plate_epoch - 2000.) * pmdec_tyc[indpm]
-                                  / 3600000.)
+                                  + (self.plate_epoch - 2000.) 
+                                  * pmdec_tyc[indpm] / 3600000.)
 
                 if self.ncp_close:
                     btyc = (dec_tyc > self.min_dec)
