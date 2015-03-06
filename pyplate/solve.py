@@ -8,6 +8,7 @@ import subprocess as sp
 import numpy as np
 import ConfigParser
 import warnings
+import xml.etree.ElementTree as ET
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
@@ -796,8 +797,8 @@ class SolveProcess:
 
         platedb.close_connection()
 
-    def db_update_process(self, num_sources=None, num_ucac4=None, 
-                          num_tycho2=None, solved=None):
+    def db_update_process(self, sky=None, sky_sigma=None, num_sources=None, 
+                          num_ucac4=None, num_tycho2=None, solved=None):
         """
         Update process in the database.
 
@@ -817,7 +818,9 @@ class SolveProcess:
                                     user=self.output_db_user,
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
-            platedb.update_process(self.process_id, num_sources=num_sources, 
+            platedb.update_process(self.process_id, sky=sky, 
+                                   sky_sigma=sky_sigma,
+                                   num_sources=num_sources, 
                                    num_ucac4=num_ucac4, num_tycho2=num_tycho2,
                                    solved=solved)
             platedb.close_connection()
@@ -915,6 +918,63 @@ class SolveProcess:
             circular_film = self.circular_film
 
         self.log.write('Extracting sources from image', level=3, event=30)
+        self.log.write('Running SExtractor to get sky value', level=3, 
+                       event=301)
+
+        # Create parameter file
+        fn_sex_param = self.basefn + '_sextractor.param'
+        fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 
+                     'w')
+        fconf.write('NUMBER')
+        fconf.close()
+
+        # Create configuration file
+        cnf = 'DETECT_THRESH    {:f}\n'.format(60000)
+        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(60000)
+        cnf += 'THRESH_TYPE      ABSOLUTE\n'
+        cnf += 'FILTER           N\n'
+        cnf += 'SATUR_LEVEL      65000.0\n'
+        cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+        cnf += 'MAG_ZEROPOINT    25.0\n'
+        cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+        cnf += 'CATALOG_TYPE     FITS_1.0\n'
+        cnf += 'CATALOG_NAME     {}_sky.cat\n'.format(self.basefn)
+        cnf += 'WRITE_XML        Y\n'
+        cnf += 'XML_NAME         sex.xml\n'
+
+        fn_sex_conf = self.basefn + '_sextractor.conf'
+        self.log.write('Writing SExtractor configuration file {}'
+                       .format(fn_sex_conf), level=4, event=301)
+        self.log.write('SExtractor configuration file:\n{}'
+                       .format(cnf), level=5, event=301)
+        fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
+                     'w')
+        fconf.write(cnf)
+        fconf.close()
+
+        cmd = self.sextractor_path
+        cmd += ' %s_inverted.fits' % self.basefn
+        cmd += ' -c %s' % fn_sex_conf
+        self.log.write('Subprocess: {}'.format(cmd), 
+                       level=4, event=301)
+        sp.call(cmd, shell=True, stdout=self.log.handle, 
+                stderr=self.log.handle, cwd=self.scratch_dir)
+        self.log.write('', timestamp=False, double_newline=False)
+
+        tree = ET.parse('sex.xml')
+        root = tree.getroot()
+
+        if root[1][4][15][11].attrib['name'] == 'Background_Mean':
+            sky = float(root[1][4][15][19][0][0][8].text)
+            sky_sigma = float(root[1][4][15][19][0][0][9].text)
+            self.log.write('Sky: {:f}, sigma: {:f}'.format(sky, sky_sigma), 
+                       level=4, event=301)
+            self.db_update_process(sky=sky, sky_sigma=sky_sigma)
+
+        if sky < 2*sky_sigma:
+            use_fix_threshold = True
+            self.log.write('Sky value too low, using fixed thresholds', 
+                       level=4, event=301)
 
         if use_psf:
             # If PSFEx input file does not exist then run SExtractor
@@ -946,8 +1006,14 @@ class SolveProcess:
                     fconf.close()
 
                     # Create configuration file
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
+                    if use_fix_threshold:
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(20000)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(20000)
+                        cnf += 'THRESH_TYPE      ABSOLUTE\n'
+                    else:
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
+
                     cnf += 'FILTER           N\n'
                     cnf += 'SATUR_LEVEL      65000.0\n'
                     cnf += 'BACKPHOTO_TYPE   LOCAL\n'
@@ -1051,8 +1117,14 @@ class SolveProcess:
                 fconf.write('ERRTHETAPSF_IMAGE\n')
                 fconf.close()
 
-                cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
-                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
+                if use_fix_threshold:
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(20000)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(20000)
+                    cnf += 'THRESH_TYPE      ABSOLUTE\n'
+                else:
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
+
                 cnf += 'FILTER           N\n'
                 cnf += 'SATUR_LEVEL      65000.0\n'
                 cnf += 'BACKPHOTO_TYPE   LOCAL\n'
@@ -1118,8 +1190,14 @@ class SolveProcess:
             fconf.write('FLAGS')
             fconf.close()
 
-            cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
-            cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
+            if use_fix_threshold:
+                cnf = 'DETECT_THRESH    {:f}\n'.format(5000)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(5000)
+                cnf += 'THRESH_TYPE      ABSOLUTE\n'
+            else:
+                cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
+
             cnf += 'FILTER           N\n'
             cnf += 'SATUR_LEVEL      65000.0\n'
             cnf += 'BACKPHOTO_TYPE   LOCAL\n'
