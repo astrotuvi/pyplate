@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import ConfigParser
-import platform
+import socket
 from collections import OrderedDict
 from .conf import read_conf
 from ._version import __version__
@@ -855,7 +855,8 @@ class PlateDB:
         else:
             use_psf = 0
 
-        hostname = platform.node()
+        #hostname = platform.node()
+        hostname = socket.gethostname()
             
         val_tuple = (None, scan_id, plate_id, archive_id, filename, hostname, 
                      None, use_psf, __version__)

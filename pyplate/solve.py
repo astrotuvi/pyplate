@@ -961,7 +961,7 @@ class SolveProcess:
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
 
-        tree = ET.parse('sex.xml')
+        tree = ET.parse(os.path.join(self.scratch_dir, 'sex.xml'))
         root = tree.getroot()
 
         if root[1][4][15][11].attrib['name'] == 'Background_Mean':
