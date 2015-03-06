@@ -963,6 +963,7 @@ class SolveProcess:
 
         tree = ET.parse(os.path.join(self.scratch_dir, 'sex.xml'))
         root = tree.getroot()
+        use_fix_threshold = False
 
         if root[1][4][15][11].attrib['name'] == 'Background_Mean':
             sky = float(root[1][4][15][19][0][0][8].text)
@@ -971,10 +972,10 @@ class SolveProcess:
                        level=4, event=301)
             self.db_update_process(sky=sky, sky_sigma=sky_sigma)
 
-        if sky < 2*sky_sigma:
-            use_fix_threshold = True
-            self.log.write('Sky value too low, using fixed thresholds', 
-                       level=4, event=301)
+            if sky < 2*sky_sigma:
+                use_fix_threshold = True
+                self.log.write('Sky value too low, using fixed thresholds', 
+                               level=4, event=301)
 
         if use_psf:
             # If PSFEx input file does not exist then run SExtractor
