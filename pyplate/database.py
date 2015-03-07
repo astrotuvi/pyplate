@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import ConfigParser
+import socket
 from collections import OrderedDict
 from .conf import read_conf
 from ._version import __version__
@@ -380,9 +381,12 @@ _schema['process'] = OrderedDict([
     ('plate_id',         ('INT UNSIGNED', None)),
     ('archive_id',       ('INT UNSIGNED', None)),
     ('filename',         ('VARCHAR(80)', None)),
+    ('hostname',         ('VARCHAR(80)', None)),
     ('timestamp_start',  ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_end',    ('TIMESTAMP NULL', None)),
     ('duration',         ('INT UNSIGNED', None)),
+    ('sky',              ('FLOAT', None)),
+    ('sky_sigma',        ('FLOAT', None)),
     ('use_psf',          ('TINYINT(1)', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
@@ -843,16 +847,19 @@ class PlateDB:
         """
 
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id', 
-                    'filename', 'timestamp_start', 'use_psf', 
+                    'filename', 'hostname', 'timestamp_start', 'use_psf', 
                     'pyplate_version']
 
         if use_psf:
             use_psf = 1
         else:
             use_psf = 0
+
+        #hostname = platform.node()
+        hostname = socket.gethostname()
             
-        val_tuple = (None, scan_id, plate_id, archive_id, filename, None, 
-                     use_psf, __version__)
+        val_tuple = (None, scan_id, plate_id, archive_id, filename, hostname, 
+                     None, use_psf, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO process ({}) VALUES ({})'
@@ -866,19 +873,28 @@ class PlateDB:
 
         return process_id
 
-    def update_process(self, process_id, num_sources=None, num_ucac4=None, 
+    def update_process(self, process_id, sky=None, sky_sigma=None, 
+                       num_sources=None, num_ucac4=None, 
                        num_tycho2=None, solved=None):
         """
         Update plate-solve process in the database.
 
         """
 
-        if (num_sources is None and num_ucac4 is None and num_tycho2 is None 
-            and solved is None):
+        if (sky is None and sky_sigma is None and num_sources is None and 
+            num_ucac4 is None and num_tycho2 is None and solved is None):
             return
 
         col_list = []
         val_tuple = ()
+
+        if sky is not None:
+            col_list.append('sky=%s')
+            val_tuple = val_tuple + (sky, )
+
+        if sky_sigma is not None:
+            col_list.append('sky_sigma=%s')
+            val_tuple = val_tuple + (sky_sigma, )
 
         if num_sources is not None:
             col_list.append('num_sources=%s')

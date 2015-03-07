@@ -1,3 +1,5 @@
+# coding: iso-8859-15
+
 import os
 import glob
 import shutil
@@ -1968,6 +1970,11 @@ class PlateHeader(fits.Header):
         """
 
         if value or (valtype is int and value == 0):
+            if isinstance(value, str):
+                value = (value.replace('ä','ae').replace('Ä','AE')
+                         .replace('ö','oe').replace('Ö','OE')
+                         .replace('ü','ue').replace('Ü','UE'))
+
             self.set(key, value)
         elif not key in self:
             if valtype is str:
