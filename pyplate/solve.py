@@ -972,8 +972,11 @@ class SolveProcess:
                        level=4, event=31)
             self.db_update_process(sky=sky, sky_sigma=sky_sigma)
 
-            if sky < 2*sky_sigma:
+            if sky < 2*sky_sigma or sky < 100:
                 use_fix_threshold = True
+                psf_model_threshold = 20000
+                psf_threshold_adu = 20000
+                threshold_adu = 5000
                 self.log.write('Sky value too low, using fixed thresholds', 
                                level=4, event=31)
 
@@ -989,7 +992,7 @@ class SolveProcess:
                 while True:
                     if use_fix_threshold:
                         self.log.write('Using threshold {:d} ADU'
-                                       .format(20000), 
+                                       .format(psf_model_threshold), 
                                        level=4, event=32)
                     else:
                         self.log.write('Using threshold {:.1f}'
@@ -1014,8 +1017,8 @@ class SolveProcess:
 
                     # Create configuration file
                     if use_fix_threshold:
-                        cnf = 'DETECT_THRESH    {:d}\n'.format(20000)
-                        cnf += 'ANALYSIS_THRESH  {:d}\n'.format(20000)
+                        cnf = 'DETECT_THRESH    {:d}\n'.format(psf_model_threshold)
+                        cnf += 'ANALYSIS_THRESH  {:d}\n'.format(psf_model_threshold)
                         cnf += 'THRESH_TYPE      ABSOLUTE\n'
                     else:
                         cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
@@ -1057,7 +1060,8 @@ class SolveProcess:
                         break
 
                     # Repeat with higher threshold to get less sources
-                    psf_model_sigma *= 1.5
+                    psf_model_sigma *= 1.2
+                    psf_model_threshold *= 1.2
                     self.log.write('Too many PSF-model sources (max {:d}), '
                                    'repeating extraction with higher threshold'
                                    .format(self.max_model_sources), 
@@ -1112,7 +1116,8 @@ class SolveProcess:
                                level=3, event=34)
 
                 if use_fix_threshold:
-                    self.log.write('Using threshold {:d} ADU'.format(20000), 
+                    self.log.write('Using threshold {:d} ADU'
+                                   .format(psf_threshold_adu), 
                                    level=4, event=34)
                 else:
                     self.log.write('Using threshold {:.1f}'
@@ -1131,8 +1136,8 @@ class SolveProcess:
                 fconf.close()
 
                 if use_fix_threshold:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(20000)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(20000)
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_adu)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_adu)
                     cnf += 'THRESH_TYPE      ABSOLUTE\n'
                 else:
                     cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
@@ -1173,7 +1178,7 @@ class SolveProcess:
                            level=3, event=35)
 
             if use_fix_threshold:
-                self.log.write('Using threshold {:d} ADU'.format(5000), 
+                self.log.write('Using threshold {:d} ADU'.format(threshold_adu), 
                                level=4, event=35)
             else:
                 self.log.write('Using threshold {:.1f}'.format(threshold_sigma),
@@ -1209,8 +1214,8 @@ class SolveProcess:
             fconf.close()
 
             if use_fix_threshold:
-                cnf = 'DETECT_THRESH    {:f}\n'.format(5000)
-                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(5000)
+                cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_adu)
+                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_adu)
                 cnf += 'THRESH_TYPE      ABSOLUTE\n'
             else:
                 cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
