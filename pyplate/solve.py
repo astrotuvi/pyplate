@@ -797,8 +797,9 @@ class SolveProcess:
 
         platedb.close_connection()
 
-    def db_update_process(self, sky=None, sky_sigma=None, num_sources=None, 
-                          num_ucac4=None, num_tycho2=None, solved=None):
+    def db_update_process(self, sky=None, sky_sigma=None, threshold=None,
+                          num_sources=None, num_ucac4=None, num_tycho2=None, 
+                          solved=None):
         """
         Update process in the database.
 
@@ -820,6 +821,7 @@ class SolveProcess:
                                     passwd=self.output_db_passwd)
             platedb.update_process(self.process_id, sky=sky, 
                                    sky_sigma=sky_sigma,
+                                   threshold=threshold,
                                    num_sources=num_sources, 
                                    num_ucac4=num_ucac4, num_tycho2=num_tycho2,
                                    solved=solved)
@@ -1180,9 +1182,13 @@ class SolveProcess:
             if use_fix_threshold:
                 self.log.write('Using threshold {:d} ADU'.format(threshold_adu), 
                                level=4, event=35)
+                self.db_update_process(threshold=threshold_adu)
             else:
-                self.log.write('Using threshold {:.1f}'.format(threshold_sigma),
+                threshold_adu = sky_sigma * threshold_sigma
+                self.log.write('Using threshold {:.1f} ({:f} ADU)'
+                               .format(threshold_sigma, threshold_adu),
                                level=4, event=35)
+                self.db_update_process(threshold=threshold_adu)
 
             fn_sex_param = self.basefn + '_sextractor.param'
             fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')

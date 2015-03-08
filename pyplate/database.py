@@ -388,6 +388,7 @@ _schema['process'] = OrderedDict([
     ('sky',              ('FLOAT', None)),
     ('sky_sigma',        ('FLOAT', None)),
     ('use_psf',          ('TINYINT(1)', None)),
+    ('threshold',        ('FLOAT', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
     ('num_ucac4',        ('INT UNSIGNED', None)),
@@ -874,15 +875,16 @@ class PlateDB:
         return process_id
 
     def update_process(self, process_id, sky=None, sky_sigma=None, 
-                       num_sources=None, num_ucac4=None, 
+                       threshold=None, num_sources=None, num_ucac4=None, 
                        num_tycho2=None, solved=None):
         """
         Update plate-solve process in the database.
 
         """
 
-        if (sky is None and sky_sigma is None and num_sources is None and 
-            num_ucac4 is None and num_tycho2 is None and solved is None):
+        if (sky is None and sky_sigma is None and threshold is None 
+            and num_sources is None and num_ucac4 is None 
+            and num_tycho2 is None and solved is None):
             return
 
         col_list = []
@@ -895,6 +897,10 @@ class PlateDB:
         if sky_sigma is not None:
             col_list.append('sky_sigma=%s')
             val_tuple = val_tuple + (sky_sigma, )
+
+        if threshold is not None:
+            col_list.append('threshold=%s')
+            val_tuple = val_tuple + (threshold, )
 
         if num_sources is not None:
             col_list.append('num_sources=%s')
