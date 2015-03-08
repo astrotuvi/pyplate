@@ -1062,8 +1062,11 @@ class SolveProcess:
                         break
 
                     # Repeat with higher threshold to get less sources
-                    psf_model_sigma *= 1.2
-                    psf_model_threshold *= 1.2
+                    if use_fix_threshold:
+                        psf_model_threshold *= 1.2
+                    else:
+                        psf_model_sigma *= 1.2
+
                     self.log.write('Too many PSF-model sources (max {:d}), '
                                    'repeating extraction with higher threshold'
                                    .format(self.max_model_sources), 
