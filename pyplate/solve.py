@@ -993,7 +993,7 @@ class SolveProcess:
 
                 while True:
                     if use_fix_threshold:
-                        self.log.write('Using threshold {:d} ADU'
+                        self.log.write('Using threshold {:f} ADU'
                                        .format(psf_model_threshold), 
                                        level=4, event=32)
                     else:
@@ -1019,8 +1019,8 @@ class SolveProcess:
 
                     # Create configuration file
                     if use_fix_threshold:
-                        cnf = 'DETECT_THRESH    {:d}\n'.format(psf_model_threshold)
-                        cnf += 'ANALYSIS_THRESH  {:d}\n'.format(psf_model_threshold)
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_threshold)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_threshold)
                         cnf += 'THRESH_TYPE      ABSOLUTE\n'
                     else:
                         cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
@@ -1121,7 +1121,7 @@ class SolveProcess:
                                level=3, event=34)
 
                 if use_fix_threshold:
-                    self.log.write('Using threshold {:d} ADU'
+                    self.log.write('Using threshold {:f} ADU'
                                    .format(psf_threshold_adu), 
                                    level=4, event=34)
                 else:
@@ -1183,7 +1183,7 @@ class SolveProcess:
                            level=3, event=35)
 
             if use_fix_threshold:
-                self.log.write('Using threshold {:d} ADU'.format(threshold_adu), 
+                self.log.write('Using threshold {:f} ADU'.format(threshold_adu), 
                                level=4, event=35)
                 self.db_update_process(threshold=threshold_adu)
             else:
