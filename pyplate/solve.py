@@ -1074,7 +1074,8 @@ class SolveProcess:
 
             # Run PSFEx
             if not os.path.exists(os.path.join(self.scratch_dir, 
-                                               self.basefn + '_psfex.psf')):
+                                               self.basefn + '_psfex.psf'))
+                and num_psf_sources > 0:
                 self.log.write('Running PSFEx', level=3, event=33)
 
                 #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
@@ -1116,7 +1117,8 @@ class SolveProcess:
 
             # Run SExtractor with PSF
             if not os.path.exists(os.path.join(self.scratch_dir, 
-                                               self.basefn + '.cat-psf')):
+                                               self.basefn + '.cat-psf'))
+                and num_psf_sources > 0:
                 self.log.write('Running SExtractor with PSF model',
                                level=3, event=34)
 
@@ -1436,7 +1438,7 @@ class SolveProcess:
                        ''.format(len(indnegrad)), level=4, event=36)
 
         # For bright stars, update coordinates with PSF coordinates
-        if use_psf:
+        if use_psf and num_psf_sources > 0:
             self.log.write('Updating coordinates with PSF coordinates '
                            'for bright sources', level=3, event=37)
 
@@ -1451,7 +1453,7 @@ class SolveProcess:
                                    level=2, event=37)
                     psfcat = None
 
-                if psfcat is not None:
+                if psfcat is not None and psfcat[1].header['NAXIS2'] > 0:
                     xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
                     ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
 
@@ -1498,6 +1500,9 @@ class SolveProcess:
                             psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
                     self.sources[ind1]['errtheta_source'] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                elif psfcat[1].header['NAXIS2'] == 0:
+                    self.log.write('There are no sources with PSF coordinates!',
+                                   level=2, event=37)
             else:
                 self.log.write('Could not read PSF coordinates, '
                                'file {} does not exist!'.format(fn_psfcat), 
