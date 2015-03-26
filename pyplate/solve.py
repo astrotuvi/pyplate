@@ -1073,9 +1073,9 @@ class SolveProcess:
                                    level=4, event=32)
 
             # Run PSFEx
-            if not os.path.exists(os.path.join(self.scratch_dir, 
-                                               self.basefn + '_psfex.psf'))
-                and num_psf_sources > 0:
+            if (num_psf_sources > 0 and
+                not os.path.exists(os.path.join(self.scratch_dir, 
+                                                self.basefn + '_psfex.psf'))):
                 self.log.write('Running PSFEx', level=3, event=33)
 
                 #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
@@ -1116,9 +1116,9 @@ class SolveProcess:
                 self.log.write('', timestamp=False, double_newline=False)
 
             # Run SExtractor with PSF
-            if not os.path.exists(os.path.join(self.scratch_dir, 
-                                               self.basefn + '.cat-psf'))
-                and num_psf_sources > 0:
+            if (num_psf_sources > 0 and
+                not os.path.exists(os.path.join(self.scratch_dir, 
+                                                self.basefn + '.cat-psf'))):
                 self.log.write('Running SExtractor with PSF model',
                                level=3, event=34)
 
