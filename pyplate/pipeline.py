@@ -1,24 +1,26 @@
 import os
-from metadata import ArchiveMeta, PlateMeta, PlateHeader, read_conf
-from solve import SolveProcess
-from database import PlateDB
 import multiprocessing as mp
 import time
 import ConfigParser
+from .metadata import ArchiveMeta, PlateMeta, PlateHeader, read_conf
+from .solve import SolveProcess
+from .database import PlateDB
+from .image import PlateConverter
 
 
-class PlateImagePipeline():
+class PlateImagePipeline:
     """
     Plate processing pipeline class
 
     """
 
-    def __init__(self):
+    def __init__(self, plate_converter=None):
         self.conf = None
         self.work_dir = ''
         self.write_log_dir = ''
         self.input_queue = None
         self.done_queue = None
+        self.plate_converter = plate_converter
 
         self.read_wfpdb = False
         self.read_csv = False
@@ -175,7 +177,13 @@ class PlateImagePipeline():
             if fn == 'DONE':
                 break
 
-            self.single_image(fn)
+            if self.plate_converter:
+                plateconv = PlateConverter()
+                plateconv.assign_conf(self.conf)
+                plateconv.tiff2fits(fn)
+            else:
+                self.single_image(fn)
+
             self.done_queue.put(fn)
 
     def parallel_run(self, filenames, processes=1):

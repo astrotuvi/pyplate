@@ -101,7 +101,7 @@ class PlateConverter:
                 dt_local = pytz.timezone('Europe/Berlin').localize(dt)
                 exif_datetime = dt_local.astimezone(pytz.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
-        print 'Reading {}'.format(fn_tiff)
+        print '{} Reading {}'.format(str(datetime.now()), fn_tiff)
 
         im = np.array(im_pil.getdata(),
                       dtype=np.uint16).reshape(im_pil.size[1],-1)
