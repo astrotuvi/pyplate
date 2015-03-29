@@ -8,13 +8,13 @@ from .database import PlateDB
 from .image import PlateConverter
 
 
-class PlateImagePipeline(plate_converter=None):
+class PlateImagePipeline:
     """
     Plate processing pipeline class
 
     """
 
-    def __init__(self):
+    def __init__(self, plate_converter=None):
         self.conf = None
         self.work_dir = ''
         self.write_log_dir = ''
