@@ -37,6 +37,7 @@ class PlateConverter:
         self.tiff_dir = ''
         self.write_fits_dir = ''
         self.write_wedge_dir = ''
+        self.wedge_height = None
 
     def assign_conf(self, conf):
         """
@@ -62,7 +63,7 @@ class PlateConverter:
         for fn_tiff in sorted(glob.glob(os.path.join(self.tiff_dir, '*.tif'))):
             self.tiff2fits(os.path.basename(fn_tiff))
 
-    def tiff2fits(self, filename):
+    def tiff2fits(self, filename, wedge_height=None):
         """
         Convert TIFF image to FITS.
 
@@ -70,8 +71,13 @@ class PlateConverter:
         ----------
         filename : str
             Filename of the TIFF image
+        wedge_height : int
+            Height of the wedge in pixels
 
         """
+
+        if wedge_height is None and self.wedge_height is not None:
+            wedge_height = self.wedge_height
 
         fn_tiff = os.path.join(self.tiff_dir, filename)
         im_pil = Image.open(fn_tiff)
@@ -101,7 +107,7 @@ class PlateConverter:
                 dt_local = pytz.timezone('Europe/Berlin').localize(dt)
                 exif_datetime = dt_local.astimezone(pytz.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
-        print '{} Reading {}'.format(str(datetime.now()), fn_tiff)
+        #print '{} Reading {}'.format(str(datetime.now()), fn_tiff)
 
         im = np.array(im_pil.getdata(),
                       dtype=np.uint16).reshape(im_pil.size[1],-1)
@@ -110,50 +116,72 @@ class PlateConverter:
         imblack = im.min()
         imwhite = im.max()
 
-        yedge = []
-        yedge_plate = []
-
-        for x in np.arange(100, imwidth-100, 10):
-            # Take column, reverse it and use pixels from the 101st to
-            # the middle.
-            colrev = im[::-1,x][100:int(0.5*imheight)]
-            # Find nearly white pixels
-            ind_white = np.where(colrev-imblack > 0.95*(imwhite-imblack))[0]
-
-            # If the first near-white pixel is significantly lighter than
-            # the first 500 pixels in colrev, then use it as an edge of the
-            # wedge.
-            if (ind_white.size > 0 and
-                colrev[ind_white[0]]-imblack > 1.1*(np.median(colrev[:500])-imblack)):
-                yedge.append(imheight - 100 - ind_white[0])
+        if wedge_height is not None:
+            if wedge_height == 0:
+                im_plates = im
+                im_wedge = None
             else:
-                col = im[int(0.5*imheight):,x]
-                ind_white = np.where(col-imblack > 0.95*(imwhite-imblack))[0]
-
-                if (ind_white.size > 0 and
-                    col[ind_white[0]]-imblack > 1.1*(np.median(col[:500])-imblack)):
-                    yedge_plate.append(ind_white[0] + int(0.5*imheight))
-
-        if len(yedge) > 0.01*imwidth:
-            ycut_wedge = int(np.median(yedge))
+                ycut_wedge = imheight - wedge_height
+                im_wedge = im[ycut_wedge:,:]
+                im_plates = im[:ycut_wedge,:]
         else:
-            ycut_wedge = int(np.percentile(yedge_plate, 80))
+            yedge = []
+            yedge_plate = []
 
-        im_wedge = im[ycut_wedge:,:]
-        im_plates = im[:ycut_wedge,:]
+            for x in np.arange(100, imwidth-100, 10):
+                # Take column, reverse it and use pixels from the 101st to
+                # 80% of the image height.
+                colrev = im[::-1,x][100:int(0.8*imheight)]
+                # Find nearly white pixels
+                ind_white = np.where(colrev-imblack > 0.95*(imwhite-imblack))[0]
+
+                # If the first near-white pixel is significantly lighter than
+                # the first 500 pixels in colrev, then use it as an edge of the
+                # wedge.
+                if (ind_white.size > 0 and
+                    colrev[ind_white[0]]-imblack 
+                    > 1.1*(np.median(colrev[:500])-imblack)):
+                    yedge.append(imheight - 100 - ind_white[0])
+                else:
+                    col = im[int(0.2*imheight):,x]
+                    ind_white = np.where(col-imblack 
+                                         > 0.95*(imwhite-imblack))[0]
+
+                    if (ind_white.size > 0 and
+                        col[ind_white[0]]-imblack 
+                        > 1.1*(np.median(col[:500])-imblack)):
+                        yedge_plate.append(ind_white[0] + int(0.2*imheight))
+
+            if len(yedge) > 0.01*imwidth:
+                ycut_wedge = int(np.median(yedge))
+                im_wedge = im[ycut_wedge:,:]
+                im_plates = im[:ycut_wedge,:]
+            else:
+                try:
+                    ycut_wedge = int(np.percentile(yedge_plate, 80))
+                    im_wedge = im[ycut_wedge:,:]
+                    im_plates = im[:ycut_wedge,:]
+                except ValueError:
+                    print 'Cannot separate wedge in {}'.format(fn_tiff)
+                    im_wedge = None
+                    im_plates = im
+
         del im
-
-        hdu_wedge = fits.PrimaryHDU(np.flipud(im_wedge))
-
-        if exif_datetime:
-            hdu_wedge.header.set('DATESCAN', exif_datetime)
-
         history_line = ('TIFF image converted to FITS with '
                         'PyPlate v{} at {}'
                         .format(__version__, datetime.utcnow()
                                 .strftime('%Y-%m-%dT%H:%M:%S')))
-        hdu_wedge.header.add_history(history_line)
 
+        if im_wedge is not None:
+            hdu_wedge = fits.PrimaryHDU(np.flipud(im_wedge))
+
+            if exif_datetime:
+                hdu_wedge.header.set('DATESCAN', exif_datetime)
+
+            hdu_wedge.header.add_history(history_line)
+
+        # If filename contains dash, assume that two plates have been scanned 
+        # side by side.
         if '-' in os.path.basename(fn_tiff):
             xedge = []
 
@@ -185,10 +213,11 @@ class PlateConverter:
             hdu_left.header.add_history(history_line)
             hdu_left.writeto(os.path.join(self.write_fits_dir, fn_left), 
                              clobber=True)
-            
-            fn_wedge = os.path.splitext(fn_left)[0] + '_w.fits'
-            hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
-                              clobber=True)
+
+            if im_wedge is not None:
+                fn_wedge = os.path.splitext(fn_left)[0] + '_w.fits'
+                hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
+                                  clobber=True)
 
             # Store right-side plate FITS
             hdu_right = fits.PrimaryHDU(np.flipud(im_right))
@@ -217,7 +246,9 @@ class PlateConverter:
             hdu_plate.header.add_history(history_line)
             hdu_plate.writeto(os.path.join(self.write_fits_dir, fn_plate), 
                               clobber=True)
-            fn_wedge = os.path.splitext(fn_plate)[0] + '_w.fits'
-            hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
-                              clobber=True)
+
+            if im_wedge is not None:
+                fn_wedge = os.path.splitext(fn_plate)[0] + '_w.fits'
+                hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge),
+                                  clobber=True)
 
