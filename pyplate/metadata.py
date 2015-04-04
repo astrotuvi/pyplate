@@ -1265,7 +1265,10 @@ class PlateMeta(OrderedDict):
             key, val = [s.strip() for s in keyval.split(':', 1)]
 
             if key.lower() == 'temperature':
-                self['temperature'] = float(val.strip())
+                try:
+                    self['temperature'] = float(val.strip())
+                except ValueError:
+                    self['temperature'] = None
             elif key.lower() == 'calmness':
                 self['calmness'] = val.strip()
             elif key.lower() == 'sharpness':
