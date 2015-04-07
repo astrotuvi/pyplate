@@ -21,6 +21,7 @@ class PlateImagePipeline:
         self.input_queue = None
         self.done_queue = None
         self.plate_converter = plate_converter
+        self.plate_epoch = None
 
         self.read_wfpdb = False
         self.read_csv = False
@@ -67,7 +68,7 @@ class PlateImagePipeline:
             except ConfigParser.Error:
                 pass
 
-    def single_image(self, filename):
+    def single_image(self, filename, plate_epoch=None):
         """
         Process single plate image.
 
@@ -75,6 +76,8 @@ class PlateImagePipeline:
         ----------
         filename : str
             Filename of the FITS image to be processed
+        plate_epoch : float
+            Plate epoch (decimal year)
             
         """
 
@@ -114,6 +117,13 @@ class PlateImagePipeline:
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)
         proc.assign_header(h)
+
+        if self.plate_epoch is not None:
+            proc.plate_epoch = self.plate_epoch
+
+        if plate_epoch is not None:
+            proc.plate_epoch = plate_epoch
+
         proc.setup()
 
         if self.invert_image:
