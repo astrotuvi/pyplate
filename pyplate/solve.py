@@ -1323,7 +1323,7 @@ class SolveProcess:
             std_bg = bg[np.where(bannulus)].std()
         else:
             mean_bg = bg.mean()
-            bg.std()
+            std_bg = bg.std()
 
         # Calculate distance from edge
         distarr = np.column_stack((xim, self.imwidth-xim, 
