@@ -517,7 +517,7 @@ class SolveProcess:
         self.timestamp = dt.datetime.now()
         self.timestamp_str = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
         self.scratch_dir = None
-        self.enable_log = True
+        self.enable_log = False
         self.log = None
         self.enable_db_log = False
     
@@ -600,6 +600,9 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
+        if self.write_log_dir:
+            self.enable_log = True
+
         for attr in ['use_tycho2_fits', 'use_ucac4_db', 'enable_db_log']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
@@ -678,9 +681,11 @@ class SolveProcess:
             self.log.open()
         else:
             self.log = SolveProcessLog(None)
+            self.log.open()
 
         # Get process_id from the database
-        self.db_process_start()
+        if self.output_db_name:
+            self.db_process_start()
 
         # Open database connection for logs
         if self.enable_db_log:
@@ -721,14 +726,23 @@ class SolveProcess:
 
         # Look for observation date in the FITS header.
         if ('YEAR' in self.plate_header and 
-            isinstance(self.plate_header['YEAR'], float)):
+            isinstance(self.plate_header['YEAR'], float) and
+            self.plate_header['YEAR']>1800):
             self.plate_epoch = self.plate_header['YEAR']
         elif 'DATEORIG' in self.plate_header:
-            self.plate_year = int(self.plate_header['DATEORIG'].split('-')[0])
-            self.plate_epoch = float(self.plate_year) + 0.5
+            try:
+                self.plate_year = int(self.plate_header['DATEORIG']
+                                      .split('-')[0])
+                self.plate_epoch = float(self.plate_year) + 0.5
+            except ValueError:
+                pass
         elif 'DATE-OBS' in self.plate_header:
-            self.plate_year = int(self.plate_header['DATE-OBS'].split('-')[0])
-            self.plate_epoch = float(self.plate_year) + 0.5
+            try:
+                self.plate_year = int(self.plate_header['DATE-OBS']
+                                      .split('-')[0])
+                self.plate_epoch = float(self.plate_year) + 0.5
+            except ValueError:
+                pass
 
         self.plate_year = int(self.plate_epoch)
 
