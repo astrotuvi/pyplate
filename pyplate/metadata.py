@@ -771,6 +771,7 @@ class LogpageMeta(OrderedDict):
             self[k] = copy.deepcopy(v[1])
 
         self.logpage_dir = ''
+        self.cover_dir = ''
         self['filename'] = filename
         fmt = filename.split('.')[-1].upper()
 
@@ -793,10 +794,11 @@ class LogpageMeta(OrderedDict):
 
         self.conf = conf
 
-        try:
-            setattr(self, 'logpage_dir', conf.get('Files', 'logpage_dir'))
-        except ConfigParser.Error:
-            pass
+        for attr in ['logpage_dir', 'cover_dir']:
+            try:
+                setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
 
     def parse_csv(self, val_list, csv_filename=None):
         """
@@ -834,6 +836,12 @@ class LogpageMeta(OrderedDict):
 
         fn_path = os.path.join(self.logpage_dir, self['filename'])
 
+        if not os.path.exists(fn_path):
+            fn_path = os.path.join(self.cover_dir, self['filename'])
+
+            if not os.path.exists(fn_path):
+                return
+
         if gexiv_available:
             try:
                 exif = GExiv2.Metadata(fn_path)
@@ -848,7 +856,11 @@ class LogpageMeta(OrderedDict):
             except (KeyError, TypeError):
                 pass
         else:
-            im_pil = Image.open(fn_path)
+            try:
+                im_pil = Image.open(fn_path)
+            except Exception:
+                return
+            
             self['image_width'], self['image_height'] = im_pil.size
             self['file_format'] = im_pil.format
             exif_datetime = None
