@@ -845,7 +845,7 @@ class LogpageMeta(OrderedDict):
 
             try:
                 self['image_datetime'] = exif.get_date_time().isoformat()
-            except KeyError:
+            except (KeyError, TypeError):
                 pass
         else:
             im_pil = Image.open(fn_path)
@@ -858,12 +858,12 @@ class LogpageMeta(OrderedDict):
 
                 try:
                     exif_datetime = exif[306]
-                except KeyError:
+                except (KeyError, TypeError):
                     pass
             elif self['file_format'] == 'TIFF':
                 try:
                     exif_datetime = im_pil.tag[306]
-                except KeyError:
+                except (KeyError, TypeError):
                     pass
 
             if exif_datetime:
