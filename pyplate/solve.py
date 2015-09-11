@@ -2985,7 +2985,7 @@ class SolveProcess:
                                    - 0.09 * (tycho2_btmag - tycho2_vtmag))
                     add_platemag = src_nomag[ind_tycmag]['mag_auto']
                     cat_bmag = np.append(cat_bmag, tycho2_bmag)
-                    cat_vmag = np.append(cat_bmag, tycho2_vmag)
+                    cat_vmag = np.append(cat_vmag, tycho2_vmag)
                     plate_mag = np.append(plate_mag, add_platemag)
 
             num_calstars = len(plate_mag)
@@ -2999,9 +2999,41 @@ class SolveProcess:
 
             plate_mag_u,uind = np.unique(plate_mag, return_index=True)
             cat_bmag_u = cat_bmag[uind]
+            cat_vmag_u = cat_vmag[uind]
+
+            # Evaluate color term
+            if b == 1:
+                #cterm_list = np.arange(81) / 20. - 2.
+                cterm_list = np.arange(301) / 100. - 1.
+                stdev_list = []
+
+                for cterm in cterm_list:
+                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                                frac=0.2, it=3, 
+                                                return_sorted=True)
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    mag_diff = cat_mag - s(plate_mag_u)
+                    #print cterm, mag_diff.std()
+                    stdev_list.append(mag_diff.std())
+
+                fn_test = os.path.join(self.write_source_dir,
+                                       '{}_color.txt'.format(self.basefn))
+                np.savetxt(fn_test, np.column_stack((cterm_list, stdev_list)))
+
+
             z = sm.nonparametric.lowess(cat_bmag_u, plate_mag_u, frac=0.2, 
                                         it=3, return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+
+            fn_test = os.path.join(self.write_source_dir, 
+                                   '{}_caldata_bin{:d}.txt'.format(self.basefn, b))
+            np.savetxt(fn_test, np.column_stack((plate_mag_u, cat_bmag_u, 
+                                                 s(plate_mag_u), 
+                                                 cat_bmag_u-s(plate_mag_u))))
+            fn_test = os.path.join(self.write_source_dir, 
+                                   '{}_calcurve_bin{:d}.txt'.format(self.basefn, b))
+            np.savetxt(fn_test, z)
 
             self.sources['bmag'][ind_bin] = s(src_bin['mag_auto'])
 
