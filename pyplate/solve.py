@@ -2946,6 +2946,13 @@ class SolveProcess:
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
 
+        fn_caldata = os.path.join(self.write_source_dir, 
+                                  '{}_caldata.txt'.format(self.basefn))
+        fcaldata = open(fn_caldata, 'wb')
+        fn_calcurve = os.path.join(self.write_source_dir, 
+                                   '{}_calcurve.txt'.format(self.basefn))
+        fcalcurve = open(fn_calcurve, 'wb')
+
         # Loop over annular bins
         for b in np.arange(9)+1:
             ind_bin = np.where((self.sources['annular_bin'] == b) & 
@@ -3001,39 +3008,97 @@ class SolveProcess:
             cat_bmag_u = cat_bmag[uind]
             cat_vmag_u = cat_vmag[uind]
 
-            # Evaluate color term
+            # Evaluate color term in 3 iterations
             if b == 1:
-                #cterm_list = np.arange(81) / 20. - 2.
-                cterm_list = np.arange(301) / 100. - 1.
+                # Iteration 1
+                cterm_list = np.arange(11) * 0.4 - 2.
                 stdev_list = []
 
                 for cterm in cterm_list:
                     cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
                     z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
-                                                frac=0.2, it=3, 
+                                                frac=0.2, it=3, delta=0.2,
                                                 return_sorted=True)
                     s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
                     mag_diff = cat_mag - s(plate_mag_u)
-                    #print cterm, mag_diff.std()
                     stdev_list.append(mag_diff.std())
 
-                fn_test = os.path.join(self.write_source_dir,
-                                       '{}_color.txt'.format(self.basefn))
-                np.savetxt(fn_test, np.column_stack((cterm_list, stdev_list)))
+                fn_color = os.path.join(self.write_source_dir,
+                                        '{}_color.txt'.format(self.basefn))
+                fcolor = open(fn_color, 'wb')
+                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                fcolor.write('\n\n')
 
+                indmin = np.argmin(stdev_list)
+                min_cterm = cterm_list[indmin]
 
-            z = sm.nonparametric.lowess(cat_bmag_u, plate_mag_u, frac=0.2, 
-                                        it=3, return_sorted=True)
+                # Iteration 2
+                cterm_list = np.arange(13) * 0.05 + min_cterm - 0.3
+                stdev_list = []
+
+                for cterm in cterm_list:
+                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                                frac=0.2, it=3, delta=0.2,
+                                                return_sorted=True)
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    mag_diff = cat_mag - s(plate_mag_u)
+                    stdev_list.append(mag_diff.std())
+
+                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                fcolor.write('\n\n')
+
+                indmin = np.argmin(stdev_list)
+                min_cterm = cterm_list[indmin]
+
+                # Iteration 3
+                cterm_list = np.arange(21) * 0.01 + min_cterm - 0.1
+                stdev_list = []
+
+                for cterm in cterm_list:
+                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                                frac=0.2, it=3, delta=0.2,
+                                                return_sorted=True)
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    mag_diff = cat_mag - s(plate_mag_u)
+                    stdev_list.append(mag_diff.std())
+
+                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                fcolor.close()
+
+                indmin = np.argmin(stdev_list)
+                min_cterm = cterm_list[indmin]
+                cterm = min_cterm
+
+            cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+            
+            cutmag = (plate_mag_u.min() + 
+                      (plate_mag_u.max() - plate_mag_u.min()) * 0.5)
+            nbright = len(plate_mag_u[np.where(plate_mag_u < cutmag)])
+
+            z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                         plate_mag_u[:nbright], 
+                                         frac=0.2, it=3, delta=0.1, 
+                                         return_sorted=True)
+            z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
+                                        frac=0.2, it=3, delta=0.1, 
+                                        return_sorted=True)
+            weight2 = np.arange(nbright, dtype=float) / nbright
+            weight1 = 1. - weight2
+            z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+            #z = np.append(z1, z2, axis=0)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
 
-            fn_test = os.path.join(self.write_source_dir, 
-                                   '{}_caldata_bin{:d}.txt'.format(self.basefn, b))
-            np.savetxt(fn_test, np.column_stack((plate_mag_u, cat_bmag_u, 
-                                                 s(plate_mag_u), 
-                                                 cat_bmag_u-s(plate_mag_u))))
-            fn_test = os.path.join(self.write_source_dir, 
-                                   '{}_calcurve_bin{:d}.txt'.format(self.basefn, b))
-            np.savetxt(fn_test, z)
+            np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
+                                                  s(plate_mag_u), 
+                                                  cat_natmag-s(plate_mag_u))))
+            fcaldata.write('\n\n')
+            np.savetxt(fcalcurve, z)
+            fcalcurve.write('\n\n')
 
             self.sources['bmag'][ind_bin] = s(src_bin['mag_auto'])
+
+        fcaldata.close()
+        fcalcurve.close()
 
