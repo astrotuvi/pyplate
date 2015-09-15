@@ -464,6 +464,8 @@ _source_meta = OrderedDict([
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
+    ('natmag',              ('f4', '%7.4f', '')),
+    ('natmagerr',           ('f4', '%7.4f', '')),
     ('bmag',                ('f4', '%7.4f', '')),
     ('bmagerr',             ('f4', '%7.4f', '')),
     ('vmag',                ('f4', '%7.4f', '')),
@@ -2898,7 +2900,7 @@ class SolveProcess:
                      'sextractor_flags', 
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
-                     'bmag', 'vmag',
+                     'natmag', 'bmag', 'vmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
@@ -3011,7 +3013,7 @@ class SolveProcess:
             # Evaluate color term in 3 iterations
             if b == 1:
                 # Iteration 1
-                cterm_list = np.arange(11) * 0.4 - 2.
+                cterm_list = np.arange(21) * 0.25 - 2.
                 stdev_list = []
 
                 for cterm in cterm_list:
@@ -3029,11 +3031,18 @@ class SolveProcess:
                 np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
                 fcolor.write('\n\n')
 
-                indmin = np.argmin(stdev_list)
-                min_cterm = cterm_list[indmin]
+                cf = np.polyfit(cterm_list, stdev_list, 4)
+                cf1d = np.poly1d(cf)
+                extrema = cf1d.deriv().r
+                cterm_extr = extrema[np.where(extrema.imag==0)].real
+                der2 = cf1d.deriv(2)(cterm_extr)
+                cterm_min = cterm_extr[np.where(der2>0)][0]
+                #indmin = np.argmin(stdev_list)
+                #min_cterm = cterm_list[indmin]
 
                 # Iteration 2
-                cterm_list = np.arange(13) * 0.05 + min_cterm - 0.3
+                cterm_list = (np.arange(17) * 0.05 + 
+                              round(cterm_min*20.)/20. - 0.4)
                 stdev_list = []
 
                 for cterm in cterm_list:
@@ -3048,11 +3057,15 @@ class SolveProcess:
                 np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
                 fcolor.write('\n\n')
 
-                indmin = np.argmin(stdev_list)
-                min_cterm = cterm_list[indmin]
+                cf = np.polyfit(cterm_list, stdev_list, 2)
+                cterm_min = -0.5 * cf[1] / cf[0]
+                print cterm_min
+                #indmin = np.argmin(stdev_list)
+                #min_cterm = cterm_list[indmin]
 
                 # Iteration 3
-                cterm_list = np.arange(21) * 0.01 + min_cterm - 0.1
+                cterm_list = (np.arange(41) * 0.01 + 
+                              round(cterm_min*100.)/100. - 0.2)
                 stdev_list = []
 
                 for cterm in cterm_list:
@@ -3067,29 +3080,34 @@ class SolveProcess:
                 np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
                 fcolor.close()
 
-                indmin = np.argmin(stdev_list)
-                min_cterm = cterm_list[indmin]
-                cterm = min_cterm
+                cf = np.polyfit(cterm_list, stdev_list, 2)
+                cterm = -0.5 * cf[1] / cf[0]
+                print cterm
+                #indmin = np.argmin(stdev_list)
+                #min_cterm = cterm_list[indmin]
+                #cterm = min_cterm
 
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-            
-            cutmag = (plate_mag_u.min() + 
-                      (plate_mag_u.max() - plate_mag_u.min()) * 0.5)
-            nbright = len(plate_mag_u[np.where(plate_mag_u < cutmag)])
 
-            z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
-                                         plate_mag_u[:nbright], 
-                                         frac=0.2, it=3, delta=0.1, 
-                                         return_sorted=True)
-            z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
-                                        frac=0.2, it=3, delta=0.1, 
-                                        return_sorted=True)
-            weight2 = np.arange(nbright, dtype=float) / nbright
-            weight1 = 1. - weight2
-            z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
-            #z = np.append(z1, z2, axis=0)
-            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+            # For bins 1-8, find calibration curve. For bin 9, use calibration
+            # from bin 8.
+            if b < 9:
+                cutmag = (plate_mag_u.min() + 
+                          (plate_mag_u.max() - plate_mag_u.min()) * 0.5)
+                nbright = len(plate_mag_u[np.where(plate_mag_u < cutmag)])
+                z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                             plate_mag_u[:nbright], 
+                                             frac=0.2, it=3, delta=0.1, 
+                                             return_sorted=True)
+                z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
+                                            frac=0.2, it=3, delta=0.1, 
+                                            return_sorted=True)
+                weight2 = np.arange(nbright, dtype=float) / nbright
+                weight1 = 1. - weight2
+                z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+                s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
 
+            print b, len(plate_mag_u), len(cat_natmag)
             np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
                                                   s(plate_mag_u), 
                                                   cat_natmag-s(plate_mag_u))))
@@ -3097,7 +3115,25 @@ class SolveProcess:
             np.savetxt(fcalcurve, z)
             fcalcurve.write('\n\n')
 
-            self.sources['bmag'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+
+            if len(ind_ucacmag) > 0:
+                ind = ind_bin[ind_ucacmag]
+                b_v = (self.sources[ind]['ucac4_bmag']
+                       - self.sources[ind]['ucac4_vmag'])
+                self.sources['vmag'][ind] = (self.sources['natmag'][ind]
+                                             - cterm * b_v)
+                self.sources['bmag'][ind] = (self.sources['natmag'][ind]
+                                             - (cterm - 1.) * b_v)
+
+            if len(ind_tycmag) > 0:
+                ind = ind_bin[ind_noucacmag[ind_tycmag]]
+                b_v = 0.85 * (self.sources[ind]['tycho2_btmag']
+                              - self.sources[ind]['tycho2_vtmag'])
+                self.sources['vmag'][ind] = (self.sources['natmag'][ind]
+                                             - cterm * b_v)
+                self.sources['bmag'][ind] = (self.sources['natmag'][ind]
+                                             - (cterm - 1.) * b_v)
 
         fcaldata.close()
         fcalcurve.close()
