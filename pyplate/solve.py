@@ -3092,22 +3092,28 @@ class SolveProcess:
             # For bins 1-8, find calibration curve. For bin 9, use calibration
             # from bin 8.
             if b < 9:
+                z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
+                                            frac=0.5, it=3, delta=0.1, 
+                                            return_sorted=True)
+                
+                # Improve bright-star calibration
                 cutmag = (plate_mag_u.min() + 
                           (plate_mag_u.max() - plate_mag_u.min()) * 0.5)
                 nbright = len(plate_mag_u[np.where(plate_mag_u < cutmag)])
-                z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
-                                             plate_mag_u[:nbright], 
-                                             frac=0.2, it=3, delta=0.1, 
-                                             return_sorted=True)
-                z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
-                                            frac=0.2, it=3, delta=0.1, 
-                                            return_sorted=True)
-                weight2 = np.arange(nbright, dtype=float) / nbright
-                weight1 = 1. - weight2
-                z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+
+                if nbright > 100:
+                    z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                                 plate_mag_u[:nbright], 
+                                                 frac=0.2, it=3, delta=0.1, 
+                                                 return_sorted=True)
+                    weight2 = np.arange(nbright, dtype=float) / nbright
+                    weight1 = 1. - weight2
+                    z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+
+                # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
 
-            print b, len(plate_mag_u), len(cat_natmag)
+            print b, len(plate_mag_u), len(cat_natmag), len(z[:,1])
             np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
                                                   s(plate_mag_u), 
                                                   cat_natmag-s(plate_mag_u))))
