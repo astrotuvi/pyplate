@@ -3013,7 +3013,7 @@ class SolveProcess:
             # Evaluate color term in 3 iterations
             if b == 1:
                 # Iteration 1
-                cterm_list = np.arange(21) * 0.25 - 2.
+                cterm_list = np.arange(25) * 0.25 - 3.
                 stdev_list = []
 
                 for cterm in cterm_list:
@@ -3036,7 +3036,8 @@ class SolveProcess:
                 extrema = cf1d.deriv().r
                 cterm_extr = extrema[np.where(extrema.imag==0)].real
                 der2 = cf1d.deriv(2)(cterm_extr)
-                cterm_min = cterm_extr[np.where(der2>0)][0]
+                cterm_min = cterm_extr[np.where((der2>0) & (cterm_extr>-2) & 
+                                                (cterm_extr<3))][0]
                 #indmin = np.argmin(stdev_list)
                 #min_cterm = cterm_list[indmin]
 
@@ -3092,37 +3093,56 @@ class SolveProcess:
             # For bins 1-8, find calibration curve. For bin 9, use calibration
             # from bin 8.
             if b < 9:
+                # Study the distribution of magnitudes
+                kde = sm.nonparametric.KDEUnivariate(plate_mag_u
+                                                     .astype(np.double))
+                kde.fit()
+                ind_maxden = np.argmax(kde.density)
+                plate_mag_maxden = kde.support[ind_maxden]
+                ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+                plate_mag_lim = kde.support[ind_dense[-1]]
+                ind_valid = np.where(plate_mag_u < plate_mag_lim)
+                num_valid = len(ind_valid)
+
+                cat_natmag = cat_natmag[ind_valid]
+                plate_mag_u = plate_mag_u[ind_valid]
+                frac = 0.2
+
+                if num_valid < 100:
+                    frac = 0.4
+
                 z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
-                                            frac=0.5, it=3, delta=0.1, 
+                                            frac=frac, it=3, delta=0.1, 
                                             return_sorted=True)
 
-                # Study the distribution of magnitudes
-                magdensity,bins = np.histogram(plate_mag_u, bins=200, 
-                                               range=[0,20], density=True)
-                ind_dense = np.where(magdensity > 0.2*magdensity.max())[0]
-                cutmag = bins[ind_dense[0]]
-                ind_dense = np.where(magdensity > 0.1*magdensity.max())[0]
-                plate_mag_lim = bins[ind_dense[-1]+1]
+                #magdensity,bins = np.histogram(plate_mag_u, bins=200, 
+                #                               range=[0,20], density=True)
+                #ind_dense = np.where(magdensity > 0.2*magdensity.max())[0]
+                #cutmag = bins[ind_dense[0]]
+                #ind_dense = np.where(magdensity > 0.1*magdensity.max())[0]
+                #plate_mag_lim = bins[ind_dense[-1]+1]
 
                 # Improve bright-star calibration
-                #cutmag = (plate_mag_u.min() + 
-                #          (plate_mag_u.max() - plate_mag_u.min()) * 0.5)
-                #cutmag = np.percentile(plate_mag_u, 10)
-                nbright = len(plate_mag_u[np.where(plate_mag_u < cutmag)])
+                brightmag = kde.support[ind_dense[0]]
+                nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
-                if nbright > 100:
-                    z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
-                                                 plate_mag_u[:nbright], 
-                                                 frac=0.2, it=3, delta=0.1, 
-                                                 return_sorted=True)
-                    weight2 = np.arange(nbright, dtype=float) / nbright
-                    weight1 = 1. - weight2
-                    z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+                if nbright < 20:
+                    brightmag = (plate_mag_u.min() + 
+                                 (plate_mag_maxden - plate_mag_u.min()) * 0.5)
+                    nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+
+                z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                             plate_mag_u[:nbright], 
+                                             frac=0.4, it=3, delta=0.1, 
+                                             return_sorted=True)
+                weight2 = np.arange(nbright, dtype=float) / nbright
+                weight1 = 1. - weight2
+                z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
 
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
 
-            print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), cutmag, plate_mag_lim, s(plate_mag_lim)
+            print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
             np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
                                                   s(plate_mag_u), 
                                                   cat_natmag-s(plate_mag_u))))
