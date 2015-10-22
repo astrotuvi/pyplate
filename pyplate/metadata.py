@@ -1473,6 +1473,19 @@ class PlateMeta(OrderedDict):
                 else:
                     tme_orig = None
 
+                if '|' in tms_orig:
+                    tms_orig_sub = [x.strip() for x in tms_orig.split('|')]
+
+                    if '|' in tme_orig:
+                        tme_orig_sub = [x.strip() for x in tme_orig.split('|')]
+
+                    expmeta = copy.copy(self)
+                    expmeta['tms_orig'] = tms_orig_sub
+                    expmeta['tme_orig'] = tme_orig_sub
+                    expmeta.compute_values()
+                else:
+                    expmeta = None
+
                 ut_start_isot = None
                 ut_end_isot = None
 
@@ -1591,6 +1604,10 @@ class PlateMeta(OrderedDict):
                     self['date_end'].append(None)
                     self['jd_end'].append(None)
                     self['year_end'].append(None)
+
+                # Copy sub-exposure values
+                if expmeta:
+                    self['date_obs'] = expmeta['date_obs']
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
             for iexp in np.arange(len(self['ra_orig'])):
