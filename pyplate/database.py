@@ -646,6 +646,7 @@ class PlateDB:
                     val_tuple = (exposure_id, exp_num, subexp_num)
 
                     expmeta = platemeta.exposures[exp]
+                    expmeta['plate_id'] = plate_id
 
                     for k,v in _schema['exposure_sub'].items():
                         if v[1]:
