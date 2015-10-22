@@ -641,12 +641,11 @@ class PlateDB:
             if platemeta['numsub'][exp] > 1:
                 for subexp in np.arange(platemeta['numsub'][exp]):
                     subexp_num = subexp + 1
-                    col_list = ['exposure_id', 'exposure_num', 
-                                'subexposure_num']
-                    val_tuple = (exposure_id, exp_num, subexp_num)
+                    col_list = ['exposure_id', 'plate_id',
+                                'exposure_num', 'subexposure_num']
+                    val_tuple = (exposure_id, plate_id, exp_num, subexp_num)
 
                     expmeta = platemeta.exposures[exp]
-                    expmeta['plate_id'] = plate_id
 
                     for k,v in _schema['exposure_sub'].items():
                         if v[1]:
