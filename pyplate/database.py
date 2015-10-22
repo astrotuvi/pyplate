@@ -129,16 +129,16 @@ _schema['exposure_sub'] = OrderedDict([
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('exposure_num',     ('TINYINT UNSIGNED NOT NULL', None)),
     ('subexposure_num',  ('TINYINT UNSIGNED NOT NULL', None)),
-    ('date_orig_start',  ('VARCHAR(10)', None)),
-    ('time_orig_start',  ('VARCHAR(40)', None)),
-    ('time_orig_end',    ('VARCHAR(40)', None)),
-    ('ut_start',         ('DATETIME', None)),
-    ('ut_mid',           ('DATETIME', None)),
-    ('ut_end',           ('DATETIME', None)),
-    ('jd_start',         ('DOUBLE', None)),
-    ('jd_mid',           ('DOUBLE', None)),
-    ('jd_end',           ('DOUBLE', None)),
-    ('exptime',          ('FLOAT', None)),
+    ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
+    ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
+    ('time_orig_end',    ('VARCHAR(40)', 'tme_orig')),
+    ('ut_start',         ('DATETIME', 'date_obs')),
+    ('ut_mid',           ('DATETIME', 'date_avg')),
+    ('ut_end',           ('DATETIME', 'date_end')),
+    ('jd_start',         ('DOUBLE', 'jd')),
+    ('jd_mid',           ('DOUBLE', 'jd_avg')),
+    ('jd_end',           ('DOUBLE', 'jd_end')),
+    ('exptime',          ('FLOAT', 'exptime')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -636,6 +636,29 @@ class PlateDB:
                    .format(col_str, val_str))
             self.execute_query(sql, val_tuple)
             exposure_id = self.cursor.lastrowid
+
+            # The exposure_sub table
+            if platemeta['numsub'][exp] > 1:
+                for subexp in np.arange(platemeta['numsub'][exp]):
+                    subexp_num = subexp + 1
+                    col_list = ['exposure_id', 'exposure_num', 
+                                'subexposure_num']
+                    val_tuple = (exposure_id, exp_num, subexp_num)
+
+                    expmeta = platemeta.exposures[exp]
+
+                    for k,v in _schema['exposure_sub'].items():
+                        if v[1]:
+                            col_list.append(k)
+                            val_tuple = val_tuple \
+                                    + (expmeta.get_value(v[1], exp=subexp), )
+
+                    col_str = ','.join(col_list)
+                    val_str = ','.join(['%s'] * len(col_list))
+
+                    sql = ('INSERT INTO exposure_sub ({}) VALUES ({})'
+                           .format(col_str, val_str))
+                    self.execute_query(sql, val_tuple)
 
         return plate_id
 
