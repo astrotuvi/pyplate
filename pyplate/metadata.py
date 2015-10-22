@@ -74,6 +74,7 @@ _keyword_meta = OrderedDict([
     ('object_type', (str, True, [], 'OBJTYPE', 'OBJTYPn')),
     ('numexp', (int, False, 1, 'NUMEXP', None)),
     ('exptime', (float, True, [], 'EXPTIME', 'EXPTIMn')),
+    ('numsub', (int, True, [], None, None)),
     ('observatory', (str, False, None, 'OBSERVAT', None)),
     ('site_name', (str, False, None, 'SITENAME', None)),
     ('site_latitude', (float, False, None, 'SITELAT', None)),
@@ -1607,7 +1608,10 @@ class PlateMeta(OrderedDict):
 
                 # Copy sub-exposure values
                 if expmeta:
-                    self['date_obs'] = expmeta['date_obs']
+                    self['numsub'].append(len(expmeta['date_obs']))
+                    #self['date_obs'] = expmeta['date_obs']
+                else:
+                    self['numsub'].append(1)
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
             for iexp in np.arange(len(self['ra_orig'])):
