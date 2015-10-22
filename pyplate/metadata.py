@@ -910,12 +910,21 @@ class PlateMeta(OrderedDict):
             self[k] = copy.deepcopy(v[2])
 
         self['plate_id'] = plate_id
+        self.exposures = None
 
         self.conf = None
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
         self.output_db_passwd = ''
+
+    def copy(self):
+        pmeta = PlateMeta()
+
+        for k,v in self.items():
+            pmeta[k] = copy.deepcopy(v)
+
+        return pmeta
 
     _object_types = {'A1': 'planet',
         'A2': 'Moon',
@@ -1445,18 +1454,36 @@ class PlateMeta(OrderedDict):
         """
 
         if self['date_orig']:
-            ntimes = len(self['tms_orig'])
+            if isinstance(self['tms_orig'], list):
+                ntimes = len(self['tms_orig'])
 
-            if ntimes == 0:
+                if ntimes == 0:
+                    ntimes = 1
+            else:
                 ntimes = 1
 
             self['numexp'] = ntimes
+            self['numsub'] = []
+            self['date_obs'] = []
+            self['jd'] = []
+            self['year'] = []
+            self['exptime'] = []
+            self['date_avg'] = []
+            self['jd_avg'] = []
+            self['year_avg'] = []
+            self['date_end'] = []
+            self['jd_end'] = []
+            self['year_end'] = []
+            self.exposures = []
 
             for iexp in np.arange(ntimes):
-                if len(self['date_orig']) > 1:
+                if (isinstance(self['date_orig'], list) and 
+                    len(self['date_orig']) > 1):
                     date_orig = self['date_orig'][iexp]
-                else:
+                elif isinstance(self['date_orig'], list):
                     date_orig = self['date_orig'][0]
+                else:
+                    date_orig = self['date_orig']
 
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
@@ -1474,144 +1501,169 @@ class PlateMeta(OrderedDict):
                 else:
                     tme_orig = None
 
-                if '|' in tms_orig:
-                    tms_orig_sub = [x.strip() for x in tms_orig.split('|')]
+                if tms_orig and '|' in tms_orig:
+                    tms_orig = [x.strip() for x in tms_orig.split('|')]
 
-                    if '|' in tme_orig:
-                        tme_orig_sub = [x.strip() for x in tme_orig.split('|')]
+                if tme_orig and '|' in tme_orig:
+                    tme_orig = [x.strip() for x in tme_orig.split('|')]
 
-                    expmeta = copy.copy(self)
-                    expmeta['tms_orig'] = tms_orig_sub
-                    expmeta['tme_orig'] = tme_orig_sub
+                try:
+                    exptime = self['exptime'][iexp]
+                except Exception:
+                    exptime = None
+                            
+                if (isinstance(tms_orig, list) or isinstance(tme_orig, list)):
+                    expmeta = self.copy()
+                    expmeta['tms_orig'] = tms_orig
+                    expmeta['tme_orig'] = tme_orig
+                    expmeta['exptime'] = exptime
                     expmeta.compute_values()
+                    self.exposures.append(expmeta)
+
+                    # Copy sub-exposure values
+                    self['numsub'].append(expmeta['numexp'])
+                    self['date_obs'].append(expmeta['date_obs'][0])
+                    self['jd'].append(expmeta['jd'][0])
+                    self['year'].append(expmeta['year'][0])
+                    self['date_end'].append(expmeta['date_end'][-1])
+                    self['jd_end'].append(expmeta['jd_end'][-1])
+                    self['year_end'].append(expmeta['year_end'][-1])
+                    #self['exptime'].append(expmeta['exptime'])
+
+                    jd_avg = np.mean([expmeta['jd'][0], expmeta['jd_end'][-1]])
+                    year_avg = np.mean([expmeta['year'][0],
+                                        expmeta['year_end'][-1]])
+                    time_avg = Time(jd_avg, format='jd', scale='ut1', 
+                                    precision=0)
+                    self['date_avg'].append(time_avg.isot)
+                    self['jd_avg'].append(float('{:.5f}'.format(jd_avg)))
+                    self['year_avg'].append(float('{:.8f}'.format(year_avg)))
                 else:
-                    expmeta = None
+                    self['numsub'].append(1)
+                    self.exposures.append(None)
 
-                ut_start_isot = None
-                ut_end_isot = None
+                    ut_start_isot = None
+                    ut_end_isot = None
 
-                if ((self['tz_orig'] == 'ST') and (tms_orig or tme_orig) and 
-                    self['site_latitude'] and self['site_longitude']):
-                    # Convert sidereal time to UT using pyEphem's next_transit
-                    # Initialize location and date
-                    loc = ephem.Observer()
-                    loc.lat = str(self['site_latitude'])
-                    loc.lon = str(self['site_longitude'])
+                    if ((self['tz_orig'] == 'ST') and (tms_orig or tme_orig) and 
+                        self['site_latitude'] and self['site_longitude']):
+                        # Convert sidereal time to UT using pyEphem's next_transit
+                        # Initialize location and date
+                        loc = ephem.Observer()
+                        loc.lat = str(self['site_latitude'])
+                        loc.lon = str(self['site_longitude'])
 
-                    if self['site_elevation']:
-                        loc.elevation = self['site_elevation']
-                        
-                    loc.date = '%s %s' % (date_orig, '12:00:00')
-                    # Define imaginary star with the RA value of the ST of observation,
-                    # and the Dec value of 0. Then compute transit time.
-                    st = ephem.FixedBody()
-                    st._dec = 0.
-                    st._epoch = date_orig
+                        if self['site_elevation']:
+                            loc.elevation = self['site_elevation']
+                            
+                        loc.date = '%s %s' % (date_orig, '12:00:00')
+                        # Define imaginary star with the RA value of the ST of observation,
+                        # and the Dec value of 0. Then compute transit time.
+                        st = ephem.FixedBody()
+                        st._dec = 0.
+                        st._epoch = date_orig
 
-                    if tms_orig:
-                        st._ra = ephem.hours(tms_orig)
-                        st.compute()
-                        ut_start_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
+                        if tms_orig:
+                            st._ra = ephem.hours(tms_orig)
+                            st.compute()
+                            ut_start_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
 
-                    if tme_orig:
-                        st._ra = ephem.hours(tme_orig)
-                        st.compute()
-                        ut_end_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
+                        if tme_orig:
+                            st._ra = ephem.hours(tme_orig)
+                            st.compute()
+                            ut_end_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
 
-                elif self['tz_orig'] == 'UT':
-                    if self['ut_start_orig']:
-                        ut_start_orig = self['ut_start_orig'][iexp]
+                    elif self['tz_orig'] == 'UT':
+                        if self['ut_start_orig']:
+                            ut_start_orig = self['ut_start_orig'][iexp]
 
-                        if not ':' in ut_start_orig:
-                            ut_start_orig += ':00'
+                            if not ':' in ut_start_orig:
+                                ut_start_orig += ':00'
 
-                        ut_start_isot = '{}T{}'.format(date_orig, ut_start_orig)
+                            ut_start_isot = '{}T{}'.format(date_orig, ut_start_orig)
 
-                        # Make sure that ut_start_isot formatting is correct
-                        if not '.' in ut_start_orig:
-                            ut_start_isot = Time(ut_start_isot, format='isot', 
-                                                 scale='ut1', precision=0).isot
+                            # Make sure that ut_start_isot formatting is correct
+                            if not '.' in ut_start_orig:
+                                ut_start_isot = Time(ut_start_isot, format='isot', 
+                                                     scale='ut1', precision=0).isot
 
-                    if self['ut_end_orig']:
-                        ut_end_orig = self['ut_end_orig'][iexp]
+                        if self['ut_end_orig']:
+                            ut_end_orig = self['ut_end_orig'][iexp]
 
-                        if not ':' in ut_end_orig:
-                            ut_end_orig += ':00'
+                            if not ':' in ut_end_orig:
+                                ut_end_orig += ':00'
 
-                        ut_end_isot = '{}T{}'.format(date_orig, ut_end_orig)
+                            ut_end_isot = '{}T{}'.format(date_orig, ut_end_orig)
 
-                        # Check if end time is after midnight. If so, use next
-                        # date.
-                        if (self['ut_start_orig'] and 
-                            ut_end_orig < ut_start_orig):
-                            next_day = (Time(ut_end_isot, format='isot', 
-                                             scale='ut1', precision=0) 
-                                        + TimeDelta(1, format='jd'))
-                            date_end = next_day.isot.split('T')[0]
-                            ut_end_isot = '{}T{}'.format(date_end, ut_end_orig)
+                            # Check if end time is after midnight. If so, use next
+                            # date.
+                            if (self['ut_start_orig'] and 
+                                ut_end_orig < ut_start_orig):
+                                next_day = (Time(ut_end_isot, format='isot', 
+                                                 scale='ut1', precision=0) 
+                                            + TimeDelta(1, format='jd'))
+                                date_end = next_day.isot.split('T')[0]
+                                ut_end_isot = '{}T{}'.format(date_end, ut_end_orig)
 
-                        # Make sure that ut_start_isot formatting is correct
-                        if not '.' in ut_end_orig:
-                            ut_end_isot = Time(ut_end_isot, format='isot',
-                                               scale='ut1', precision=0).isot
+                            # Make sure that ut_start_isot formatting is correct
+                            if not '.' in ut_end_orig:
+                                ut_end_isot = Time(ut_end_isot, format='isot',
+                                                   scale='ut1', precision=0).isot
 
-                if not tms_orig:
-                    ut_start_isot = Time(date_orig, format='iso', scale='ut1', 
-                                         out_subfmt='date').iso
+                    if not tms_orig:
+                        ut_start_isot = Time(date_orig, format='iso', scale='ut1', 
+                                             out_subfmt='date').iso
 
-                if ut_start_isot:
-                    self['date_obs'].append(ut_start_isot)
-                    time_start = Time(ut_start_isot, format='isot', scale='ut1')
+                    if ut_start_isot:
+                        self['date_obs'].append(ut_start_isot)
+                        time_start = Time(ut_start_isot, format='isot', scale='ut1')
 
-                    if tms_orig:
-                        self['jd'].append(float('%.5f' % time_start.jd))
-                        self['year'].append(float('%.8f' % time_start.jyear))
+                        if tms_orig:
+                            self['jd'].append(float('%.5f' % time_start.jd))
+                            self['year'].append(float('%.8f' % time_start.jyear))
+                        else:
+                            self['jd'].append(float('%.0f' % time_start.jd) + 1.)
+                            self['year'].append(float('%.3f' % time_start.jyear))
                     else:
-                        self['jd'].append(float('%.0f' % time_start.jd) + 1.)
-                        self['year'].append(float('%.3f' % time_start.jyear))
+                        self['date_obs'].append(None)
+                        self['jd'].append(None)
+                        self['year'].append(None)
 
-                    try:
-                        exptime = self['exptime'][iexp]
-                    except Exception:
-                        exptime = None
-                        
-                    if exptime and tms_orig:
+                    if ut_end_isot:
+                        self['date_end'].append(ut_end_isot)
+                        time_end = Time(ut_end_isot, format='isot', scale='ut1')
+
+                        if tme_orig:
+                            self['jd_end'].append(float('{:.5f}'
+                                                        .format(time_end.jd)))
+                            self['year_end'].append(float('{:.8f}'
+                                                          .format(time_end.jyear)))
+                        else:
+                            self['jd_end'].append(None)
+                            self['year_end'].append(None)
+                    else:
+                        self['date_end'].append(None)
+                        self['jd_end'].append(None)
+                        self['year_end'].append(None)
+
+                    if ut_start_isot and exptime:
                         time_avg = Time(time_start.jd + 0.5 * exptime / 86400., format='jd', 
                             scale='ut1', precision=0)
                         self['date_avg'].append(time_avg.isot)
                         self['jd_avg'].append(float('%.5f' % time_avg.jd))
                         self['year_avg'].append(float('%.8f' % time_avg.jyear))
+                    elif ut_start_isot and ut_end_isot:
+                        jd_avg = np.mean([time_start.jd, time_end.jd])
+                        year_avg = np.mean([time_start.jyear, time_end.jyear])
+                        time_avg = Time(jd_avg, format='jd', scale='ut1', 
+                                        precision=0)
+                        self['date_avg'].append(time_avg.isot)
+                        self['jd_avg'].append(float('{:.5f}'.format(jd_avg)))
+                        self['year_avg'].append(float('{:.8f}'.format(year_avg)))
                     else:
                         self['date_avg'].append(None)
                         self['jd_avg'].append(None)
                         self['year_avg'].append(None)
-                else:
-                    self['date_obs'].append(None)
-                    self['jd'].append(None)
-
-                if ut_end_isot:
-                    self['date_end'].append(ut_end_isot)
-                    time_end = Time(ut_end_isot, format='isot', scale='ut1')
-
-                    if tme_orig:
-                        self['jd_end'].append(float('{:.5f}'
-                                                    .format(time_end.jd)))
-                        self['year_end'].append(float('{:.8f}'
-                                                      .format(time_end.jyear)))
-                    else:
-                        self['jd_end'].append(None)
-                        self['year_end'].append(None)
-                else:
-                    self['date_end'].append(None)
-                    self['jd_end'].append(None)
-                    self['year_end'].append(None)
-
-                # Copy sub-exposure values
-                if expmeta:
-                    self['numsub'].append(len(expmeta['date_obs']))
-                    #self['date_obs'] = expmeta['date_obs']
-                else:
-                    self['numsub'].append(1)
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
             for iexp in np.arange(len(self['ra_orig'])):
