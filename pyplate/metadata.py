@@ -1448,7 +1448,9 @@ class PlateMeta(OrderedDict):
 
             if ntimes == 0:
                 ntimes = 1
-                
+
+            self['numexp'] = ntimes
+
             for iexp in np.arange(ntimes):
                 if len(self['date_orig']) > 1:
                     date_orig = self['date_orig'][iexp]
