@@ -1022,8 +1022,10 @@ class PlateMeta(OrderedDict):
             else:
                 if len(self[key]) > exp:
                     val = self[key][exp]
-                else:
+                elif len(self[key]) == 1:
                     val = self[key][0]
+                else:
+                    val = None
         else:
             val = self[key]
 
