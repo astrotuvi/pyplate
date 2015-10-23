@@ -112,7 +112,7 @@ _schema['exposure'] = OrderedDict([
     ('hjd_mid',          ('DOUBLE', None)),
     ('hjd_weighted',     ('DOUBLE', None)),
     ('exptime',          ('FLOAT', 'exptime')),
-    ('num_sub',          ('TINYINT UNSIGNED', None)),
+    ('num_sub',          ('TINYINT UNSIGNED', 'numsub')),
     ('method',           ('TINYINT UNSIGNED', None)),
     ('focus',            ('FLOAT', 'focus')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
