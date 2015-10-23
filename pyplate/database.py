@@ -638,7 +638,7 @@ class PlateDB:
             exposure_id = self.cursor.lastrowid
 
             # The exposure_sub table
-            if platemeta['numsub'][exp] > 1:
+            if len(platemeta['numsub']) > exp and platemeta['numsub'][exp] > 1:
                 for subexp in np.arange(platemeta['numsub'][exp]):
                     subexp_num = subexp + 1
                     col_list = ['exposure_id', 'plate_id',
