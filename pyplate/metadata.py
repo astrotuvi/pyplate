@@ -1462,7 +1462,11 @@ class PlateMeta(OrderedDict):
             else:
                 ntimes = 1
 
-            self['numexp'] = ntimes
+            # Update number of exposures if there are more exposure timestamps
+            # in metadata
+            if ntimes > self['numexp']:
+                self['numexp'] = ntimes
+                
             self['numsub'] = []
             self['date_obs'] = []
             self['jd'] = []
