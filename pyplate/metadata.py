@@ -1351,6 +1351,9 @@ class PlateMeta(OrderedDict):
                             else:
                                 val = [x.strip() for x in 
                                        val_list[pos-1].split(csv_list_delimiter)]
+                                
+                                if val == ['']:
+                                    val = []
                         elif (_keyword_meta[key][0] is int or 
                               _keyword_meta[key][0] is float):
                             val = str_to_num(val_list[pos-1])
