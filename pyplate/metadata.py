@@ -1480,7 +1480,6 @@ class PlateMeta(OrderedDict):
             self['date_obs'] = []
             self['jd'] = []
             self['year'] = []
-            self['exptime'] = []
             self['date_avg'] = []
             self['jd_avg'] = []
             self['year_avg'] = []
