@@ -1456,17 +1456,21 @@ class PlateMeta(OrderedDict):
         """
 
         if self['date_orig']:
+            tms_missing = False
+
             if isinstance(self['tms_orig'], list):
                 ntimes = len(self['tms_orig'])
 
                 if ntimes == 0:
+                    tms_missing = True
                     ntimes = 1
             else:
                 ntimes = 1
 
-            # Update number of exposures if there are more exposure timestamps
-            # in metadata
-            if ntimes > self['numexp']:
+            # Update number of exposures if the number of timestamps is 
+            # different
+            if (ntimes > self['numexp'] or (ntimes < self['numexp'] and 
+                                            not tms_missing)):
                 self['numexp'] = ntimes
                 
             self['numsub'] = []
