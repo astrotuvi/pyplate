@@ -1530,7 +1530,7 @@ class PlateMeta(OrderedDict):
                     expmeta['tms_orig'] = tms_orig
                     expmeta['tme_orig'] = tme_orig
                     expmeta['numexp'] = len(tms_orig)
-                    expmeta['exptime'] = [exptime]
+                    expmeta['exptime'] = []
                     expmeta.compute_values()
                     self.exposures.append(expmeta)
 
