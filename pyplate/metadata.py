@@ -1716,6 +1716,7 @@ class PlateMeta(OrderedDict):
                         time_avg = Time(jd_avg, format='jd', scale='ut1', 
                                         precision=0)
                         self['date_avg'].append(time_avg.isot)
+                        self['date_weighted'].append(time_avg.isot)
                         jd_avg = float('{:.5f}'.format(jd_avg))
                         self['jd_avg'].append(jd_avg)
                         self['jd_weighted'].append(jd_avg)
