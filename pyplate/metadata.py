@@ -1488,6 +1488,7 @@ class PlateMeta(OrderedDict):
             self['jd_end'] = []
             self['year_end'] = []
             self.exposures = []
+            exptime_calc = []
 
             for iexp in np.arange(ntimes):
                 if (isinstance(self['date_orig'], list) and 
@@ -1542,7 +1543,12 @@ class PlateMeta(OrderedDict):
                     self['date_end'].append(expmeta['date_end'][-1])
                     self['jd_end'].append(expmeta['jd_end'][-1])
                     self['year_end'].append(expmeta['year_end'][-1])
-                    #self['exptime'].append(expmeta['exptime'])
+
+                    if (len(filter(None, expmeta['exptime'])) == 
+                        expmeta['numexp']):
+                        exptime_calc.append(sum(expmeta['exptime']))
+                    else:
+                        exptime_calc.append(None)
 
                     jd_avg = np.mean([expmeta['jd'][0], expmeta['jd_end'][-1]])
                     year_avg = np.mean([expmeta['year'][0],
@@ -1689,8 +1695,8 @@ class PlateMeta(OrderedDict):
                         self['year_end'].append(None)
 
                     if ut_start_isot and exptime:
-                        time_avg = Time(time_start.jd + 0.5 * exptime / 86400., format='jd', 
-                            scale='ut1', precision=0)
+                        time_avg = Time(time_start.jd + 0.5 * exptime / 86400.,
+                                        format='jd', scale='ut1', precision=0)
                         self['date_avg'].append(time_avg.isot)
                         self['jd_avg'].append(float('%.5f' % time_avg.jd))
                         self['year_avg'].append(float('%.8f' % time_avg.jyear))
@@ -1706,6 +1712,14 @@ class PlateMeta(OrderedDict):
                         self['date_avg'].append(None)
                         self['jd_avg'].append(None)
                         self['year_avg'].append(None)
+
+                    if ut_start_isot and ut_end_isot:
+                        exptime_calc.append((time_end-time_start).sec)
+                    else:
+                        exptime_calc.append(None)
+
+            if self['exptime'] == [] and filter(None, exptime_calc) != []:
+                self['exptime'] = exptime_calc
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
             for iexp in np.arange(len(self['ra_orig'])):
