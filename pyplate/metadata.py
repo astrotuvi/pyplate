@@ -1713,21 +1713,33 @@ class PlateMeta(OrderedDict):
                     if ut_start_isot and exptime:
                         time_avg = Time(time_start.jd + 0.5 * exptime / 86400.,
                                         format='jd', scale='ut1', precision=0)
+                        jd_avg = float('{:.5f}'.format(time_avg.jd))
+                        year_avg = float('{:.8f}'.format(time_avg.jyear))
                         self['date_avg'].append(time_avg.isot)
-                        self['jd_avg'].append(float('%.5f' % time_avg.jd))
-                        self['year_avg'].append(float('%.8f' % time_avg.jyear))
+                        self['date_weighted'].append(time_avg.isot)
+                        self['jd_avg'].append(jd_avg)
+                        self['jd_weighted'].append(jd_avg)
+                        self['year_avg'].append(year_avg)
+                        self['year_weighted'].append(year_avg)
                     elif ut_start_isot and ut_end_isot:
                         jd_avg = np.mean([time_start.jd, time_end.jd])
                         year_avg = np.mean([time_start.jyear, time_end.jyear])
                         time_avg = Time(jd_avg, format='jd', scale='ut1', 
                                         precision=0)
                         self['date_avg'].append(time_avg.isot)
-                        self['jd_avg'].append(float('{:.5f}'.format(jd_avg)))
-                        self['year_avg'].append(float('{:.8f}'.format(year_avg)))
+                        jd_avg = float('{:.5f}'.format(jd_avg))
+                        self['jd_avg'].append(jd_avg)
+                        self['jd_weighted'].append(jd_avg)
+                        year_avg = float('{:.8f}'.format(year_avg))
+                        self['year_avg'].append(year_avg)
+                        self['year_weighted'].append(year_avg)
                     else:
                         self['date_avg'].append(None)
+                        self['date_weighted'].append(None)
                         self['jd_avg'].append(None)
+                        self['jd_weighted'].append(None)
                         self['year_avg'].append(None)
+                        self['year_weighted'].append(None)
 
                     if ut_start_isot and ut_end_isot:
                         tdiff = (Time(ut_end_isot, format='isot', 
