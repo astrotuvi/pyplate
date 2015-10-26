@@ -1714,8 +1714,10 @@ class PlateMeta(OrderedDict):
                         self['year_avg'].append(None)
 
                     if ut_start_isot and ut_end_isot:
-                        tdiff = (Time(time_end.iso, scale='tai') -
-                                 Time(time_start.iso, scale='tai'))
+                        tdiff = (Time(ut_end_isot, format='isot', 
+                                      scale='tai') -
+                                 Time(ut_start_isot, format='isot', 
+                                      scale='tai'))
                         exptime_calc.append(tdiff.sec)
                     else:
                         exptime_calc.append(None)
