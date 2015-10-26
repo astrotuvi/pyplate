@@ -1484,6 +1484,9 @@ class PlateMeta(OrderedDict):
             self['date_avg'] = []
             self['jd_avg'] = []
             self['year_avg'] = []
+            self['date_weighted'] = []
+            self['jd_weighted'] = []
+            self['year_weighted'] = []
             self['date_end'] = []
             self['jd_end'] = []
             self['year_end'] = []
@@ -1544,11 +1547,24 @@ class PlateMeta(OrderedDict):
                     self['jd_end'].append(expmeta['jd_end'][-1])
                     self['year_end'].append(expmeta['year_end'][-1])
 
+                    # Check if exptimes exist for all sub-exposures
                     if (len(filter(None, expmeta['exptime'])) == 
                         expmeta['numexp']):
                         exptime_calc.append(sum(expmeta['exptime']))
+                        jd_weighted = np.average(expmeta['jd_avg'],
+                                                 weights=expmeta['exptime'])
+                        year_weighted = np.average(expmeta['year_avg'],
+                                                   weights=expmeta['exptime'])
+                        time_weighted = Time(jd_weightes, format='jd', 
+                                             scale='ut1', precision=0)
+                        self['date_weighted'].append(time_weighted.isot)
+                        self['jd_weighted'].append(jd_weighted)
+                        self['year_weighted'].append(year_weighted)
                     else:
                         exptime_calc.append(None)
+                        self['date_weighted'].append(None)
+                        self['jd_weighted'].append(None)
+                        self['year_weighted'].append(None)
 
                     jd_avg = np.mean([expmeta['jd'][0], expmeta['jd_end'][-1]])
                     year_avg = np.mean([expmeta['year'][0],
