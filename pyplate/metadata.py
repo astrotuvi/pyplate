@@ -1555,7 +1555,7 @@ class PlateMeta(OrderedDict):
                                                  weights=expmeta['exptime'])
                         year_weighted = np.average(expmeta['year_avg'],
                                                    weights=expmeta['exptime'])
-                        time_weighted = Time(jd_weightes, format='jd', 
+                        time_weighted = Time(jd_weighted, format='jd', 
                                              scale='ut1', precision=0)
                         self['date_weighted'].append(time_weighted.isot)
                         self['jd_weighted'].append(jd_weighted)
