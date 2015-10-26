@@ -12,6 +12,7 @@ import math
 import datetime as dt
 import numpy as np
 import ephem
+import pytimeparse
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
@@ -1557,6 +1558,34 @@ class PlateMeta(OrderedDict):
 
                     ut_start_isot = None
                     ut_end_isot = None
+
+                    # Handle cases where time hours are larger than 24
+                    if tms_orig or tme_orig:
+                        t_date_orig = Time(date_orig, scale='tai')
+
+                        if tme_orig:
+                            if tme_orig.count(':') == 1:
+                                tme_orig += ':00'
+
+                            tsec = pytimeparse.parse(tme_orig)
+
+                            if tsec > 86400:
+                                td_tme = TimeDelta(tsec, format='sec')
+                                t_tme = t_date_orig + td_tme
+                                date_orig = Time(t_tme, out_subfmt='date').iso
+                                tme_orig = Time(t_tme).iso.split()[-1]
+
+                        if tms_orig:
+                            if tms_orig.count(':') == 1:
+                                tms_orig += ':00'
+
+                            tsec = pytimeparse.parse(tms_orig)
+                            
+                            if tsec > 86400:
+                                td_tms = TimeDelta(tsec, format='sec')
+                                t_tms = t_date_orig + td_tms
+                                date_orig = Time(t_tms, out_subfmt='date').iso
+                                tms_orig = Time(t_tms).iso.split()[-1]
 
                     if ((self['tz_orig'] == 'ST') and (tms_orig or tme_orig) and 
                         self['site_latitude'] and self['site_longitude']):
