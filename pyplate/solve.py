@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.io import votable
 from astropy.coordinates import Angle
 from astropy import units
+from scipy.interpolate import InterpolatedUnivariateSpline
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
@@ -59,7 +60,13 @@ try:
     have_healpy = True
 except ImportError:
     have_healpy = False
-    
+
+try:
+    import statsmodels.api as sm
+    have_statsmodels = True
+except ImportError:
+    have_statsmodels = False
+
 
 class AstrometryNetIndex:
     """
@@ -457,6 +464,12 @@ _source_meta = OrderedDict([
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
+    ('natmag',              ('f4', '%7.4f', '')),
+    ('natmagerr',           ('f4', '%7.4f', '')),
+    ('bmag',                ('f4', '%7.4f', '')),
+    ('bmagerr',             ('f4', '%7.4f', '')),
+    ('vmag',                ('f4', '%7.4f', '')),
+    ('vmagerr',             ('f4', '%7.4f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
@@ -1311,6 +1324,10 @@ class SolveProcess:
         self.sources['tycho2_btmag'] = np.nan
         self.sources['tycho2_vtmag'] = np.nan
         self.sources['tycho2_dist'] = np.nan
+        self.sources['bmag'] = np.nan
+        self.sources['bmagerr'] = np.nan
+        self.sources['vmag'] = np.nan
+        self.sources['vmagerr'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -2685,7 +2702,7 @@ class SolveProcess:
                 phi_rad = np.radians(self.sources['raj2000'][ind])
                 theta_rad = np.radians(90. - self.sources['dej2000'][ind])
                 hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
-                self.sources['healpix256'][ind] = hp256
+                self.sources['healpix256'][ind] = hp256.astype(np.int32)
 
         # Cross-match source coordinates with the UCAC4 and Tycho-2 catalogues
 
@@ -2738,7 +2755,8 @@ class SolveProcess:
                     self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
-                    self.sources['ucac4_dist'][ind] = matchdist
+                    self.sources['ucac4_dist'][ind] = (matchdist
+                                                       .astype(np.float32))
 
             # Match sources with the Tycho-2 catalogue
             self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
@@ -2841,7 +2859,8 @@ class SolveProcess:
                         self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
                         self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
                         self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
-                        self.sources['tycho2_dist'][ind] = matchdist
+                        self.sources['tycho2_dist'][ind] = (matchdist
+                                                            .astype(np.float32))
 
     def output_sources_csv(self, filename=None):
         """
@@ -2881,6 +2900,7 @@ class SolveProcess:
                      'sextractor_flags', 
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
+                     'natmag', 'bmag', 'vmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
@@ -2919,4 +2939,237 @@ class SolveProcess:
             
         platedb.close_connection()
         self.log.write('Closed database connection.')
+
+    def calibrate_photometry(self):
+        """
+        Calibrate extracted magnitudes.
+
+        """
+
+        self.log.to_db(3, 'Calibrating photometry', event=70)
+
+        fn_caldata = os.path.join(self.write_source_dir, 
+                                  '{}_caldata.txt'.format(self.basefn))
+        fcaldata = open(fn_caldata, 'wb')
+        fn_calcurve = os.path.join(self.write_source_dir, 
+                                   '{}_calcurve.txt'.format(self.basefn))
+        fcalcurve = open(fn_calcurve, 'wb')
+
+        # Loop over annular bins
+        for b in np.arange(9)+1:
+            ind_bin = np.where((self.sources['annular_bin'] == b) & 
+                               (self.sources['mag_auto'] > 0) & 
+                               (self.sources['mag_auto'] < 90))[0]
+
+            if len(ind_bin) == 0:
+                continue
+
+            src_bin = self.sources[ind_bin]
+            ind_ucacmag = np.where((src_bin['ucac4_bmag'] > 10) &
+                                   (src_bin['ucac4_vmag'] > 10))[0]
+            ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
+
+            if len(ind_ucacmag) > 0:
+                cat_bmag = src_bin[ind_ucacmag]['ucac4_bmag']
+                cat_vmag = src_bin[ind_ucacmag]['ucac4_vmag']
+                plate_mag = src_bin[ind_ucacmag]['mag_auto']
+            else:
+                cat_bmag = np.array([])
+                cat_vmag = np.array([])
+                plate_mag = np.array([])
+
+            # Complement UCAC4 magnitudes with Tycho-2 magnitudes converted to 
+            # B and V
+            if len(ind_noucacmag) > 0:
+                src_nomag = src_bin[ind_noucacmag]
+                ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
+                                      np.isfinite(src_nomag['tycho2_vtmag']))[0]
+
+                if len(ind_tycmag) > 0:
+                    tycho2_btmag = src_nomag[ind_tycmag]['tycho2_btmag']
+                    tycho2_vtmag = src_nomag[ind_tycmag]['tycho2_vtmag']
+                    tycho2_bmag = (tycho2_vtmag 
+                                   + 0.76 * (tycho2_btmag - tycho2_vtmag))
+                    tycho2_vmag = (tycho2_vtmag 
+                                   - 0.09 * (tycho2_btmag - tycho2_vtmag))
+                    add_platemag = src_nomag[ind_tycmag]['mag_auto']
+                    cat_bmag = np.append(cat_bmag, tycho2_bmag)
+                    cat_vmag = np.append(cat_vmag, tycho2_vmag)
+                    plate_mag = np.append(plate_mag, add_platemag)
+
+            num_calstars = len(plate_mag)
+            
+            self.log.write('Annular bin {:d}: {:6d} calibration stars'
+                           ''.format(b, num_calstars), 
+                           double_newline=False, level=4, event=71)
+
+            if num_calstars < 5:
+                continue
+
+            plate_mag_u,uind = np.unique(plate_mag, return_index=True)
+            cat_bmag_u = cat_bmag[uind]
+            cat_vmag_u = cat_vmag[uind]
+
+            # Evaluate color term in 3 iterations
+            if b == 1:
+                # Iteration 1
+                cterm_list = np.arange(25) * 0.25 - 3.
+                stdev_list = []
+
+                for cterm in cterm_list:
+                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                                frac=0.2, it=3, delta=0.2,
+                                                return_sorted=True)
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    mag_diff = cat_mag - s(plate_mag_u)
+                    stdev_list.append(mag_diff.std())
+
+                fn_color = os.path.join(self.write_source_dir,
+                                        '{}_color.txt'.format(self.basefn))
+                fcolor = open(fn_color, 'wb')
+                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                fcolor.write('\n\n')
+
+                cf = np.polyfit(cterm_list, stdev_list, 4)
+                cf1d = np.poly1d(cf)
+                extrema = cf1d.deriv().r
+                cterm_extr = extrema[np.where(extrema.imag==0)].real
+                der2 = cf1d.deriv(2)(cterm_extr)
+                cterm_min = cterm_extr[np.where((der2>0) & (cterm_extr>-2) & 
+                                                (cterm_extr<3))][0]
+                #indmin = np.argmin(stdev_list)
+                #min_cterm = cterm_list[indmin]
+
+                # Iteration 2
+                cterm_list = (np.arange(17) * 0.05 + 
+                              round(cterm_min*20.)/20. - 0.4)
+                stdev_list = []
+
+                for cterm in cterm_list:
+                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                                frac=0.2, it=3, delta=0.2,
+                                                return_sorted=True)
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    mag_diff = cat_mag - s(plate_mag_u)
+                    stdev_list.append(mag_diff.std())
+
+                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                fcolor.write('\n\n')
+
+                cf = np.polyfit(cterm_list, stdev_list, 2)
+                cterm_min = -0.5 * cf[1] / cf[0]
+                print cterm_min
+                #indmin = np.argmin(stdev_list)
+                #min_cterm = cterm_list[indmin]
+
+                # Iteration 3
+                cterm_list = (np.arange(41) * 0.01 + 
+                              round(cterm_min*100.)/100. - 0.2)
+                stdev_list = []
+
+                for cterm in cterm_list:
+                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                                frac=0.2, it=3, delta=0.2,
+                                                return_sorted=True)
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    mag_diff = cat_mag - s(plate_mag_u)
+                    stdev_list.append(mag_diff.std())
+
+                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                fcolor.close()
+
+                cf = np.polyfit(cterm_list, stdev_list, 2)
+                cterm = -0.5 * cf[1] / cf[0]
+                print cterm
+                #indmin = np.argmin(stdev_list)
+                #min_cterm = cterm_list[indmin]
+                #cterm = min_cterm
+
+            cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+
+            # For bins 1-8, find calibration curve. For bin 9, use calibration
+            # from bin 8.
+            if b < 9:
+                # Study the distribution of magnitudes
+                kde = sm.nonparametric.KDEUnivariate(plate_mag_u
+                                                     .astype(np.double))
+                kde.fit()
+                ind_maxden = np.argmax(kde.density)
+                plate_mag_maxden = kde.support[ind_maxden]
+                ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+                plate_mag_lim = kde.support[ind_dense[-1]]
+                ind_valid = np.where(plate_mag_u < plate_mag_lim)
+                num_valid = len(ind_valid)
+
+                cat_natmag = cat_natmag[ind_valid]
+                plate_mag_u = plate_mag_u[ind_valid]
+                frac = 0.2
+
+                if num_valid < 100:
+                    frac = 0.4
+
+                z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
+                                            frac=frac, it=3, delta=0.1, 
+                                            return_sorted=True)
+
+                #magdensity,bins = np.histogram(plate_mag_u, bins=200, 
+                #                               range=[0,20], density=True)
+                #ind_dense = np.where(magdensity > 0.2*magdensity.max())[0]
+                #cutmag = bins[ind_dense[0]]
+                #ind_dense = np.where(magdensity > 0.1*magdensity.max())[0]
+                #plate_mag_lim = bins[ind_dense[-1]+1]
+
+                # Improve bright-star calibration
+                brightmag = kde.support[ind_dense[0]]
+                nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+
+                if nbright < 20:
+                    brightmag = (plate_mag_u.min() + 
+                                 (plate_mag_maxden - plate_mag_u.min()) * 0.5)
+                    nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+
+                z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                             plate_mag_u[:nbright], 
+                                             frac=0.4, it=3, delta=0.1, 
+                                             return_sorted=True)
+                weight2 = np.arange(nbright, dtype=float) / nbright
+                weight1 = 1. - weight2
+                z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+
+                # Interpolate lowess-smoothed calibration curve
+                s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+
+            print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
+            np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
+                                                  s(plate_mag_u), 
+                                                  cat_natmag-s(plate_mag_u))))
+            fcaldata.write('\n\n')
+            np.savetxt(fcalcurve, z)
+            fcalcurve.write('\n\n')
+
+            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+
+            if len(ind_ucacmag) > 0:
+                ind = ind_bin[ind_ucacmag]
+                b_v = (self.sources[ind]['ucac4_bmag']
+                       - self.sources[ind]['ucac4_vmag'])
+                self.sources['vmag'][ind] = (self.sources['natmag'][ind]
+                                             - cterm * b_v)
+                self.sources['bmag'][ind] = (self.sources['natmag'][ind]
+                                             - (cterm - 1.) * b_v)
+
+            if len(ind_tycmag) > 0:
+                ind = ind_bin[ind_noucacmag[ind_tycmag]]
+                b_v = 0.85 * (self.sources[ind]['tycho2_btmag']
+                              - self.sources[ind]['tycho2_vtmag'])
+                self.sources['vmag'][ind] = (self.sources['natmag'][ind]
+                                             - cterm * b_v)
+                self.sources['bmag'][ind] = (self.sources['natmag'][ind]
+                                             - (cterm - 1.) * b_v)
+
+        fcaldata.close()
+        fcalcurve.close()
 
