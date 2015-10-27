@@ -2900,7 +2900,8 @@ class SolveProcess:
                      'sextractor_flags', 
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
-                     'natmag', 'bmag', 'vmag',
+                     'natmag', 'natmagerr',
+                     'bmag', 'bmagerr', 'vmag', 'vmagerr',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
@@ -2948,12 +2949,12 @@ class SolveProcess:
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
 
-        fn_caldata = os.path.join(self.write_source_dir, 
-                                  '{}_caldata.txt'.format(self.basefn))
-        fcaldata = open(fn_caldata, 'wb')
-        fn_calcurve = os.path.join(self.write_source_dir, 
-                                   '{}_calcurve.txt'.format(self.basefn))
-        fcalcurve = open(fn_calcurve, 'wb')
+        #fn_caldata = os.path.join(self.write_source_dir, 
+        #                          '{}_caldata.txt'.format(self.basefn))
+        #fcaldata = open(fn_caldata, 'wb')
+        #fn_calcurve = os.path.join(self.write_source_dir, 
+        #                           '{}_calcurve.txt'.format(self.basefn))
+        #fcalcurve = open(fn_calcurve, 'wb')
 
         # Loop over annular bins
         for b in np.arange(9)+1:
@@ -3025,11 +3026,11 @@ class SolveProcess:
                     mag_diff = cat_mag - s(plate_mag_u)
                     stdev_list.append(mag_diff.std())
 
-                fn_color = os.path.join(self.write_source_dir,
-                                        '{}_color.txt'.format(self.basefn))
-                fcolor = open(fn_color, 'wb')
-                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                fcolor.write('\n\n')
+                #fn_color = os.path.join(self.write_source_dir,
+                #                        '{}_color.txt'.format(self.basefn))
+                #fcolor = open(fn_color, 'wb')
+                #np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                #fcolor.write('\n\n')
 
                 cf = np.polyfit(cterm_list, stdev_list, 4)
                 cf1d = np.poly1d(cf)
@@ -3055,8 +3056,8 @@ class SolveProcess:
                     mag_diff = cat_mag - s(plate_mag_u)
                     stdev_list.append(mag_diff.std())
 
-                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                fcolor.write('\n\n')
+                #np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                #fcolor.write('\n\n')
 
                 cf = np.polyfit(cterm_list, stdev_list, 2)
                 cterm_min = -0.5 * cf[1] / cf[0]
@@ -3078,8 +3079,8 @@ class SolveProcess:
                     mag_diff = cat_mag - s(plate_mag_u)
                     stdev_list.append(mag_diff.std())
 
-                np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                fcolor.close()
+                #np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                #fcolor.close()
 
                 cf = np.polyfit(cterm_list, stdev_list, 2)
                 cterm = -0.5 * cf[1] / cf[0]
@@ -3142,13 +3143,13 @@ class SolveProcess:
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
 
-            print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
-            np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
-                                                  s(plate_mag_u), 
-                                                  cat_natmag-s(plate_mag_u))))
-            fcaldata.write('\n\n')
-            np.savetxt(fcalcurve, z)
-            fcalcurve.write('\n\n')
+            #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
+            #np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
+            #                                      s(plate_mag_u), 
+            #                                      cat_natmag-s(plate_mag_u))))
+            #fcaldata.write('\n\n')
+            #np.savetxt(fcalcurve, z)
+            #fcalcurve.write('\n\n')
 
             self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
 
@@ -3170,6 +3171,6 @@ class SolveProcess:
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
 
-        fcaldata.close()
-        fcalcurve.close()
+        #fcaldata.close()
+        #fcalcurve.close()
 
