@@ -505,6 +505,7 @@ class SolveProcess:
         self.tycho2_dir = ''
         self.work_dir = ''
         self.write_source_dir = ''
+        self.write_phot_dir = ''
         self.write_wcs_dir = ''
         self.write_log_dir = ''
 
@@ -606,7 +607,7 @@ class SolveProcess:
                 pass
 
         for attr in ['fits_dir', 'tycho2_dir', 
-                     'work_dir', 'write_log_dir',
+                     'work_dir', 'write_log_dir', 'write_phot_dir',
                      'write_source_dir', 'write_wcs_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
@@ -2949,12 +2950,19 @@ class SolveProcess:
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
 
-        #fn_caldata = os.path.join(self.write_source_dir, 
-        #                          '{}_caldata.txt'.format(self.basefn))
-        #fcaldata = open(fn_caldata, 'wb')
-        #fn_calcurve = os.path.join(self.write_source_dir, 
-        #                           '{}_calcurve.txt'.format(self.basefn))
-        #fcalcurve = open(fn_calcurve, 'wb')
+        # Create output directory, if missing
+        if self.write_phot_dir and not os.path.isdir(self.write_phot_dir):
+            self.log.write('Creating output directory {}'
+                           .format(self.write_phot_dir), level=4, event=70)
+            os.makedirs(self.write_phot_dir)
+
+        if self.write_phot_dir:
+            fn_caldata = os.path.join(self.write_phot_dir, 
+                                      '{}_caldata.txt'.format(self.basefn))
+            fcaldata = open(fn_caldata, 'wb')
+            fn_calcurve = os.path.join(self.write_phot_dir, 
+                                       '{}_calcurve.txt'.format(self.basefn))
+            fcalcurve = open(fn_calcurve, 'wb')
 
         # Loop over annular bins
         for b in np.arange(9)+1:
@@ -3026,11 +3034,12 @@ class SolveProcess:
                     mag_diff = cat_mag - s(plate_mag_u)
                     stdev_list.append(mag_diff.std())
 
-                #fn_color = os.path.join(self.write_source_dir,
-                #                        '{}_color.txt'.format(self.basefn))
-                #fcolor = open(fn_color, 'wb')
-                #np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                #fcolor.write('\n\n')
+                if self.write_phot_dir:
+                    fn_color = os.path.join(self.write_phot_dir,
+                                            '{}_color.txt'.format(self.basefn))
+                    fcolor = open(fn_color, 'wb')
+                    np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+                    fcolor.write('\n\n')
 
                 cf = np.polyfit(cterm_list, stdev_list, 4)
                 cf1d = np.poly1d(cf)
@@ -3056,8 +3065,10 @@ class SolveProcess:
                     mag_diff = cat_mag - s(plate_mag_u)
                     stdev_list.append(mag_diff.std())
 
-                #np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                #fcolor.write('\n\n')
+                if self.write_phot_dir:
+                    np.savetxt(fcolor, np.column_stack((cterm_list, 
+                                                        stdev_list)))
+                    fcolor.write('\n\n')
 
                 cf = np.polyfit(cterm_list, stdev_list, 2)
                 cterm_min = -0.5 * cf[1] / cf[0]
@@ -3079,12 +3090,14 @@ class SolveProcess:
                     mag_diff = cat_mag - s(plate_mag_u)
                     stdev_list.append(mag_diff.std())
 
-                #np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                #fcolor.close()
+                if self.write_phot_dir:
+                    np.savetxt(fcolor, np.column_stack((cterm_list, 
+                                                        stdev_list)))
+                    fcolor.close()
 
                 cf = np.polyfit(cterm_list, stdev_list, 2)
                 cterm = -0.5 * cf[1] / cf[0]
-                print cterm
+                #print cterm
                 #indmin = np.argmin(stdev_list)
                 #min_cterm = cterm_list[indmin]
                 #cterm = min_cterm
@@ -3144,12 +3157,14 @@ class SolveProcess:
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
 
             #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
-            #np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
-            #                                      s(plate_mag_u), 
-            #                                      cat_natmag-s(plate_mag_u))))
-            #fcaldata.write('\n\n')
-            #np.savetxt(fcalcurve, z)
-            #fcalcurve.write('\n\n')
+
+            if self.write_phot_dir:
+                np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
+                                                      s(plate_mag_u), 
+                                                      cat_natmag-s(plate_mag_u))))
+                fcaldata.write('\n\n')
+                np.savetxt(fcalcurve, z)
+                fcalcurve.write('\n\n')
 
             self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
 
@@ -3171,6 +3186,7 @@ class SolveProcess:
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
 
-        #fcaldata.close()
-        #fcalcurve.close()
+        if self.write_phot_dir:
+            fcaldata.close()
+            fcalcurve.close()
 
