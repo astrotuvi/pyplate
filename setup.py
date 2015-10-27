@@ -19,7 +19,8 @@ setup(
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
                         'astropy>=0.2.3',
-                        'ephem'
+                        'ephem',
+                        'pytimeparse'
                        ]
 )
 
