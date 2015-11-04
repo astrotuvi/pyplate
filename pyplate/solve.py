@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.io import votable
 from astropy.coordinates import Angle
 from astropy import units
+from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline
 from collections import OrderedDict
 from .database import PlateDB
@@ -3048,21 +3049,31 @@ class SolveProcess:
                 der2 = cf1d.deriv(2)(cterm_extr)
                 cterm_min = cterm_extr[np.where((der2>0) & (cterm_extr>-2) & 
                                                 (cterm_extr<3))][0]
-                #indmin = np.argmin(stdev_list)
-                #min_cterm = cterm_list[indmin]
+
+                # Eliminate outliers
+                cat_mag = cat_vmag_u + cterm_min * (cat_bmag_u - cat_vmag_u)
+                z = sm.nonparametric.lowess(cat_mag, plate_mag_u,
+                                            frac=0.2, it=3, delta=0.2,
+                                            return_sorted=True)
+                s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                mag_diff = cat_mag - s(plate_mag_u)
+                flt = sigma_clip(mag_diff, iters=None)
+                ind_good = ~flt.mask
 
                 # Iteration 2
-                cterm_list = (np.arange(17) * 0.05 + 
-                              round(cterm_min*20.)/20. - 0.4)
+                cterm_list = np.arange(25) * 0.25 - 3.
+                #cterm_list = (np.arange(17) * 0.05 + 
+                #              round(cterm_min*20.)/20. - 0.4)
                 stdev_list = []
 
                 for cterm in cterm_list:
                     cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                    z = sm.nonparametric.lowess(cat_mag[ind_good], 
+                                                plate_mag_u[ind_good], 
                                                 frac=0.2, it=3, delta=0.2,
                                                 return_sorted=True)
                     s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
-                    mag_diff = cat_mag - s(plate_mag_u)
+                    mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
                     stdev_list.append(mag_diff.std())
 
                 if self.write_phot_dir:
@@ -3072,22 +3083,23 @@ class SolveProcess:
 
                 cf = np.polyfit(cterm_list, stdev_list, 2)
                 cterm_min = -0.5 * cf[1] / cf[0]
-                print cterm_min
-                #indmin = np.argmin(stdev_list)
-                #min_cterm = cterm_list[indmin]
+                #print cterm
 
                 # Iteration 3
-                cterm_list = (np.arange(41) * 0.01 + 
-                              round(cterm_min*100.)/100. - 0.2)
+                cterm_list = (np.arange(61) * 0.02 + 
+                              round(cterm_min*50.)/50. - 0.6)
+                #cterm_list = (np.arange(41) * 0.01 + 
+                #              round(cterm_min*100.)/100. - 0.2)
                 stdev_list = []
 
                 for cterm in cterm_list:
                     cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                    z = sm.nonparametric.lowess(cat_mag[ind_good], 
+                                                plate_mag_u[ind_good], 
                                                 frac=0.2, it=3, delta=0.2,
                                                 return_sorted=True)
                     s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
-                    mag_diff = cat_mag - s(plate_mag_u)
+                    mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
                     stdev_list.append(mag_diff.std())
 
                 if self.write_phot_dir:
@@ -3097,10 +3109,7 @@ class SolveProcess:
 
                 cf = np.polyfit(cterm_list, stdev_list, 2)
                 cterm = -0.5 * cf[1] / cf[0]
-                #print cterm
-                #indmin = np.argmin(stdev_list)
-                #min_cterm = cterm_list[indmin]
-                #cterm = min_cterm
+                print cterm
 
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
 
