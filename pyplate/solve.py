@@ -3111,6 +3111,8 @@ class SolveProcess:
                 cterm = -0.5 * cf[1] / cf[0]
                 print cterm
 
+            self.log.write('Plate colour term: {:.3f}'.format(cterm), 
+                           double_newline=False, level=4, event=71)
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
 
             # For bins 1-8, find calibration curve. For bin 9, use calibration
