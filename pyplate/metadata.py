@@ -1502,6 +1502,12 @@ class PlateMeta(OrderedDict):
                 else:
                     date_orig = self['date_orig']
 
+                try:
+                    date_test = Time(date_orig, scale='tai')
+                except ValueError:
+                    # Cannot work without valid date_orig
+                    continue
+
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
 
