@@ -2965,154 +2965,214 @@ class SolveProcess:
                                        '{}_calcurve.txt'.format(self.basefn))
             fcalcurve = open(fn_calcurve, 'wb')
 
+        # Select sources for photometric calibration
+        self.log.write('Selecting sources for photometric calibration', 
+                       level=3, event=71)
+        ind_cal = np.where((self.sources['mag_auto'] > 0) & 
+                           (self.sources['mag_auto'] < 90) &
+                           (self.sources['flag_clean'] == 1))[0]
+
+        if len(ind_cal) == 0:
+            self.log.write('No stars for photometric calibration',
+                           level=2, event=71)
+            return
+
+        src_cal = self.sources[ind_cal]
+        ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
+                               (src_cal['ucac4_vmag'] > 10))[0]
+        ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
+        self.log.write('Found {:6d} usable UCAC4 stars'
+                       ''.format(len(ind_ucacmag)), level=4, event=71)
+
+        if len(ind_ucacmag) > 0:
+            cat_bmag = src_cal[ind_ucacmag]['ucac4_bmag']
+            cat_vmag = src_cal[ind_ucacmag]['ucac4_vmag']
+            plate_mag = src_cal[ind_ucacmag]['mag_auto']
+            plate_bin = src_cal[ind_ucacmag]['annular_bin']
+        else:
+            cat_bmag = np.array([])
+            cat_vmag = np.array([])
+            plate_mag = np.array([])
+            plate_bin = np.array([])
+
+        # Complement UCAC4 magnitudes with Tycho-2 magnitudes converted to 
+        # B and V
+        if len(ind_noucacmag) > 0:
+            src_nomag = src_cal[ind_noucacmag]
+            ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
+                                  np.isfinite(src_nomag['tycho2_vtmag']))[0]
+
+            if len(ind_tycmag) > 0:
+                self.log.write('Found {:6d} usable Tycho-2 stars'
+                               ''.format(len(ind_tycmag)), level=4, event=71)
+                tycho2_btmag = src_nomag[ind_tycmag]['tycho2_btmag']
+                tycho2_vtmag = src_nomag[ind_tycmag]['tycho2_vtmag']
+                tycho2_bmag = (tycho2_vtmag 
+                               + 0.76 * (tycho2_btmag - tycho2_vtmag))
+                tycho2_vmag = (tycho2_vtmag 
+                               - 0.09 * (tycho2_btmag - tycho2_vtmag))
+                add_platemag = src_nomag[ind_tycmag]['mag_auto']
+                add_platebin = src_nomag[ind_tycmag]['annular_bin']
+                cat_bmag = np.append(cat_bmag, tycho2_bmag)
+                cat_vmag = np.append(cat_vmag, tycho2_vmag)
+                plate_mag = np.append(plate_mag, add_platemag)
+                plate_bin = np.append(plate_bin, add_platebin)
+
+        num_calstars = len(plate_mag)
+        
+        self.log.write('Found {:6d} calibration stars in total'
+                       ''.format(num_calstars), level=4, event=71)
+
+        if num_calstars < 5:
+            self.log.write('Too few calibration stars!'
+                           ''.format(num_calstars), level=2, event=71)
+            return
+
+        #plate_mag_u,uind = np.unique(plate_mag, return_index=True)
+        #cat_bmag_u = cat_bmag[uind]
+        #cat_vmag_u = cat_vmag[uind]
+
+        # Evaluate colour term in 3 iterations
+        self.log.write('Finding colour term', level=3, event=72)
+        ind_bin = np.where(plate_bin <= 3)[0]
+        num_calstars = len(ind_bin)
+        
+        self.log.write('Finding colour term: {:6d} stars'
+                       ''.format(num_calstars), 
+                       double_newline=False, level=4, event=72)
+
+        if num_calstars < 5:
+            self.log.write('Finding colour term: too few stars!',
+                           level=2, event=72)
+            return
+
+        plate_mag_u,uind = np.unique(plate_mag[ind_bin], return_index=True)
+        cat_bmag_u = cat_bmag[ind_bin[uind]]
+        cat_vmag_u = cat_vmag[ind_bin[uind]]
+
+        # Iteration 1
+        cterm_list = np.arange(25) * 0.25 - 3.
+        stdev_list = []
+
+        for cterm in cterm_list:
+            cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+            z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
+                                        frac=0.2, it=3, delta=0.2,
+                                        return_sorted=True)
+            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+            mag_diff = cat_mag - s(plate_mag_u)
+            stdev_list.append(mag_diff.std())
+
+        if self.write_phot_dir:
+            fn_color = os.path.join(self.write_phot_dir,
+                                    '{}_color.txt'.format(self.basefn))
+            fcolor = open(fn_color, 'wb')
+            np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
+            fcolor.write('\n\n')
+
+        cf = np.polyfit(cterm_list, stdev_list, 4)
+        cf1d = np.poly1d(cf)
+        extrema = cf1d.deriv().r
+        cterm_extr = extrema[np.where(extrema.imag==0)].real
+        der2 = cf1d.deriv(2)(cterm_extr)
+
+        try:
+            cterm_min = cterm_extr[np.where((der2 > 0) & (cterm_extr > -2.5) &
+                                            (cterm_extr < 2.5))][0]
+        except IndexError:
+            self.log.write('Colour term outside of allowed range!',
+                           level=2, event=72)
+            return
+
+        # Eliminate outliers
+        cat_mag = cat_vmag_u + cterm_min * (cat_bmag_u - cat_vmag_u)
+        z = sm.nonparametric.lowess(cat_mag, plate_mag_u,
+                                    frac=0.2, it=3, delta=0.2,
+                                    return_sorted=True)
+        s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+        mag_diff = cat_mag - s(plate_mag_u)
+        flt = sigma_clip(mag_diff, iters=None)
+        ind_good = ~flt.mask
+
+        # Iteration 2
+        cterm_list = np.arange(25) * 0.25 - 3.
+        #cterm_list = (np.arange(17) * 0.05 + 
+        #              round(cterm_min*20.)/20. - 0.4)
+        stdev_list = []
+
+        for cterm in cterm_list:
+            cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+            z = sm.nonparametric.lowess(cat_mag[ind_good], 
+                                        plate_mag_u[ind_good], 
+                                        frac=0.2, it=3, delta=0.2,
+                                        return_sorted=True)
+            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+            mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
+            stdev_list.append(mag_diff.std())
+
+        if self.write_phot_dir:
+            np.savetxt(fcolor, np.column_stack((cterm_list, 
+                                                stdev_list)))
+            fcolor.write('\n\n')
+
+        cf = np.polyfit(cterm_list, stdev_list, 2)
+        cterm_min = -0.5 * cf[1] / cf[0]
+        #print cterm
+
+        # Iteration 3
+        cterm_list = (np.arange(61) * 0.02 + 
+                      round(cterm_min*50.)/50. - 0.6)
+        #cterm_list = (np.arange(41) * 0.01 + 
+        #              round(cterm_min*100.)/100. - 0.2)
+        stdev_list = []
+
+        for cterm in cterm_list:
+            cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+            z = sm.nonparametric.lowess(cat_mag[ind_good], 
+                                        plate_mag_u[ind_good], 
+                                        frac=0.2, it=3, delta=0.2,
+                                        return_sorted=True)
+            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+            mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
+            stdev_list.append(mag_diff.std())
+
+        if self.write_phot_dir:
+            np.savetxt(fcolor, np.column_stack((cterm_list, 
+                                                stdev_list)))
+            fcolor.close()
+
+        cf = np.polyfit(cterm_list, stdev_list, 2)
+        cterm = -0.5 * cf[1] / cf[0]
+        #print cterm
+        self.log.write('Plate colour term: {:.3f}'.format(cterm), 
+                       double_newline=False, level=4, event=72)
+
+        if cterm < -2 or cterm > 2:
+            self.log.write('Colour term outside of allowed range!',
+                           level=2, event=72)
+            return
+
+        self.log.write('Photometric calibration in annular bins', 
+                       level=3, event=73)
+
         # Loop over annular bins
         for b in np.arange(9)+1:
-            ind_bin = np.where((self.sources['annular_bin'] == b) & 
-                               (self.sources['mag_auto'] > 0) & 
-                               (self.sources['mag_auto'] < 90))[0]
-
-            if len(ind_bin) == 0:
-                continue
-
-            src_bin = self.sources[ind_bin]
-            ind_ucacmag = np.where((src_bin['ucac4_bmag'] > 10) &
-                                   (src_bin['ucac4_vmag'] > 10))[0]
-            ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
-
-            if len(ind_ucacmag) > 0:
-                cat_bmag = src_bin[ind_ucacmag]['ucac4_bmag']
-                cat_vmag = src_bin[ind_ucacmag]['ucac4_vmag']
-                plate_mag = src_bin[ind_ucacmag]['mag_auto']
-            else:
-                cat_bmag = np.array([])
-                cat_vmag = np.array([])
-                plate_mag = np.array([])
-
-            # Complement UCAC4 magnitudes with Tycho-2 magnitudes converted to 
-            # B and V
-            if len(ind_noucacmag) > 0:
-                src_nomag = src_bin[ind_noucacmag]
-                ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
-                                      np.isfinite(src_nomag['tycho2_vtmag']))[0]
-
-                if len(ind_tycmag) > 0:
-                    tycho2_btmag = src_nomag[ind_tycmag]['tycho2_btmag']
-                    tycho2_vtmag = src_nomag[ind_tycmag]['tycho2_vtmag']
-                    tycho2_bmag = (tycho2_vtmag 
-                                   + 0.76 * (tycho2_btmag - tycho2_vtmag))
-                    tycho2_vmag = (tycho2_vtmag 
-                                   - 0.09 * (tycho2_btmag - tycho2_vtmag))
-                    add_platemag = src_nomag[ind_tycmag]['mag_auto']
-                    cat_bmag = np.append(cat_bmag, tycho2_bmag)
-                    cat_vmag = np.append(cat_vmag, tycho2_vmag)
-                    plate_mag = np.append(plate_mag, add_platemag)
-
-            num_calstars = len(plate_mag)
+            ind_bin = np.where(plate_bin == b)[0]
+            num_calstars = len(ind_bin)
             
             self.log.write('Annular bin {:d}: {:6d} calibration stars'
                            ''.format(b, num_calstars), 
-                           double_newline=False, level=4, event=71)
+                           double_newline=False, level=4, event=73)
 
             if num_calstars < 5:
+                self.log.write('Annular bin {:d}: too few calibration stars!'
+                               ''.format(b), level=2, event=73)
                 continue
 
-            plate_mag_u,uind = np.unique(plate_mag, return_index=True)
-            cat_bmag_u = cat_bmag[uind]
-            cat_vmag_u = cat_vmag[uind]
+            plate_mag_u,uind = np.unique(plate_mag[ind_bin], return_index=True)
+            cat_bmag_u = cat_bmag[ind_bin[uind]]
+            cat_vmag_u = cat_vmag[ind_bin[uind]]
 
-            # Evaluate color term in 3 iterations
-            if b == 1:
-                # Iteration 1
-                cterm_list = np.arange(25) * 0.25 - 3.
-                stdev_list = []
-
-                for cterm in cterm_list:
-                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-                    z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
-                                                frac=0.2, it=3, delta=0.2,
-                                                return_sorted=True)
-                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
-                    mag_diff = cat_mag - s(plate_mag_u)
-                    stdev_list.append(mag_diff.std())
-
-                if self.write_phot_dir:
-                    fn_color = os.path.join(self.write_phot_dir,
-                                            '{}_color.txt'.format(self.basefn))
-                    fcolor = open(fn_color, 'wb')
-                    np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
-                    fcolor.write('\n\n')
-
-                cf = np.polyfit(cterm_list, stdev_list, 4)
-                cf1d = np.poly1d(cf)
-                extrema = cf1d.deriv().r
-                cterm_extr = extrema[np.where(extrema.imag==0)].real
-                der2 = cf1d.deriv(2)(cterm_extr)
-                cterm_min = cterm_extr[np.where((der2>0) & (cterm_extr>-2) & 
-                                                (cterm_extr<3))][0]
-
-                # Eliminate outliers
-                cat_mag = cat_vmag_u + cterm_min * (cat_bmag_u - cat_vmag_u)
-                z = sm.nonparametric.lowess(cat_mag, plate_mag_u,
-                                            frac=0.2, it=3, delta=0.2,
-                                            return_sorted=True)
-                s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
-                mag_diff = cat_mag - s(plate_mag_u)
-                flt = sigma_clip(mag_diff, iters=None)
-                ind_good = ~flt.mask
-
-                # Iteration 2
-                cterm_list = np.arange(25) * 0.25 - 3.
-                #cterm_list = (np.arange(17) * 0.05 + 
-                #              round(cterm_min*20.)/20. - 0.4)
-                stdev_list = []
-
-                for cterm in cterm_list:
-                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-                    z = sm.nonparametric.lowess(cat_mag[ind_good], 
-                                                plate_mag_u[ind_good], 
-                                                frac=0.2, it=3, delta=0.2,
-                                                return_sorted=True)
-                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
-                    mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
-                    stdev_list.append(mag_diff.std())
-
-                if self.write_phot_dir:
-                    np.savetxt(fcolor, np.column_stack((cterm_list, 
-                                                        stdev_list)))
-                    fcolor.write('\n\n')
-
-                cf = np.polyfit(cterm_list, stdev_list, 2)
-                cterm_min = -0.5 * cf[1] / cf[0]
-                #print cterm
-
-                # Iteration 3
-                cterm_list = (np.arange(61) * 0.02 + 
-                              round(cterm_min*50.)/50. - 0.6)
-                #cterm_list = (np.arange(41) * 0.01 + 
-                #              round(cterm_min*100.)/100. - 0.2)
-                stdev_list = []
-
-                for cterm in cterm_list:
-                    cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-                    z = sm.nonparametric.lowess(cat_mag[ind_good], 
-                                                plate_mag_u[ind_good], 
-                                                frac=0.2, it=3, delta=0.2,
-                                                return_sorted=True)
-                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
-                    mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
-                    stdev_list.append(mag_diff.std())
-
-                if self.write_phot_dir:
-                    np.savetxt(fcolor, np.column_stack((cterm_list, 
-                                                        stdev_list)))
-                    fcolor.close()
-
-                cf = np.polyfit(cterm_list, stdev_list, 2)
-                cterm = -0.5 * cf[1] / cf[0]
-                print cterm
-
-            self.log.write('Plate colour term: {:.3f}'.format(cterm), 
-                           double_newline=False, level=4, event=71)
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
 
             # For bins 1-8, find calibration curve. For bin 9, use calibration
@@ -3176,6 +3236,18 @@ class SolveProcess:
                 fcaldata.write('\n\n')
                 np.savetxt(fcalcurve, z)
                 fcalcurve.write('\n\n')
+
+            # Apply photometric calibration to sources in the annular bin
+            ind_bin = np.where(self.sources['annular_bin'] == b)[0]
+            src_bin = self.sources[ind_bin]
+            ind_ucacmag = np.where((src_bin['ucac4_bmag'] > 10) &
+                                   (src_bin['ucac4_vmag'] > 10))[0]
+            ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
+
+            if len(ind_noucacmag) > 0:
+                src_nomag = src_bin[ind_noucacmag]
+                ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
+                                      np.isfinite(src_nomag['tycho2_vtmag']))[0]
 
             self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
 
