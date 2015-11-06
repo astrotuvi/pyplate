@@ -3050,6 +3050,30 @@ class SolveProcess:
         cat_bmag_u = cat_bmag[ind_bin[uind]]
         cat_vmag_u = cat_vmag[ind_bin[uind]]
 
+        # Discard faint sources (up to 2 mag brighter than plate limit)
+        kde = sm.nonparametric.KDEUnivariate(plate_mag_u
+                                             .astype(np.double))
+        kde.fit()
+        #ind_maxden = np.argmax(kde.density)
+        #plate_mag_maxden = kde.support[ind_maxden]
+        ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+        plate_mag_lim = kde.support[ind_dense[-1]]
+        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 2.)[0]
+        num_nofaint = len(ind_nofaint)
+
+        self.log.write('Finding colour term: {:6d} stars after discarding faint sources'
+                       ''.format(num_nofaint), 
+                       double_newline=False, level=4, event=72)
+
+        if num_nofaint < 5:
+            self.log.write('Finding colour term: too few stars after discarding faint sources!',
+                           level=2, event=72)
+            return
+
+        plate_mag_u = plate_mag_u[ind_nofaint]
+        cat_bmag_u = cat_bmag_u[ind_nofaint]
+        cat_vmag_u = cat_vmag_u[ind_nofaint]
+
         # Iteration 1
         cterm_list = np.arange(25) * 0.25 - 3.
         stdev_list = []
