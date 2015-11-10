@@ -3050,7 +3050,13 @@ class SolveProcess:
         cat_bmag_u = cat_bmag[ind_bin[uind]]
         cat_vmag_u = cat_vmag[ind_bin[uind]]
 
-        # Discard faint sources (up to 2 mag brighter than plate limit)
+        if self.write_phot_dir:
+            fn_cterm = os.path.join(self.write_phot_dir,
+                                    '{}_cterm0.txt'.format(self.basefn))
+            np.savetxt(fn_cterm, np.column_stack((plate_mag_u, cat_bmag_u,
+                                                  cat_vmag_u)))
+
+        # Discard faint sources (up to 3 mag brighter than plate limit)
         kde = sm.nonparametric.KDEUnivariate(plate_mag_u
                                              .astype(np.double))
         kde.fit()
@@ -3058,7 +3064,7 @@ class SolveProcess:
         #plate_mag_maxden = kde.support[ind_maxden]
         ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
         plate_mag_lim = kde.support[ind_dense[-1]]
-        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 2.)[0]
+        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 3.)[0]
         num_nofaint = len(ind_nofaint)
 
         self.log.write('Finding colour term: {:6d} stars after discarding faint sources'
@@ -3078,6 +3084,11 @@ class SolveProcess:
         cterm_list = np.arange(25) * 0.25 - 3.
         stdev_list = []
 
+        if self.write_phot_dir:
+            fn_cterm = os.path.join(self.write_phot_dir,
+                                    '{}_cterm1.txt'.format(self.basefn))
+            fcterm1 = open(fn_cterm, 'wb')
+
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
@@ -3086,6 +3097,12 @@ class SolveProcess:
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
             mag_diff = cat_mag - s(plate_mag_u)
             stdev_list.append(mag_diff.std())
+            
+            if self.write_phot_dir:
+                np.savetxt(fcterm1, np.column_stack((plate_mag_u, cat_mag, 
+                                                     s(plate_mag_u), 
+                                                     mag_diff)))
+                fcterm1.write('\n\n')
 
         if self.write_phot_dir:
             fn_color = os.path.join(self.write_phot_dir,
@@ -3093,6 +3110,7 @@ class SolveProcess:
             fcolor = open(fn_color, 'wb')
             np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
             fcolor.write('\n\n')
+            fcterm1.close()
 
         cf = np.polyfit(cterm_list, stdev_list, 4)
         cf1d = np.poly1d(cf)
@@ -3124,6 +3142,11 @@ class SolveProcess:
         #              round(cterm_min*20.)/20. - 0.4)
         stdev_list = []
 
+        if self.write_phot_dir:
+            fn_cterm = os.path.join(self.write_phot_dir,
+                                    '{}_cterm2.txt'.format(self.basefn))
+            fcterm2 = open(fn_cterm, 'wb')
+
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag[ind_good], 
@@ -3134,14 +3157,25 @@ class SolveProcess:
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
             stdev_list.append(mag_diff.std())
 
+            if self.write_phot_dir:
+                np.savetxt(fcterm2, np.column_stack((plate_mag_u[ind_good], 
+                                                     cat_mag[ind_good], 
+                                                     s(plate_mag_u[ind_good]), 
+                                                     mag_diff)))
+                fcterm2.write('\n\n')
+
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.write('\n\n')
+            fcterm2.close()
 
         cf = np.polyfit(cterm_list, stdev_list, 2)
         cterm_min = -0.5 * cf[1] / cf[0]
-        #print cterm
+
+        if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
+            self.log.write('Colour term fit failed!', level=2, event=72)
+            return
 
         # Iteration 3
         cterm_list = (np.arange(61) * 0.02 + 
@@ -3150,6 +3184,11 @@ class SolveProcess:
         #              round(cterm_min*100.)/100. - 0.2)
         stdev_list = []
 
+        if self.write_phot_dir:
+            fn_cterm = os.path.join(self.write_phot_dir,
+                                    '{}_cterm3.txt'.format(self.basefn))
+            fcterm3 = open(fn_cterm, 'wb')
+
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag[ind_good], 
@@ -3160,21 +3199,45 @@ class SolveProcess:
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
             stdev_list.append(mag_diff.std())
 
+            if self.write_phot_dir:
+                np.savetxt(fcterm3, np.column_stack((plate_mag_u[ind_good], 
+                                                     cat_mag[ind_good], 
+                                                     s(plate_mag_u[ind_good]), 
+                                                     mag_diff)))
+                fcterm3.write('\n\n')
+
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.close()
+            fcterm3.close()
 
         cf = np.polyfit(cterm_list, stdev_list, 2)
         cterm = -0.5 * cf[1] / cf[0]
-        #print cterm
-        self.log.write('Plate colour term: {:.3f}'.format(cterm), 
-                       double_newline=False, level=4, event=72)
 
-        if cterm < -2 or cterm > 2:
-            self.log.write('Colour term outside of allowed range!',
-                           level=2, event=72)
-            return
+        if cf[0] < 0 or cterm < -2 or cterm > 2:
+            if cf[0] < 0:
+                self.log.write('Colour term fit not reliable!',
+                               level=2, event=72)
+            else:
+                self.log.write('Colour term outside of allowed range '
+                               '({:.3f})!'.format(cterm),
+                               level=2, event=72)
+
+            if cterm_min < -2 or cterm_min > 2:
+                self.log.write('Colour term from previous iteration '
+                               'outside of allowed range ({:.3d})!'
+                               ''.format(cterm_min),
+                               level=2, event=72)
+                return
+            else:
+                cterm = cterm_min
+
+            self.log.write('Taking colour term from previous iteration',
+                           level=4, event=72)
+
+        self.log.write('Plate colour term: {:.3f}'.format(cterm), 
+                       level=4, event=72)
 
         self.log.write('Photometric calibration in annular bins', 
                        level=3, event=73)
