@@ -2981,7 +2981,7 @@ class SolveProcess:
         ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
                                (src_cal['ucac4_vmag'] > 10))[0]
         ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
-        self.log.write('Found {:6d} usable UCAC4 stars'
+        self.log.write('Found {:d} usable UCAC4 stars'
                        ''.format(len(ind_ucacmag)), level=4, event=71)
 
         if len(ind_ucacmag) > 0:
@@ -3003,7 +3003,7 @@ class SolveProcess:
                                   np.isfinite(src_nomag['tycho2_vtmag']))[0]
 
             if len(ind_tycmag) > 0:
-                self.log.write('Found {:6d} usable Tycho-2 stars'
+                self.log.write('Found {:d} usable Tycho-2 stars'
                                ''.format(len(ind_tycmag)), level=4, event=71)
                 tycho2_btmag = src_nomag[ind_tycmag]['tycho2_btmag']
                 tycho2_vtmag = src_nomag[ind_tycmag]['tycho2_vtmag']
@@ -3018,9 +3018,22 @@ class SolveProcess:
                 plate_mag = np.append(plate_mag, add_platemag)
                 plate_bin = np.append(plate_bin, add_platebin)
 
+        # Discard very red stars (B-V > 2)
+        if len(plate_mag) > 0:
+            ind_nored = np.where(cat_bmag-cat_vmag <= 2)[0]
+
+            if len(ind_nored) > 0:
+                num_red = len(plate_mag) - len(ind_nored)
+                self.log.write('Discarded {:d} red stars (B-V > 2)'
+                               ''.format(num_red), level=4, event=71)
+                cat_bmag = cat_bmag[ind_nored]
+                cat_vmag = cat_vmag[ind_nored]
+                plate_mag = plate_mag[ind_nored]
+                plate_bin = plate_bin[ind_nored]
+
         num_calstars = len(plate_mag)
         
-        self.log.write('Found {:6d} calibration stars in total'
+        self.log.write('Found {:d} calibration stars in total'
                        ''.format(num_calstars), level=4, event=71)
 
         if num_calstars < 5:
@@ -3037,7 +3050,7 @@ class SolveProcess:
         ind_bin = np.where(plate_bin <= 3)[0]
         num_calstars = len(ind_bin)
         
-        self.log.write('Finding colour term: {:6d} stars'
+        self.log.write('Finding colour term: {:d} stars'
                        ''.format(num_calstars), 
                        double_newline=False, level=4, event=72)
 
@@ -3067,7 +3080,7 @@ class SolveProcess:
         ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 3.)[0]
         num_nofaint = len(ind_nofaint)
 
-        self.log.write('Finding colour term: {:6d} stars after discarding faint sources'
+        self.log.write('Finding colour term: {:d} stars after discarding faint sources'
                        ''.format(num_nofaint), 
                        double_newline=False, level=4, event=72)
 
