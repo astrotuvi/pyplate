@@ -1533,7 +1533,7 @@ class SolveProcess:
                             psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
                     self.sources[ind1]['errtheta_source'] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                elif psfcat[1].header['NAXIS2'] == 0:
+                elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
                     self.log.write('There are no sources with PSF coordinates!',
                                    level=2, event=37)
             else:
@@ -2964,6 +2964,12 @@ class SolveProcess:
             fn_calcurve = os.path.join(self.write_phot_dir, 
                                        '{}_calcurve.txt'.format(self.basefn))
             fcalcurve = open(fn_calcurve, 'wb')
+            #fn_cutdata = os.path.join(self.write_phot_dir, 
+            #                          '{}_cutdata.txt'.format(self.basefn))
+            #fcutdata = open(fn_cutdata, 'wb')
+            #fn_cutcurve = os.path.join(self.write_phot_dir, 
+            #                           '{}_cutcurve.txt'.format(self.basefn))
+            #fcutcurve = open(fn_cutcurve, 'wb')
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
@@ -3139,15 +3145,17 @@ class SolveProcess:
                            level=2, event=72)
             return
 
-        # Eliminate outliers
+        # Eliminate outliers (over 1 mag + sigma clip)
         cat_mag = cat_vmag_u + cterm_min * (cat_bmag_u - cat_vmag_u)
         z = sm.nonparametric.lowess(cat_mag, plate_mag_u,
                                     frac=0.2, it=3, delta=0.2,
                                     return_sorted=True)
         s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
         mag_diff = cat_mag - s(plate_mag_u)
-        flt = sigma_clip(mag_diff, iters=None)
-        ind_good = ~flt.mask
+        ind1 = np.where(mag_diff <= 1.)[0]
+        flt = sigma_clip(mag_diff[ind1], iters=None)
+        ind_good1 = ~flt.mask
+        ind_good = ind1[ind_good1]
 
         # Iteration 2
         cterm_list = np.arange(25) * 0.25 - 3.
@@ -3278,19 +3286,127 @@ class SolveProcess:
             # For bins 1-8, find calibration curve. For bin 9, use calibration
             # from bin 8.
             if b < 9:
-                # Study the distribution of magnitudes
+                # Eliminate outliers by constructing calibration curve from
+                # the bright end and extrapolate towards faint stars
+
+                # Find initial plate magnitude limit
                 kde = sm.nonparametric.KDEUnivariate(plate_mag_u
                                                      .astype(np.double))
                 kde.fit()
                 ind_maxden = np.argmax(kde.density)
                 plate_mag_maxden = kde.support[ind_maxden]
                 ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+                brightmag = kde.support[ind_dense[0]]
                 plate_mag_lim = kde.support[ind_dense[-1]]
-                ind_valid = np.where(plate_mag_u < plate_mag_lim)
+                plate_mag_brt = plate_mag_u.min()
+                plate_mag_mid = (plate_mag_lim + plate_mag_brt) / 2.
+
+                # Construct magnitude cuts for outlier elimination
+                ncuts = int((plate_mag_lim - plate_mag_mid) / 0.5) + 2
+                mag_cuts = np.linspace(plate_mag_mid, plate_mag_lim, ncuts)
+                ind_cut = np.where(plate_mag_u <= plate_mag_mid)[0]
+                ind_good = np.arange(len(ind_cut))
+                mag_cut_prev = mag_cuts[0]
+
+                for mag_cut in mag_cuts[1:]:
+                    frac = 0.2
+
+                    if len(ind_good) < 100:
+                        frac = 0.4
+
+                    z = sm.nonparametric.lowess(cat_natmag[ind_cut[ind_good]], 
+                                                plate_mag_u[ind_cut[ind_good]], 
+                                                frac=frac, it=3, delta=0.1, 
+                                                return_sorted=True)
+
+                    # Improve bright-star calibration
+                    nbright = (plate_mag_u[ind_cut[ind_good]] 
+                               < brightmag).sum()
+
+                    if nbright < 20:
+                        alt_brightmag = (plate_mag_u.min() + 
+                                         (plate_mag_maxden - plate_mag_u.min()) * 0.5)
+                        nbright = (plate_mag_u[ind_cut[ind_good]] 
+                                   < alt_brightmag).sum()
+
+                    z1 = sm.nonparametric.lowess(cat_natmag[ind_cut[ind_good]][:nbright], 
+                                                 plate_mag_u[ind_cut[ind_good]][:nbright], 
+                                                 frac=0.4, it=3, delta=0.1, 
+                                                 return_sorted=True)
+                    #print b, mag_cut_prev, mag_cut, len(ind_cut), len(ind_good), brightmag, nbright, z1.shape[0]
+                    weight2 = np.arange(nbright, dtype=float) / nbright
+                    weight1 = 1. - weight2
+                    z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+
+                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=3)
+                    fit_mag = s(plate_mag_u[ind_cut])
+                    pfit = np.polyfit(plate_mag_u[ind_cut], 
+                                      s(plate_mag_u[ind_cut]), 3)
+                    fit1d = np.poly1d(pfit)
+                    ind_add = np.where((plate_mag_u > mag_cut_prev) & 
+                                       (plate_mag_u <= mag_cut))[0]
+
+                    if len(ind_add) > 0:
+                        fit_mag = np.append(fit_mag, fit1d(plate_mag_u[ind_add]))
+
+                    ind_cut = np.where(plate_mag_u <= mag_cut)[0]
+                    mag_cut_prev = mag_cut
+                    residuals = cat_natmag[ind_cut] - fit_mag
+
+                    #if b == 7 and self.write_phot_dir:
+                    #    np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
+                    #                                          cat_natmag[ind_cut], 
+                    #                                          fit_mag, residuals)))
+                    #    fcutdata.write('\n\n')
+                    #    np.savetxt(fcutcurve, z)
+                    #    fcutcurve.write('\n\n')
+
+                    ind_outliers = np.array([])
+
+                    #for i in np.arange(len(ind_cut)):
+                    for mag_loc in np.linspace(plate_mag_brt, mag_cut, 100):
+                        mag_low = mag_loc - 1.
+                        mag_high = mag_loc + 1.
+                        #mag_low = plate_mag_u[ind_cut[i]] - 1.
+                        #mag_high = plate_mag_u[ind_cut[i]] + 1.
+                        ind_loc = np.where((plate_mag_u[ind_cut] > mag_low) &
+                                           (plate_mag_u[ind_cut] < mag_high))[0]
+                        ind_loc = np.setdiff1d(ind_loc, ind_outliers)
+
+                        #if b == 7 and i < 10:
+                        #    print i, plate_mag_u[ind_cut[i]], mag_low, mag_high, len(ind_loc), np.absolute(residuals[i]), 3*residuals[ind_loc].std()
+
+                        if len(ind_loc) >= 10:
+                            ind_locout = np.where((np.absolute(residuals[ind_loc]) > 
+                                                   3.*residuals[ind_loc].std()) |
+                                                  (residuals[ind_loc] > 1.0))[0]
+
+                            if len(ind_locout) > 0:
+                                ind_outliers = np.append(ind_outliers, 
+                                                         ind_cut[ind_loc[ind_locout]])
+
+                            ind_outliers = np.unique(ind_outliers)
+
+                    ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
+                                            ind_outliers)
+
+                    #flt = sigma_clip(residuals, iters=None)
+                    #ind_good = ~flt.mask
+                    #ind_good = np.where(np.absolute(residuals) < 3*residuals.std())[0]
+
+                # Study the distribution of magnitudes
+                kde = sm.nonparametric.KDEUnivariate(plate_mag_u[ind_good]
+                                                     .astype(np.double))
+                kde.fit()
+                ind_maxden = np.argmax(kde.density)
+                plate_mag_maxden = kde.support[ind_maxden]
+                ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+                plate_mag_lim = kde.support[ind_dense[-1]]
+                ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)
                 num_valid = len(ind_valid)
 
-                cat_natmag = cat_natmag[ind_valid]
-                plate_mag_u = plate_mag_u[ind_valid]
+                cat_natmag = cat_natmag[ind_good[ind_valid]]
+                plate_mag_u = plate_mag_u[ind_good[ind_valid]]
                 frac = 0.2
 
                 if num_valid < 100:
@@ -3372,4 +3488,6 @@ class SolveProcess:
         if self.write_phot_dir:
             fcaldata.close()
             fcalcurve.close()
+            #fcutdata.close()
+            #fcutcurve.close()
 
