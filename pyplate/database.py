@@ -290,6 +290,7 @@ _schema['source_calib'] = OrderedDict([
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('annular_bin',      ('TINYINT', True)),
     ('raj2000',          ('DOUBLE', True)),
     ('dej2000',          ('DOUBLE', True)),
     ('x_sphere',         ('DOUBLE', True)),
@@ -305,6 +306,7 @@ _schema['source_calib'] = OrderedDict([
     ('gridsize_sub',     ('SMALLINT', True)),
     ('natmag',           ('FLOAT', True)),
     ('natmagerr',        ('FLOAT', True)),
+    ('color_term',       ('FLOAT', True)),
     ('bmag',             ('FLOAT', True)),
     ('bmagerr',          ('FLOAT', True)),
     ('vmag',             ('FLOAT', True)),
@@ -395,6 +397,8 @@ _schema['process'] = OrderedDict([
     ('solved',           ('TINYINT(1)', None)),
     ('num_ucac4',        ('INT UNSIGNED', None)),
     ('num_tycho2',       ('INT UNSIGNED', None)),
+    ('color_term',       ('FLOAT', None)),
+    ('calibrated',       ('TINYINT(1)', None)),
     ('completed',        ('TINYINT(1)', None)),
     ('pyplate_version',  ('VARCHAR(15)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
@@ -901,7 +905,8 @@ class PlateDB:
 
     def update_process(self, process_id, sky=None, sky_sigma=None, 
                        threshold=None, num_sources=None, num_ucac4=None, 
-                       num_tycho2=None, solved=None):
+                       num_tycho2=None, solved=None, color_term=None,
+                       calibrated=None):
         """
         Update plate-solve process in the database.
 
@@ -909,7 +914,8 @@ class PlateDB:
 
         if (sky is None and sky_sigma is None and threshold is None 
             and num_sources is None and num_ucac4 is None 
-            and num_tycho2 is None and solved is None):
+            and num_tycho2 is None and solved is None 
+            and color_term is None and calibrated is None):
             return
 
         col_list = []
@@ -942,6 +948,14 @@ class PlateDB:
         if solved is not None:
             col_list.append('solved=%s')
             val_tuple = val_tuple + (solved, )
+
+        if color_term is not None:
+            col_list.append('color_term=%s')
+            val_tuple = val_tuple + (color_term, )
+
+        if calibrated is not None:
+            col_list.append('calibrated=%s')
+            val_tuple = val_tuple + (calibrated, )
 
         col_str = ','.join(col_list)
         sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))
