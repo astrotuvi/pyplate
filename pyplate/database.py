@@ -306,11 +306,12 @@ _schema['source_calib'] = OrderedDict([
     ('gridsize_sub',     ('SMALLINT', True)),
     ('natmag',           ('FLOAT', True)),
     ('natmagerr',        ('FLOAT', True)),
-    ('color_term',       ('FLOAT', True)),
     ('bmag',             ('FLOAT', True)),
     ('bmagerr',          ('FLOAT', True)),
     ('vmag',             ('FLOAT', True)),
     ('vmagerr',          ('FLOAT', True)),
+    ('color_term',       ('FLOAT', True)),
+    ('color_bv',         ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
     ('tycho2_vtmag',     ('FLOAT', True)),
@@ -378,6 +379,35 @@ _schema['solution'] = OrderedDict([
     ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
 
+_schema['calibration'] = OrderedDict([
+    ('calibration_id',   ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('annular_bin',      ('TINYINT', True)),
+    ('color_term',       ('FLOAT', True)),
+    ('num_calib_stars',  ('INT UNSIGNED', True)),
+    ('num_good_stars',   ('INT UNSIGNED', True)),
+    ('num_outliers',     ('INT UNSIGNED', True)),
+    ('bright_limit',     ('FLOAT', True)),
+    ('faint_limit',      ('FLOAT', True)),
+    ('mag_range',        ('FLOAT', True)),
+    ('rmse_min',         ('FLOAT', True)),
+    ('rmse_max',         ('FLOAT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX annularbin_ind', ('(annular_bin)', None))
+    ])
+    
 _schema['process'] = OrderedDict([
     ('process_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           None)),
@@ -807,6 +837,28 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO solution ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_calibration(self, calibration, process_id=None, scan_id=None, 
+                          plate_id=None, archive_id=None):
+        """
+        Write photometric calibration to the database.
+
+        """
+
+        col_list = ['calibration_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['calibration'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (calibration[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO calibration ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 

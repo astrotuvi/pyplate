@@ -467,11 +467,12 @@ _source_meta = OrderedDict([
     ('gridsize_sub',        ('i2', '%3d', '')),
     ('natmag',              ('f4', '%7.4f', '')),
     ('natmagerr',           ('f4', '%7.4f', '')),
-    ('color_term',          ('f4', '%7.4f', '')),
     ('bmag',                ('f4', '%7.4f', '')),
     ('bmagerr',             ('f4', '%7.4f', '')),
     ('vmag',                ('f4', '%7.4f', '')),
     ('vmagerr',             ('f4', '%7.4f', '')),
+    ('color_term',          ('f4', '%7.4f', '')),
+    ('color_bv',            ('f4', '%7.4f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
@@ -575,6 +576,7 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solution = None
+        self.calibration = []
 
         self.ra_ucac = None
         self.dec_ucac = None
@@ -1330,11 +1332,12 @@ class SolveProcess:
         self.sources['tycho2_dist'] = np.nan
         self.sources['natmag'] = np.nan
         self.sources['natmagerr'] = np.nan
-        self.sources['color_term'] = np.nan
         self.sources['bmag'] = np.nan
         self.sources['bmagerr'] = np.nan
         self.sources['vmag'] = np.nan
         self.sources['vmagerr'] = np.nan
+        self.sources['color_term'] = np.nan
+        self.sources['color_bv'] = np.nan
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -3440,6 +3443,7 @@ class SolveProcess:
 
                 cat_natmag = cat_natmag[ind_good[ind_valid]]
                 plate_mag_u = plate_mag_u[ind_good[ind_valid]]
+                plate_mag_brightest = plate_mag_u.min()
                 frac = 0.2
 
                 if num_valid < 100:
@@ -3461,8 +3465,8 @@ class SolveProcess:
                 nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
                 if nbright < 20:
-                    brightmag = (plate_mag_u.min() + 
-                                 (plate_mag_maxden - plate_mag_u.min()) * 0.5)
+                    brightmag = (plate_mag_brightest + 
+                                 (plate_mag_maxden - plate_mag_brightest) * 0.5)
                     nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
                 z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
@@ -3486,6 +3490,19 @@ class SolveProcess:
                 np.savetxt(fcalcurve, z)
                 fcalcurve.write('\n\n')
 
+            self.calibration.append(OrderedDict([
+                ('annular_bin', b),
+                ('color_term', cterm),
+                ('num_calib_stars', num_calstars),
+                ('num_good_stars', num_valid),
+                ('num_outliers', None),
+                ('bright_limit', s(plate_mag_brightest)),
+                ('faint_limit', s(plate_mag_lim)),
+                ('mag_range', s(plate_mag_lim)-s(plate_mag_brightest)),
+                ('rmse_min', None),
+                ('rmse_max', None)
+            ]))
+
             # Apply photometric calibration to sources in the annular bin
             ind_bin = np.where(self.sources['annular_bin'] == b)[0]
             src_bin = self.sources[ind_bin]
@@ -3505,6 +3522,7 @@ class SolveProcess:
                 ind = ind_bin[ind_ucacmag]
                 b_v = (self.sources[ind]['ucac4_bmag']
                        - self.sources[ind]['ucac4_vmag'])
+                self.sources['color_bv'][ind] = b_v
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
@@ -3514,6 +3532,7 @@ class SolveProcess:
                 ind = ind_bin[ind_noucacmag[ind_tycmag]]
                 b_v = 0.85 * (self.sources[ind]['tycho2_btmag']
                               - self.sources[ind]['tycho2_vtmag'])
+                self.sources['color_bv'][ind] = b_v
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
@@ -3526,4 +3545,38 @@ class SolveProcess:
             fcalcurve.close()
             fcutdata.close()
             fcutcurve.close()
+
+    def output_calibration_db(self):
+        """
+        Write photometric calibration to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing photometric calibration to the database', 
+                       event=74)
+
+        if self.calibration == []:
+            self.log.write('No photometric calibration to write to the database', 
+                           level=2, event=74)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'calibration table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            for cal in self.calibration:
+                platedb.write_calibration(cal, process_id=self.process_id,
+                                          scan_id=self.scan_id,
+                                          plate_id=self.plate_id,
+                                          archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
+
 
