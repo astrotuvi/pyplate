@@ -379,8 +379,8 @@ _schema['solution'] = OrderedDict([
     ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
 
-_schema['calibration'] = OrderedDict([
-    ('calibration_id',   ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+_schema['phot_calib'] = OrderedDict([
+    ('calib_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
@@ -389,8 +389,9 @@ _schema['calibration'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
     ('annular_bin',      ('TINYINT', True)),
     ('color_term',       ('FLOAT', True)),
+    ('num_bin_stars',    ('INT UNSIGNED', True)),
     ('num_calib_stars',  ('INT UNSIGNED', True)),
-    ('num_good_stars',   ('INT UNSIGNED', True)),
+    ('num_bright_stars', ('INT UNSIGNED', True)),
     ('num_outliers',     ('INT UNSIGNED', True)),
     ('bright_limit',     ('FLOAT', True)),
     ('faint_limit',      ('FLOAT', True)),
@@ -428,6 +429,9 @@ _schema['process'] = OrderedDict([
     ('num_ucac4',        ('INT UNSIGNED', None)),
     ('num_tycho2',       ('INT UNSIGNED', None)),
     ('color_term',       ('FLOAT', None)),
+    ('bright_limit',     ('FLOAT', None)),
+    ('faint_limit',      ('FLOAT', None)),
+    ('mag_range',        ('FLOAT', None)),
     ('calibrated',       ('TINYINT(1)', None)),
     ('completed',        ('TINYINT(1)', None)),
     ('pyplate_version',  ('VARCHAR(15)', None)),
@@ -840,25 +844,25 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
-    def write_calibration(self, calibration, process_id=None, scan_id=None, 
-                          plate_id=None, archive_id=None):
+    def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
         """
         Write photometric calibration to the database.
 
         """
 
-        col_list = ['calibration_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['calib_id', 'process_id', 'scan_id', 'exposure_id', 
                     'plate_id', 'archive_id']
         val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
-        for k,v in _schema['calibration'].items():
+        for k,v in _schema['phot_calib'].items():
             if v[1]:
                 col_list.append(k)
-                val_tuple = val_tuple + (calibration[k], )
+                val_tuple = val_tuple + (phot_calib[k], )
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO calibration ({}) VALUES ({})'
+        sql = ('INSERT INTO phot_calib ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
@@ -958,6 +962,7 @@ class PlateDB:
     def update_process(self, process_id, sky=None, sky_sigma=None, 
                        threshold=None, num_sources=None, num_ucac4=None, 
                        num_tycho2=None, solved=None, color_term=None,
+                       bright_limit=None, faint_limit=None, mag_range=None, 
                        calibrated=None):
         """
         Update plate-solve process in the database.
@@ -967,7 +972,9 @@ class PlateDB:
         if (sky is None and sky_sigma is None and threshold is None 
             and num_sources is None and num_ucac4 is None 
             and num_tycho2 is None and solved is None 
-            and color_term is None and calibrated is None):
+            and color_term is None and bright_limit is None
+            and faint_limit is None and mag_range is None
+            and calibrated is None):
             return
 
         col_list = []
@@ -1004,6 +1011,18 @@ class PlateDB:
         if color_term is not None:
             col_list.append('color_term=%s')
             val_tuple = val_tuple + (color_term, )
+
+        if bright_limit is not None:
+            col_list.append('bright_limit=%s')
+            val_tuple = val_tuple + (bright_limit, )
+
+        if faint_limit is not None:
+            col_list.append('faint_limit=%s')
+            val_tuple = val_tuple + (faint_limit, )
+
+        if mag_range is not None:
+            col_list.append('mag_range=%s')
+            val_tuple = val_tuple + (mag_range, )
 
         if calibrated is not None:
             col_list.append('calibrated=%s')

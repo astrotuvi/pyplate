@@ -576,7 +576,7 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solution = None
-        self.calibration = []
+        self.phot_calib = []
 
         self.ra_ucac = None
         self.dec_ucac = None
@@ -831,7 +831,8 @@ class SolveProcess:
 
     def db_update_process(self, sky=None, sky_sigma=None, threshold=None,
                           num_sources=None, num_ucac4=None, num_tycho2=None, 
-                          solved=None, color_term=None, calibrated=None):
+                          solved=None, color_term=None, bright_limit=None,
+                          faint_limit=None, mag_range=None, calibrated=None):
         """
         Update process in the database.
 
@@ -856,7 +857,10 @@ class SolveProcess:
                                    threshold=threshold,
                                    num_sources=num_sources, 
                                    num_ucac4=num_ucac4, num_tycho2=num_tycho2,
-                                   solved=solved, color_term=color_term, 
+                                   solved=solved, color_term=color_term,
+                                   bright_limit=bright_limit,
+                                   faint_limit=faint_limit, 
+                                   mag_range=mag_range,
                                    calibrated=calibrated)
             platedb.close_connection()
 
@@ -3530,11 +3534,11 @@ class SolveProcess:
                 np.savetxt(fcalcurve, z)
                 fcalcurve.write('\n\n')
 
-            self.calibration.append(OrderedDict([
+            self.phot_calib.append(OrderedDict([
                 ('annular_bin', b),
                 ('color_term', cterm),
-                ('num_calib_stars', num_calstars),
-                ('num_good_stars', num_valid),
+                ('num_bin_stars', num_calstars),
+                ('num_calib_stars', num_valid),
                 ('num_bright_stars', nbright),
                 ('num_outliers', num_outliers),
                 ('bright_limit', s(plate_mag_brightest)),
@@ -3579,7 +3583,17 @@ class SolveProcess:
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
 
-        self.db_update_process(calibrated=1)
+        try:
+            brightlim = min([cal['bright_limit'] for cal in self.phot_calib])
+            faintlim = max([cal['faint_limit'] for cal in self.phot_calib])
+            mag_range = faintlim - brightlim
+        except Exception:
+            brightlim = None
+            faintlim = None
+            mag_range = None
+
+        self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
+                               mag_range=mag_range, calibrated=1)
 
         if self.write_phot_dir:
             fcaldata.close()
@@ -3596,7 +3610,7 @@ class SolveProcess:
         self.log.to_db(3, 'Writing photometric calibration to the database', 
                        event=74)
 
-        if self.calibration == []:
+        if self.phot_calib == []:
             self.log.write('No photometric calibration to write to the database', 
                            level=2, event=74)
             return
@@ -3611,11 +3625,11 @@ class SolveProcess:
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
-            for cal in self.calibration:
-                platedb.write_calibration(cal, process_id=self.process_id,
-                                          scan_id=self.scan_id,
-                                          plate_id=self.plate_id,
-                                          archive_id=self.archive_id)
+            for cal in self.phot_calib:
+                platedb.write_phot_calib(cal, process_id=self.process_id,
+                                         scan_id=self.scan_id,
+                                         plate_id=self.plate_id,
+                                         archive_id=self.archive_id)
             
         platedb.close_connection()
         self.log.write('Closed database connection')
