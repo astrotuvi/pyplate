@@ -3325,17 +3325,6 @@ class SolveProcess:
                 mag_cut_prev = mag_cuts[0]
 
                 for mag_cut in mag_cuts[1:]:
-                    frac = 0.2
-
-                    if len(ind_good) < 100:
-                        frac = 0.4
-
-                    z = sm.nonparametric.lowess(cat_natmag[ind_cut[ind_good]], 
-                                                plate_mag_u[ind_cut[ind_good]], 
-                                                frac=frac, it=3, delta=0.1, 
-                                                return_sorted=True)
-
-                    # Improve bright-star calibration
                     nbright = (plate_mag_u[ind_cut[ind_good]] 
                                < brightmag).sum()
 
@@ -3348,14 +3337,59 @@ class SolveProcess:
                     if nbright < 10:
                         nbright = 10
 
-                    z1 = sm.nonparametric.lowess(cat_natmag[ind_cut[ind_good]][:nbright], 
-                                                 plate_mag_u[ind_cut[ind_good]][:nbright], 
-                                                 frac=0.4, it=3, delta=0.1, 
-                                                 return_sorted=True)
+                    # Exclude bright outliers by fitting a line and checking 
+                    # if residuals are larger than 2 mag
+                    ind_outliers = np.array([])
+                    xdata = plate_mag_u[ind_cut[ind_good]][:nbright]
+                    ydata = cat_natmag[ind_cut[ind_good]][:nbright]
+                    p1 = np.poly1d(np.polyfit(xdata, ydata, 1))
+                    res = ydata - p1(xdata)
+                    ind_brightout = np.where(np.absolute(res) > 2.)[0]
+
+                    if len(ind_brightout) > 0:
+                        ind_outliers = np.append(ind_outliers, 
+                                                 ind_cut[ind_brightout])
+                        ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
+                                                ind_outliers)
+                        nbright -= len(ind_brightout)
+
+                        if nbright < 10:
+                            nbright = 10
+
+                    frac = 0.2
+
+                    if len(ind_good) < 100:
+                        frac = 0.2 + 0.3 * (200 - len(ind_good)) / 200.
+
+                    z = sm.nonparametric.lowess(cat_natmag[ind_cut[ind_good]], 
+                                                plate_mag_u[ind_cut[ind_good]], 
+                                                frac=frac, it=3, delta=0.1, 
+                                                return_sorted=True)
+
+                    # Improve bright-star calibration
+                    if nbright > len(ind_good):
+                        nbright = len(ind_good)
+
+                    xbright = plate_mag_u[ind_cut[ind_good]][:nbright]
+                    ybright = cat_natmag[ind_cut[ind_good]][:nbright]
+
+                    if nbright < 50:
+                        p2 = np.poly1d(np.polyfit(xbright, ybright, 2))
+                        vals = p2(xbright)
+                    else:
+                        z1 = sm.nonparametric.lowess(ybright, xbright, 
+                                                     frac=0.4, it=3, delta=0.1, 
+                                                     return_sorted=True)
+                        vals = z1[:,1]
+
                     #print b, mag_cut_prev, mag_cut, len(ind_cut), len(ind_good), brightmag, nbright, z1.shape[0]
                     weight2 = np.arange(nbright, dtype=float) / nbright
                     weight1 = 1. - weight2
-                    z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+                    z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
+
+                    if len(ind_good) < 20:
+                        p2 = np.poly1d(np.polyfit(xbright, ybright, 2))
+                        z[:,1] = p2(z[:,0])
 
                     s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
                     #fit_mag = s(plate_mag_u[ind_cut])
@@ -3373,15 +3407,13 @@ class SolveProcess:
                     fit_mag = s(plate_mag_u[ind_cut])
                     residuals = cat_natmag[ind_cut] - fit_mag
 
-                    if b == 5 and self.write_phot_dir:
+                    if b == 7 and self.write_phot_dir:
                         np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
                                                               cat_natmag[ind_cut], 
                                                               fit_mag, residuals)))
                         fcutdata.write('\n\n')
                         np.savetxt(fcutcurve, z)
                         fcutcurve.write('\n\n')
-
-                    ind_outliers = np.array([])
 
                     #for i in np.arange(len(ind_cut)):
                     for mag_loc in np.linspace(plate_mag_brt, mag_cut, 100):
@@ -3420,8 +3452,9 @@ class SolveProcess:
                                        level=2, event=73)
                         break
 
+                num_outliers = len(ind_outliers)
                 self.log.write('Annular bin {:d}: {:d} outliers eliminated'
-                               ''.format(b, len(ind_outliers)), 
+                               ''.format(b, num_outliers), 
                                double_newline=False, level=4, event=73)
 
                 # Continue with photometric calibration without outliers
@@ -3446,8 +3479,8 @@ class SolveProcess:
                 plate_mag_brightest = plate_mag_u.min()
                 frac = 0.2
 
-                if num_valid < 100:
-                    frac = 0.4
+                if num_valid < 200:
+                    frac = 0.2 + 0.3 * (200 - num_valid) / 200.
 
                 z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
                                             frac=frac, it=3, delta=0.1, 
@@ -3469,13 +3502,20 @@ class SolveProcess:
                                  (plate_mag_maxden - plate_mag_brightest) * 0.5)
                     nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
-                z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
-                                             plate_mag_u[:nbright], 
-                                             frac=0.4, it=3, delta=0.1, 
-                                             return_sorted=True)
+                if nbright < 50:
+                    p2 = np.poly1d(np.polyfit(plate_mag_u[:nbright], 
+                                              cat_natmag[:nbright], 2))
+                    vals = p2(plate_mag_u[:nbright])
+                else:
+                    z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                                 plate_mag_u[:nbright], 
+                                                 frac=0.4, it=3, delta=0.1, 
+                                                 return_sorted=True)
+                    vals = z1[:,1]
+
                 weight2 = np.arange(nbright, dtype=float) / nbright
                 weight1 = 1. - weight2
-                z[:nbright,1] = weight1 * z1[:,1] + weight2 * z[:nbright,1]
+                z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
 
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
@@ -3495,7 +3535,8 @@ class SolveProcess:
                 ('color_term', cterm),
                 ('num_calib_stars', num_calstars),
                 ('num_good_stars', num_valid),
-                ('num_outliers', None),
+                ('num_bright_stars', nbright),
+                ('num_outliers', num_outliers),
                 ('bright_limit', s(plate_mag_brightest)),
                 ('faint_limit', s(plate_mag_lim)),
                 ('mag_range', s(plate_mag_lim)-s(plate_mag_brightest)),
