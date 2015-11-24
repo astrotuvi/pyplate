@@ -2963,6 +2963,18 @@ class SolveProcess:
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
 
+        if 'METHOD' in self.plate_header:
+            pmethod = self.plate_header['METHOD']
+
+            if (pmethod is not None and pmethod != '' 
+                and 'direct photograph' not in pmethod 
+                and 'focusing' not in pmethod
+                and 'test plate' not in pmethod):
+                self.log.write('Cannot calibrate photometry due to unsupported'
+                               'observation method ({:s})'.format(pmethod),
+                               level=2, event=70)
+                return
+
         # Create output directory, if missing
         if self.write_phot_dir and not os.path.isdir(self.write_phot_dir):
             self.log.write('Creating output directory {}'
