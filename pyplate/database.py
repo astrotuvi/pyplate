@@ -389,6 +389,7 @@ _schema['phot_calib'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
     ('annular_bin',      ('TINYINT', True)),
     ('color_term',       ('FLOAT', True)),
+    ('color_term_err',   ('FLOAT', True)),
     ('num_bin_stars',    ('INT UNSIGNED', True)),
     ('num_calib_stars',  ('INT UNSIGNED', True)),
     ('num_bright_stars', ('INT UNSIGNED', True)),
@@ -397,6 +398,7 @@ _schema['phot_calib'] = OrderedDict([
     ('faint_limit',      ('FLOAT', True)),
     ('mag_range',        ('FLOAT', True)),
     ('rmse_min',         ('FLOAT', True)),
+    ('rmse_median',      ('FLOAT', True)),
     ('rmse_max',         ('FLOAT', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '

@@ -729,7 +729,9 @@ class SolveProcess:
             return
 
         # Read FITS header
-        if not self.plate_header:
+        if (not self.plate_header or 
+            isinstance(self.plate_header['NAXIS1'], fits.card.Undefined) or
+            isinstance(self.plate_header['NAXIS2'], fits.card.Undefined)):
             try:
                 self.plate_header = fits.getheader(self.fn_fits, 
                                                    ignore_missing_end=True)
@@ -2973,6 +2975,7 @@ class SolveProcess:
                 self.log.write('Cannot calibrate photometry due to unsupported'
                                'observation method ({:s})'.format(pmethod),
                                level=2, event=70)
+                self.db_update_process(calibrated=0)
                 return
 
         # Create output directory, if missing
@@ -2994,6 +2997,9 @@ class SolveProcess:
             fn_cutcurve = os.path.join(self.write_phot_dir, 
                                        '{}_cutcurve.txt'.format(self.basefn))
             fcutcurve = open(fn_cutcurve, 'wb')
+            fn_rmse = os.path.join(self.write_phot_dir, 
+                                      '{}_rmse.txt'.format(self.basefn))
+            frmse = open(fn_rmse, 'wb')
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
@@ -3005,6 +3011,7 @@ class SolveProcess:
         if len(ind_cal) == 0:
             self.log.write('No stars for photometric calibration',
                            level=2, event=71)
+            self.db_update_process(calibrated=0)
             return
 
         src_cal = self.sources[ind_cal]
@@ -3069,6 +3076,7 @@ class SolveProcess:
         if num_calstars < 10:
             self.log.write('Too few calibration stars!'
                            ''.format(num_calstars), level=2, event=71)
+            self.db_update_process(calibrated=0)
             return
 
         #plate_mag_u,uind = np.unique(plate_mag, return_index=True)
@@ -3087,6 +3095,7 @@ class SolveProcess:
         if num_calstars < 10:
             self.log.write('Finding color term: too few stars!',
                            level=2, event=72)
+            self.db_update_process(calibrated=0)
             return
 
         plate_mag_u,uind = np.unique(plate_mag[ind_bin], return_index=True)
@@ -3117,6 +3126,7 @@ class SolveProcess:
         if num_nofaint < 10:
             self.log.write('Finding color term: too few stars after discarding faint sources!',
                            level=2, event=72)
+            self.db_update_process(calibrated=0)
             return
 
         plate_mag_u = plate_mag_u[ind_nofaint]
@@ -3167,6 +3177,7 @@ class SolveProcess:
         except IndexError:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72)
+            self.db_update_process(calibrated=0)
             return
 
         # Eliminate outliers (over 1 mag + sigma clip)
@@ -3215,11 +3226,15 @@ class SolveProcess:
             fcolor.write('\n\n')
             fcterm2.close()
 
-        cf = np.polyfit(cterm_list, stdev_list, 2)
+        cf, cov = np.polyfit(cterm_list, stdev_list, 2, cov=True)
         cterm_min = -0.5 * cf[1] / cf[0]
+        cf_err = np.sqrt(np.diag(cov))
+        cterm_min_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 + 
+                                (0.5 * cf[1] * cf_err[0] / cf[0]**2)**2)
 
         if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
             self.log.write('Color term fit failed!', level=2, event=72)
+            self.db_update_process(calibrated=0)
             return
 
         # Iteration 3
@@ -3257,8 +3272,11 @@ class SolveProcess:
             fcolor.close()
             fcterm3.close()
 
-        cf = np.polyfit(cterm_list, stdev_list, 2)
+        cf, cov = np.polyfit(cterm_list, stdev_list, 2, cov=True)
         cterm = -0.5 * cf[1] / cf[0]
+        cf_err = np.sqrt(np.diag(cov))
+        cterm_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 + 
+                            (0.5 * cf[1] * cf_err[0] / cf[0]**2)**2)
 
         if cf[0] < 0 or cterm < -2 or cterm > 2:
             if cf[0] < 0:
@@ -3274,15 +3292,17 @@ class SolveProcess:
                                'outside of allowed range ({:.3d})!'
                                ''.format(cterm_min),
                                level=2, event=72)
+                self.db_update_process(calibrated=0)
                 return
             else:
                 cterm = cterm_min
+                cterm_err = cterm_min_err
 
             self.log.write('Taking color term from previous iteration',
                            level=4, event=72)
 
-        self.log.write('Plate color term: {:.3f}'.format(cterm), 
-                       level=4, event=72)
+        self.log.write('Plate color term: {:.3f} ({:.3f})'
+                       ''.format(cterm, cterm_err), level=4, event=72)
         self.db_update_process(color_term=cterm)
 
         self.log.write('Photometric calibration in annular bins', 
@@ -3324,7 +3344,11 @@ class SolveProcess:
                 brightmag = kde.support[ind_dense[0]]
                 plate_mag_lim = kde.support[ind_dense[-1]]
                 plate_mag_brt = plate_mag_u.min()
-                plate_mag_mid = (plate_mag_lim + plate_mag_brt) / 2.
+                plate_mag_mid = (plate_mag_brt + 
+                                 0.5 * (plate_mag_lim - plate_mag_brt))
+
+                if brightmag > plate_mag_mid:
+                    brightmag = plate_mag_mid
 
                 # Check the number of stars in the bright end
                 nb = (plate_mag_u <= plate_mag_mid).sum()
@@ -3339,16 +3363,19 @@ class SolveProcess:
                 ind_cut = np.where(plate_mag_u <= plate_mag_mid)[0]
                 ind_good = np.arange(len(ind_cut))
                 mag_cut_prev = mag_cuts[0]
+                #mag_slope_prev = None
 
+                # Loop over magnitude bins
                 for mag_cut in mag_cuts[1:]:
-                    nbright = (plate_mag_u[ind_cut[ind_good]] 
-                               < brightmag).sum()
+                    gpmag = plate_mag_u[ind_cut[ind_good]]
+                    gcmag = cat_natmag[ind_cut[ind_good]]
+
+                    nbright = (gpmag < brightmag).sum()
 
                     if nbright < 20:
                         alt_brightmag = (plate_mag_u.min() + 
                                          (plate_mag_maxden - plate_mag_u.min()) * 0.5)
-                        nbright = (plate_mag_u[ind_cut[ind_good]] 
-                                   < alt_brightmag).sum()
+                        nbright = (gpmag < alt_brightmag).sum()
 
                     if nbright < 10:
                         nbright = 10
@@ -3356,38 +3383,56 @@ class SolveProcess:
                     # Exclude bright outliers by fitting a line and checking 
                     # if residuals are larger than 2 mag
                     ind_outliers = np.array([])
-                    xdata = plate_mag_u[ind_cut[ind_good]][:nbright]
-                    ydata = cat_natmag[ind_cut[ind_good]][:nbright]
+                    xdata = gpmag[:nbright]
+                    ydata = gcmag[:nbright]
                     p1 = np.poly1d(np.polyfit(xdata, ydata, 1))
-                    res = ydata - p1(xdata)
-                    ind_brightout = np.where(np.absolute(res) > 2.)[0]
+                    res = cat_natmag[ind_cut] - p1(plate_mag_u[ind_cut])
+                    ind_brightout = np.where((np.absolute(res) > 2.) &
+                                             (plate_mag_u[ind_cut] <= 
+                                              xdata.max()))[0]
 
                     if len(ind_brightout) > 0:
                         ind_outliers = np.append(ind_outliers, 
                                                  ind_cut[ind_brightout])
-                        ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
-                                                ind_outliers)
+                        ind_good = np.setdiff1d(ind_good, ind_outliers)
+                        gpmag = plate_mag_u[ind_cut[ind_good]]
+                        gcmag = cat_natmag[ind_cut[ind_good]]
                         nbright -= len(ind_brightout)
 
                         if nbright < 10:
                             nbright = 10
 
+                    # Construct calibration curve
+                    # Set lowess fraction depending on the number of data points
                     frac = 0.2
 
-                    if len(ind_good) < 100:
-                        frac = 0.2 + 0.3 * (200 - len(ind_good)) / 200.
+                    if len(ind_good) < 500:
+                        frac = 0.2 + 0.3 * (500 - len(ind_good)) / 500.
 
-                    z = sm.nonparametric.lowess(cat_natmag[ind_cut[ind_good]], 
-                                                plate_mag_u[ind_cut[ind_good]], 
+                    z = sm.nonparametric.lowess(gcmag, gpmag, 
                                                 frac=frac, it=3, delta=0.1, 
                                                 return_sorted=True)
+
+                    # In case there are less than 20 good stars, use only 
+                    # polynomial
+                    if len(ind_good) < 20:
+                        weights = np.zeros(len(ind_good)) + 1.
+
+                        for i in np.arange(len(ind_good)):
+                            indw = np.where(np.absolute(gpmag-gpmag[i]) < 1.0)[0]
+
+                            if len(indw) > 2:
+                                weights[i] = 1. / gcmag[indw].std()**2
+
+                        p2 = np.poly1d(np.polyfit(gpmag, gcmag, 2, w=weights))
+                        z[:,1] = p2(z[:,0])
 
                     # Improve bright-star calibration
                     if nbright > len(ind_good):
                         nbright = len(ind_good)
 
-                    xbright = plate_mag_u[ind_cut[ind_good]][:nbright]
-                    ybright = cat_natmag[ind_cut[ind_good]][:nbright]
+                    xbright = gpmag[:nbright]
+                    ybright = gcmag[:nbright]
 
                     if nbright < 50:
                         p2 = np.poly1d(np.polyfit(xbright, ybright, 2))
@@ -3403,11 +3448,33 @@ class SolveProcess:
                     weight1 = 1. - weight2
                     z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
 
-                    if len(ind_good) < 20:
-                        p2 = np.poly1d(np.polyfit(xbright, ybright, 2))
-                        z[:,1] = p2(z[:,0])
+                    # Improve faint-star calibration by fitting a 2nd order
+                    # polynomial 
+                    ind_faint = np.where(gpmag > mag_cut_prev-6.)[0]
+                    nfaint = len(ind_faint)
 
+                    if nfaint > 5:
+                        xfaint = gpmag[ind_faint]
+                        yfaint = gcmag[ind_faint]
+                        weights = np.zeros(nfaint) + 1.
+
+                        for i in np.arange(nfaint):
+                            indw = np.where(np.absolute(xfaint-xfaint[i]) < 0.5)[0]
+
+                            if len(indw) > 2:
+                                weights[i] = 1. / yfaint[indw].std()**2
+
+                        p2 = np.poly1d(np.polyfit(xfaint, yfaint, 2, 
+                                                  w=weights))
+                        vals = p2(xfaint)
+
+                        weight2 = (np.arange(nfaint, dtype=float) / nfaint)**1
+                        weight1 = 1. - weight2
+                        z[ind_faint,1] = weight2 * vals + weight1 * z[ind_faint,1]
+
+                    # Interpolate smoothed calibration curve
                     s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
                     #fit_mag = s(plate_mag_u[ind_cut])
                     #pfit = np.polyfit(plate_mag_u[ind_cut], 
                     #                  s(plate_mag_u[ind_cut]), 3)
@@ -3418,36 +3485,57 @@ class SolveProcess:
                     #if len(ind_add) > 0:
                     #    fit_mag = np.append(fit_mag, fit1d(plate_mag_u[ind_add]))
 
-                    mag_cut_prev = mag_cut
                     ind_cut = np.where(plate_mag_u <= mag_cut)[0]
                     fit_mag = s(plate_mag_u[ind_cut])
-                    residuals = cat_natmag[ind_cut] - fit_mag
 
-                    if b == 7 and self.write_phot_dir:
+                    #mag_slope = ((s(mag_cut)-s(mag_cut_prev)) 
+                    #             / (mag_cut-mag_cut_prev))
+
+                    # Check if the slope of calibration curve is increasing
+                    #if mag_slope_prev is not None:
+                    #    if mag_slope > mag_slope_prev:
+                    #        ind_new = np.where(plate_mag_u[ind_cut] > 
+                    #                           mag_cut_prev)[0]
+
+                    #        if len(ind_new) > 0:
+                    #            pmag = plate_mag_u[ind_cut[ind_new]]
+                    #            fit_mag[ind_new] = (s(mag_cut_prev) 
+                    #                                + mag_slope_prev 
+                    #                                * (pmag - mag_cut_prev))
+
+                    residuals = cat_natmag[ind_cut] - fit_mag
+                    mag_cut_prev = mag_cut
+                    #mag_slope_prev = mag_slope
+
+                    if b == 6 and self.write_phot_dir:
                         np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
                                                               cat_natmag[ind_cut], 
                                                               fit_mag, residuals)))
                         fcutdata.write('\n\n')
+                        np.savetxt(fcutdata, np.column_stack((gpmag, gcmag, 
+                                                              fit_mag[ind_good], residuals[ind_good])))
+                        fcutdata.write('\n\n')
                         np.savetxt(fcutcurve, z)
                         fcutcurve.write('\n\n')
 
-                    #for i in np.arange(len(ind_cut)):
+                    # Mark as outliers those stars that deviate more than 1 mag
+                    ind_out = np.where(np.absolute(residuals) > 1.0)
+
+                    if len(ind_out) > 0:
+                        ind_outliers = np.append(ind_outliers, ind_cut[ind_out])
+                        ind_outliers = np.unique(ind_outliers)
+
+                    # Additionally clip outliers in small bins
                     for mag_loc in np.linspace(plate_mag_brt, mag_cut, 100):
-                        mag_low = mag_loc - 1.
-                        mag_high = mag_loc + 1.
-                        #mag_low = plate_mag_u[ind_cut[i]] - 1.
-                        #mag_high = plate_mag_u[ind_cut[i]] + 1.
+                        mag_low = mag_loc - 0.5
+                        mag_high = mag_loc + 0.5
                         ind_loc = np.where((plate_mag_u[ind_cut] > mag_low) &
                                            (plate_mag_u[ind_cut] < mag_high))[0]
                         ind_loc = np.setdiff1d(ind_loc, ind_outliers)
 
-                        #if b == 7 and i < 10:
-                        #    print i, plate_mag_u[ind_cut[i]], mag_low, mag_high, len(ind_loc), np.absolute(residuals[i]), 3*residuals[ind_loc].std()
-
                         if len(ind_loc) >= 5:
-                            ind_locout = np.where((np.absolute(residuals[ind_loc]) > 
-                                                   3.*residuals[ind_loc].std()) |
-                                                  (np.absolute(residuals[ind_loc]) > 1.0))[0]
+                            ind_locout = np.where(np.absolute(residuals[ind_loc]) > 
+                                                  3.*residuals[ind_loc].std())[0]
 
                             if len(ind_locout) > 0:
                                 ind_outliers = np.append(ind_outliers, 
@@ -3461,6 +3549,26 @@ class SolveProcess:
                     #flt = sigma_clip(residuals, iters=None)
                     #ind_good = ~flt.mask
                     #ind_good = np.where(np.absolute(residuals) < 3*residuals.std())[0]
+
+                    if mag_cut - plate_mag_u[ind_cut[ind_good]].max() > 1.5:
+                        ind_faintout = np.where(plate_mag_u[ind_cut] > mag_cut)[0]
+
+                        if len(ind_faintout) > 0:
+                            ind_outliers = np.append(ind_outliers,
+                                                     ind_cut[ind_faintout])
+                            ind_outliers = np.unique(ind_outliers)
+                            ind_good = np.setdiff1d(np.arange(len(ind_cut)),
+                                                    ind_outliers)
+                            self.log.write('Annular bin {:d}: {:d} faint stars '
+                                           'eliminated as outliers'
+                                           ''.format(b, len(ind_faintout)), 
+                                           level=4, event=73)
+
+                        self.log.write('Annular bin {:d}: outlier elimination '
+                                       'stopped due to a long gap in '
+                                       'magnitudes!', level=2, event=73)
+                        break
+
 
                     if len(ind_good) < 10:
                         self.log.write('Annular bin {:d}: outlier elimination stopped '
@@ -3495,8 +3603,8 @@ class SolveProcess:
                 plate_mag_brightest = plate_mag_u.min()
                 frac = 0.2
 
-                if num_valid < 200:
-                    frac = 0.2 + 0.3 * (200 - num_valid) / 200.
+                if num_valid < 500:
+                    frac = 0.2 + 0.3 * (500 - num_valid) / 500.
 
                 z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
                                             frac=frac, it=3, delta=0.1, 
@@ -3518,6 +3626,9 @@ class SolveProcess:
                                  (plate_mag_maxden - plate_mag_brightest) * 0.5)
                     nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
+                if nbright < 5:
+                    nbright = 5
+
                 if nbright < 50:
                     p2 = np.poly1d(np.polyfit(plate_mag_u[:nbright], 
                                               cat_natmag[:nbright], 2))
@@ -3535,6 +3646,34 @@ class SolveProcess:
 
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+                residuals = cat_natmag-s(plate_mag_u)
+
+                # Evaluate RMS error from the spread around the calibration curve
+                pmag = np.array([])
+                rmse = np.array([])
+
+                for mag_loc in np.linspace(plate_mag_brightest, plate_mag_lim, 100):
+                    ind_loc = np.where((plate_mag_u > mag_loc-0.5) &
+                                       (plate_mag_u < mag_loc+0.5))[0]
+
+                    if len(ind_loc) < 5:
+                        ind_loc = np.where((plate_mag_u > mag_loc-1.0) &
+                                           (plate_mag_u < mag_loc+1.0))[0]
+
+                    if len(ind_loc) < 5:
+                        ind_loc = np.where((plate_mag_u > mag_loc-2.0) &
+                                           (plate_mag_u < mag_loc+2.0))[0]
+
+                    if len(ind_loc) >= 5:
+                        pmag = np.append(pmag, mag_loc)
+                        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
+                        rmse = np.append(rmse, rmse_loc)
+
+                np.savetxt(frmse, np.column_stack((pmag, rmse)))
+                frmse.write('\n\n')
+
+                # Interpolate rms error values
+                s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
 
             #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
 
@@ -3546,9 +3685,11 @@ class SolveProcess:
                 np.savetxt(fcalcurve, z)
                 fcalcurve.write('\n\n')
 
+            # Store calibration statistics
             self.phot_calib.append(OrderedDict([
                 ('annular_bin', b),
                 ('color_term', cterm),
+                ('color_term_err', cterm_err),
                 ('num_bin_stars', num_calstars),
                 ('num_calib_stars', num_valid),
                 ('num_bright_stars', nbright),
@@ -3556,8 +3697,9 @@ class SolveProcess:
                 ('bright_limit', s(plate_mag_brightest)),
                 ('faint_limit', s(plate_mag_lim)),
                 ('mag_range', s(plate_mag_lim)-s(plate_mag_brightest)),
-                ('rmse_min', None),
-                ('rmse_max', None)
+                ('rmse_min', rmse.min()),
+                ('rmse_median', np.median(rmse)),
+                ('rmse_max', rmse.max())
             ]))
 
             # Apply photometric calibration to sources in the annular bin
@@ -3573,6 +3715,7 @@ class SolveProcess:
                                       np.isfinite(src_nomag['tycho2_vtmag']))[0]
 
             self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
             self.sources['color_term'][ind_bin] = cterm
 
             if len(ind_ucacmag) > 0:
@@ -3584,6 +3727,12 @@ class SolveProcess:
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
+                vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
+                                  (cterm_err * b_v)**2)
+                bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
+                                  (cterm_err * b_v)**2)
+                self.sources['vmagerr'][ind] = vmagerr
+                self.sources['bmagerr'][ind] = bmagerr
 
             if len(ind_tycmag) > 0:
                 ind = ind_bin[ind_noucacmag[ind_tycmag]]
@@ -3594,6 +3743,12 @@ class SolveProcess:
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
+                vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
+                                  (cterm_err * b_v)**2)
+                bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
+                                  (cterm_err * b_v)**2)
+                self.sources['vmagerr'][ind] = vmagerr
+                self.sources['bmagerr'][ind] = bmagerr
 
         try:
             brightlim = min([cal['bright_limit'] for cal in self.phot_calib])
@@ -3612,6 +3767,7 @@ class SolveProcess:
             fcalcurve.close()
             fcutdata.close()
             fcutcurve.close()
+            frmse.close()
 
     def output_calibration_db(self):
         """
