@@ -485,7 +485,14 @@ _source_meta = OrderedDict([
     ('tycho2_btmag',        ('f8', '%7.4f', '')),
     ('tycho2_vtmag',        ('f8', '%7.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', '')),
-    ('tycho2_dist',         ('f4', '%6.3f', ''))
+    ('tycho2_dist',         ('f4', '%6.3f', '')),
+    ('apass_ra',            ('f8', '%11.7f', '')),
+    ('apass_dec',           ('f8', '%11.7f', '')),
+    ('apass_bmag',          ('f8', '%7.4f', '')),
+    ('apass_vmag',          ('f8', '%7.4f', '')),
+    ('apass_berr',          ('f8', '%6.4f', '')),
+    ('apass_verr',          ('f8', '%6.4f', '')),
+    ('apass_dist',          ('f4', '%6.3f', ''))
 ])
 
 
@@ -518,6 +525,14 @@ class SolveProcess:
         self.ucac4_db_user = ''
         self.ucac4_db_name = ''
         self.ucac4_db_passwd = ''
+        self.ucac4_db_table = 'ucac4'
+
+        self.use_apass_db = False
+        self.apass_db_host = 'localhost'
+        self.apass_db_user = ''
+        self.apass_db_name = ''
+        self.apass_db_passwd = ''
+        self.apass_db_table = 'apass'
 
         self.output_db_host = 'localhost'
         self.output_db_user = ''
@@ -584,6 +599,13 @@ class SolveProcess:
         self.bmag_ucac = None
         self.vmag_ucac = None
         
+        self.ra_apass = None
+        self.dec_apass = None
+        self.bmag_apass = None
+        self.berr_apass = None
+        self.vmag_apass = None
+        self.verr_apass = None
+        
     def assign_conf(self, conf):
         """
         Parse configuration and set class attributes.
@@ -621,7 +643,8 @@ class SolveProcess:
         if self.write_log_dir:
             self.enable_log = True
 
-        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'enable_db_log']:
+        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'use_apass_db', 
+                     'enable_db_log']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
             except ValueError:
@@ -631,7 +654,10 @@ class SolveProcess:
                 pass
 
         for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
-                     'ucac4_db_passwd', 'output_db_host', 'output_db_user',
+                     'ucac4_db_passwd', 'ucac4_db_table',
+                     'apass_db_host', 'apass_db_user', 'apass_db_name', 
+                     'apass_db_passwd', 'apass_db_table',
+                     'output_db_host', 'output_db_user',
                      'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
@@ -2103,7 +2129,7 @@ class SolveProcess:
 
                 sql1 = 'SELECT RAJ2000,DEJ2000,e_RAJ2000,e_DEJ2000,amag,e_amag,'
                 sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,Bmag,Vmag'
-                sql2 = ' FROM ucac4'
+                sql2 = ' FROM {}'.format(self.ucac4_db_table)
                 sql2 += ' FORCE INDEX (idx_radecmag)'
 
                 if self.ncp_close:
@@ -2732,14 +2758,16 @@ class SolveProcess:
         if num_finite == 0:
             self.log.write('No sources with usable coordinates', 
                            level=2, event=61)
-        elif self.ra_ucac is None or self.dec_ucac is None:
+            return
+
+        ind_finite = np.where(bool_finite)[0]
+        ra_finite = self.sources['raj2000'][ind_finite]
+        dec_finite = self.sources['dej2000'][ind_finite]
+
+        # Match sources with the UCAC4 catalogue
+        if self.ra_ucac is None or self.dec_ucac is None:
             self.log.write('Missing UCAC4 data', level=2, event=61)
         else:
-            ind_finite = np.where(bool_finite)[0]
-            ra_finite = self.sources['raj2000'][ind_finite]
-            dec_finite = self.sources['dej2000'][ind_finite]
-
-            # Match sources with the UCAC4 catalogue
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -2774,109 +2802,202 @@ class SolveProcess:
                     self.sources['ucac4_dist'][ind] = (matchdist
                                                        .astype(np.float32))
 
-            # Match sources with the Tycho-2 catalogue
-            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
-                           level=3, event=62)
-            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+        # Match sources with the Tycho-2 catalogue
+        self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
+                       level=3, event=62)
+        fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
 
-            try:
-                tycho2 = fits.open(fn_tycho2)
-                tycho2_available = True
-            except IOError:
-                self.log.write('Missing Tycho-2 data', level=2, event=62)
-                tycho2_available = False
+        try:
+            tycho2 = fits.open(fn_tycho2)
+            tycho2_available = True
+        except IOError:
+            self.log.write('Missing Tycho-2 data', level=2, event=62)
+            tycho2_available = False
 
-            if tycho2_available:
-                ra_tyc = tycho2[1].data.field(0)
-                dec_tyc = tycho2[1].data.field(1)
-                pmra_tyc = tycho2[1].data.field(2)
-                pmdec_tyc = tycho2[1].data.field(3)
-                btmag_tyc = tycho2[1].data.field(4)
-                vtmag_tyc = tycho2[1].data.field(5)
-                ebtmag_tyc = tycho2[1].data.field(6)
-                evtmag_tyc = tycho2[1].data.field(7)
-                tyc1 = tycho2[1].data.field(8)
-                tyc2 = tycho2[1].data.field(9)
-                tyc3 = tycho2[1].data.field(10)
-                hip_tyc = tycho2[1].data.field(11)
+        if tycho2_available:
+            ra_tyc = tycho2[1].data.field(0)
+            dec_tyc = tycho2[1].data.field(1)
+            pmra_tyc = tycho2[1].data.field(2)
+            pmdec_tyc = tycho2[1].data.field(3)
+            btmag_tyc = tycho2[1].data.field(4)
+            vtmag_tyc = tycho2[1].data.field(5)
+            ebtmag_tyc = tycho2[1].data.field(6)
+            evtmag_tyc = tycho2[1].data.field(7)
+            tyc1 = tycho2[1].data.field(8)
+            tyc2 = tycho2[1].data.field(9)
+            tyc3 = tycho2[1].data.field(10)
+            hip_tyc = tycho2[1].data.field(11)
 
-                # For stars that have proper motion data, calculate RA, Dec
-                # for the plate epoch
-                indpm = np.where(np.isfinite(pmra_tyc) & 
-                                  np.isfinite(pmdec_tyc))[0]
-                ra_tyc[indpm] = (ra_tyc[indpm] 
-                                 + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
-                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
-                                 / 3600000.)
-                dec_tyc[indpm] = (dec_tyc[indpm] 
-                                  + (self.plate_epoch - 2000.) 
-                                  * pmdec_tyc[indpm] / 3600000.)
+            # For stars that have proper motion data, calculate RA, Dec
+            # for the plate epoch
+            indpm = np.where(np.isfinite(pmra_tyc) & 
+                              np.isfinite(pmdec_tyc))[0]
+            ra_tyc[indpm] = (ra_tyc[indpm] 
+                             + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
+                             / np.cos(dec_tyc[indpm] * np.pi / 180.) 
+                             / 3600000.)
+            dec_tyc[indpm] = (dec_tyc[indpm] 
+                              + (self.plate_epoch - 2000.) 
+                              * pmdec_tyc[indpm] / 3600000.)
 
-                if self.ncp_close:
-                    btyc = (dec_tyc > self.min_dec)
-                elif self.scp_close:
-                    btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra < self.min_ra:
-                    btyc = (((ra_tyc < self.max_ra) |
-                            (ra_tyc > self.min_ra)) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
-                else:
-                    btyc = ((ra_tyc > self.min_ra) & 
-                            (ra_tyc < self.max_ra) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
+            if self.ncp_close:
+                btyc = (dec_tyc > self.min_dec)
+            elif self.scp_close:
+                btyc = (dec_tyc < self.max_dec)
+            elif self.max_ra < self.min_ra:
+                btyc = (((ra_tyc < self.max_ra) |
+                        (ra_tyc > self.min_ra)) &
+                        (dec_tyc > self.min_dec) & 
+                        (dec_tyc < self.max_dec))
+            else:
+                btyc = ((ra_tyc > self.min_ra) & 
+                        (ra_tyc < self.max_ra) &
+                        (dec_tyc > self.min_dec) & 
+                        (dec_tyc < self.max_dec))
 
-                indtyc = np.where(btyc)[0]
-                numtyc = btyc.sum()
+            indtyc = np.where(btyc)[0]
+            numtyc = btyc.sum()
 
-                ra_tyc = ra_tyc[indtyc] 
-                dec_tyc = dec_tyc[indtyc] 
-                btmag_tyc = btmag_tyc[indtyc]
-                vtmag_tyc = vtmag_tyc[indtyc]
-                ebtmag_tyc = ebtmag_tyc[indtyc]
-                evtmag_tyc = evtmag_tyc[indtyc]
-                id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
-                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
-                                   for i in indtyc])
-                hip_tyc = hip_tyc[indtyc]
+            ra_tyc = ra_tyc[indtyc] 
+            dec_tyc = dec_tyc[indtyc] 
+            btmag_tyc = btmag_tyc[indtyc]
+            vtmag_tyc = vtmag_tyc[indtyc]
+            ebtmag_tyc = ebtmag_tyc[indtyc]
+            evtmag_tyc = evtmag_tyc[indtyc]
+            id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
+                               .format(tyc1[i], tyc2[i], tyc3[i]) 
+                               for i in indtyc])
+            hip_tyc = hip_tyc[indtyc]
 
-                self.log.write('Fetched {:d} entries from Tycho-2'
-                               ''.format(numtyc))
+            self.log.write('Fetched {:d} entries from Tycho-2'
+                           ''.format(numtyc))
 
+            if have_match_coord:
+                coords = ICRS(ra_finite, dec_finite, 
+                              unit=(units.degree, units.degree))
+                catalog = ICRS(ra_tyc, dec_tyc, 
+                              unit=(units.degree, units.degree))
+                ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
+                                                            nthneighbor=1)
+                ind_plate = np.arange(ind_tyc.size)
+                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                ind_plate = ind_plate[indmask]
+                ind_tyc = ind_tyc[indmask]
+                matchdist = ds2d[indmask].to(units.arcsec).value
+            elif have_pyspherematch:
+                ind_plate,ind_tyc,ds = \
+                    spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
+                                tol=float(self.crossmatch_radius)/3600., 
+                                nnearest=1)
+                matchdist = ds * 3600.
+
+            if have_match_coord or have_pyspherematch:
+                num_match = len(ind_plate)
+                self.db_update_process(num_tycho2=num_match)
+
+                if num_match > 0:
+                    ind = ind_finite[ind_plate]
+                    self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
+                    self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
+                    self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
+                    self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
+                    self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
+                    self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
+                    self.sources['tycho2_dist'][ind] = (matchdist
+                                                        .astype(np.float32))
+
+        # Match sources with the APASS catalogue
+        if self.use_apass_db:
+            self.log.write('Cross-matching sources with the APASS catalogue', 
+                           level=3, event=63)
+
+            # Query MySQL database
+            db = MySQLdb.connect(host=self.apass_db_host, 
+                                 user=self.apass_db_user, 
+                                 passwd=self.apass_db_passwd,
+                                 db=self.apass_db_name)
+            cur = db.cursor()
+
+            sql1 = 'SELECT RAdeg,DEdeg,B,V,e_B,e_V'
+            sql2 = ' FROM {}'.format(self.apass_db_table)
+            #sql2 += ' FORCE INDEX (idx_radecmag)'
+
+            if self.ncp_close:
+                sql2 += ' WHERE DEdeg > {}'.format(self.min_dec)
+            elif self.scp_close:
+                sql2 += ' WHERE DEdeg < {}'.format(self.max_dec)
+            elif self.max_ra < self.min_ra:
+                sql2 += (' WHERE (RAdeg < {} OR RAdeg > {})'
+                         ' AND DEdeg BETWEEN {} AND {}'
+                         ''.format(self.max_ra, self.min_ra,
+                                   self.min_dec, self.max_dec))
+            else:
+                sql2 += (' WHERE RAdeg BETWEEN {} AND {}'
+                         ' AND DEdeg BETWEEN {} AND {}'
+                         ''.format(self.min_ra, self.max_ra, 
+                                   self.min_dec, self.max_dec))
+
+            sql3 = ''
+
+            if self.stars_sqdeg < 200:
+                sql3 += ' AND V < 13'
+            elif self.stars_sqdeg < 1000:
+                sql3 += ' AND V < 15'
+
+            sql = sql1 + sql2 + sql3 + ';'
+            self.log.write(sql)
+            num_apass = cur.execute(sql)
+            self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
+            res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
+            cur.close()
+            db.commit()
+            db.close()
+
+            self.ra_apass = res['f0']
+            self.dec_apass = res['f1']
+            self.bmag_apass = res['f2']
+            self.vmag_apass = res['f3']
+            self.berr_apass = res['f4']
+            self.verr_apass = res['f5']
+
+            # Begin cross-match
+            if num_apass == 0:
+                self.log.write('Missing APASS data', level=2, event=63)
+            else:
                 if have_match_coord:
                     coords = ICRS(ra_finite, dec_finite, 
                                   unit=(units.degree, units.degree))
-                    catalog = ICRS(ra_tyc, dec_tyc, 
-                                  unit=(units.degree, units.degree))
-                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
-                                                                nthneighbor=1)
-                    ind_plate = np.arange(ind_tyc.size)
+                    catalog = ICRS(self.ra_apass, self.dec_apass, 
+                                   unit=(units.degree, units.degree))
+                    ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
+                                                                  nthneighbor=1)
+                    ind_plate = np.arange(ind_apass.size)
                     indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
                     ind_plate = ind_plate[indmask]
-                    ind_tyc = ind_tyc[indmask]
+                    ind_apass = ind_apass[indmask]
                     matchdist = ds2d[indmask].to(units.arcsec).value
                 elif have_pyspherematch:
-                    ind_plate,ind_tyc,ds = \
-                        spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
-                                    tol=float(self.crossmatch_radius)/3600., 
-                                    nnearest=1)
+                    ind_plate,ind_apass,ds = \
+                            spherematch(ra_finite, dec_finite, 
+                                        self.ra_apass, self.dec_apass,
+                                        tol=float(self.crossmatch_radius)/3600., 
+                                        nnearest=1)
                     matchdist = ds * 3600.
 
                 if have_match_coord or have_pyspherematch:
                     num_match = len(ind_plate)
-                    self.db_update_process(num_tycho2=num_match)
+                    self.log.write('Matched {:d} sources with APASS'.format(num_match))
 
                     if num_match > 0:
                         ind = ind_finite[ind_plate]
-                        self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
-                        self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
-                        self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
-                        self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
-                        self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
-                        self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
-                        self.sources['tycho2_dist'][ind] = (matchdist
-                                                            .astype(np.float32))
+                        self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
+                        self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
+                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
+                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
+                        self.sources['apass_verr'][ind] = self.verr_apass[ind_apass]
+                        self.sources['apass_berr'][ind] = self.berr_apass[ind_apass]
+                        self.sources['apass_dist'][ind] = (matchdist
+                                                           .astype(np.float32))
 
     def output_sources_csv(self, filename=None):
         """
@@ -2884,12 +3005,12 @@ class SolveProcess:
 
         """
 
-        self.log.to_db(3, 'Writing sources to a file', event=64)
+        self.log.to_db(3, 'Writing sources to a file', event=65)
 
         # Create output directory, if missing
         if self.write_source_dir and not os.path.isdir(self.write_source_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4, event=64)
+                           .format(self.write_source_dir), level=4, event=65)
             os.makedirs(self.write_source_dir)
 
         if filename:
@@ -2921,7 +3042,9 @@ class SolveProcess:
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
-                     'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist']
+                     'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist',
+                     'apass_ra', 'apass_dec', 'apass_bmag', 'apass_vmag', 
+                     'apass_dist']
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
         #outhdr = ','.join(['"{}"'.format(f) for f in outfields])
@@ -2929,7 +3052,7 @@ class SolveProcess:
 
         # Output ascii file with refined coordinates
         self.log.write('Writing output file {}'.format(fn_world), level=4, 
-                       event=64)
+                       event=65)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
@@ -2939,7 +3062,7 @@ class SolveProcess:
 
         """
 
-        self.log.to_db(3, 'Writing sources to the database', event=63)
+        self.log.to_db(3, 'Writing sources to the database', event=64)
         self.log.write('Open database connection for writing to the '
                        'source and source_calib tables.')
         platedb = PlateDB()
@@ -3015,22 +3138,43 @@ class SolveProcess:
             return
 
         src_cal = self.sources[ind_cal]
-        ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
-                               (src_cal['ucac4_vmag'] > 10))[0]
-        ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
-        self.log.write('Found {:d} usable UCAC4 stars'
-                       ''.format(len(ind_ucacmag)), level=4, event=71)
 
-        if len(ind_ucacmag) > 0:
-            cat_bmag = src_cal[ind_ucacmag]['ucac4_bmag']
-            cat_vmag = src_cal[ind_ucacmag]['ucac4_vmag']
-            plate_mag = src_cal[ind_ucacmag]['mag_auto']
-            plate_bin = src_cal[ind_ucacmag]['annular_bin']
+        if self.use_apass_db:
+            # Use APASS magnitudes
+            ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
+                                   (src_cal['apass_vmag'] > 10))[0]
+            ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
+            self.log.write('Found {:d} usable APASS stars'
+                           ''.format(len(ind_ucacmag)), level=4, event=71)
+
+            if len(ind_ucacmag) > 0:
+                cat_bmag = src_cal[ind_ucacmag]['apass_bmag']
+                cat_vmag = src_cal[ind_ucacmag]['apass_vmag']
+                plate_mag = src_cal[ind_ucacmag]['mag_auto']
+                plate_bin = src_cal[ind_ucacmag]['annular_bin']
+            else:
+                cat_bmag = np.array([])
+                cat_vmag = np.array([])
+                plate_mag = np.array([])
+                plate_bin = np.array([])
         else:
-            cat_bmag = np.array([])
-            cat_vmag = np.array([])
-            plate_mag = np.array([])
-            plate_bin = np.array([])
+            # Use UCAC4 magnitudes
+            ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
+                                   (src_cal['ucac4_vmag'] > 10))[0]
+            ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
+            self.log.write('Found {:d} usable UCAC4 stars'
+                           ''.format(len(ind_ucacmag)), level=4, event=71)
+
+            if len(ind_ucacmag) > 0:
+                cat_bmag = src_cal[ind_ucacmag]['ucac4_bmag']
+                cat_vmag = src_cal[ind_ucacmag]['ucac4_vmag']
+                plate_mag = src_cal[ind_ucacmag]['mag_auto']
+                plate_bin = src_cal[ind_ucacmag]['annular_bin']
+            else:
+                cat_bmag = np.array([])
+                cat_vmag = np.array([])
+                plate_mag = np.array([])
+                plate_bin = np.array([])
 
         # Complement UCAC4 magnitudes with Tycho-2 magnitudes converted to 
         # B and V
