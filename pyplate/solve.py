@@ -3710,7 +3710,8 @@ class SolveProcess:
 
                         self.log.write('Annular bin {:d}: outlier elimination '
                                        'stopped due to a long gap in '
-                                       'magnitudes!', level=2, event=73)
+                                       'magnitudes!'.format(b), 
+                                       level=2, event=73)
                         break
 
 
