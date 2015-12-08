@@ -565,7 +565,9 @@ class SolveProcess:
         self.max_recursion_depth = 5
         self.force_recursion_depth = 0
         self.circular_film = False
-        self.crossmatch_radius = 5.
+        self.crossmatch_radius = None
+        self.crossmatch_nsigma = 10.
+        self.crossmatch_maxradius = 20.
 
         self.plate_header = None
         self.imwidth = None
@@ -675,7 +677,8 @@ class SolveProcess:
 
         for attr in ['plate_epoch', 'threshold_sigma', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
-                     'crossmatch_radius']:
+                     'crossmatch_radius', 'crossmatch_nsigma', 
+                     'crossmatch_maxradius']:
             try:
                 setattr(self, attr, conf.getfloat('Solve', attr))
             except ValueError:
@@ -2149,10 +2152,10 @@ class SolveProcess:
 
                 sql3 = ''
 
-                if self.stars_sqdeg < 200:
-                    sql3 += ' AND amag < 13'
-                elif self.stars_sqdeg < 1000:
-                    sql3 += ' AND amag < 15'
+                #if self.stars_sqdeg < 200:
+                #    sql3 += ' AND amag < 13'
+                #elif self.stars_sqdeg < 1000:
+                #    sql3 += ' AND amag < 15'
 
                 sql = sql1 + sql2 + sql3 + ';'
                 self.log.write(sql)
@@ -2763,11 +2766,23 @@ class SolveProcess:
         ind_finite = np.where(bool_finite)[0]
         ra_finite = self.sources['raj2000'][ind_finite]
         dec_finite = self.sources['dej2000'][ind_finite]
+        coorderr_finite = np.sqrt(self.sources['raerr_sub'][ind_finite]**2 +
+                                  self.sources['decerr_sub'][ind_finite]**2)
 
         # Match sources with the UCAC4 catalogue
         if self.ra_ucac is None or self.dec_ucac is None:
             self.log.write('Missing UCAC4 data', level=2, event=61)
         else:
+            if self.crossmatch_radius is not None:
+                self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
+                               ''.format(float(self.crossmatch_radius)), 
+                               level=4, event=61)
+            else:
+                self.log.write('Using scaled cross-match radius of '
+                               '{:.2f} astrometric sigmas'
+                               ''.format(float(self.crossmatch_nsigma)), 
+                               level=4, event=61)
+
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -2776,15 +2791,36 @@ class SolveProcess:
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
                 ind_plate = np.arange(ind_ucac.size)
-                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+
+                if self.crossmatch_radius is not None:
+                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                else:
+                    indmask = (ds2d/coorderr_finite 
+                               < float(self.crossmatch_nsigma)*units.arcsec)
+
+                    if self.crossmatch_maxradius is not None:
+                        maxradius_arcsec = (float(self.crossmatch_maxradius) 
+                                            * units.arcsec)
+                        indmask = indmask & (ds2d < maxradius_arcsec)
+
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
                 matchdist = ds2d[indmask].to(units.arcsec).value
             elif have_pyspherematch:
+                if self.crossmatch_radius is not None:
+                    crossmatch_radius = float(self.crossmatch_radius)
+                else:
+                    crossmatch_radius = (float(self.crossmatch_nsigma) 
+                                         * np.mean(coorderr_finite))
+
+                    if self.crossmatch_maxradius is not None:
+                        if crossmatch_radius > self.crossmatch_maxradius:
+                            crossmatch_radius = float(self.crossmatch_maxradius)
+
                 ind_plate,ind_ucac,ds = \
                         spherematch(ra_finite, dec_finite, 
                                     self.ra_ucac, self.dec_ucac,
-                                    tol=float(self.crossmatch_radius)/3600., 
+                                    tol=crossmatch_radius/3600., 
                                     nnearest=1)
                 matchdist = ds * 3600.
 
@@ -2872,6 +2908,16 @@ class SolveProcess:
             self.log.write('Fetched {:d} entries from Tycho-2'
                            ''.format(numtyc))
 
+            if self.crossmatch_radius is not None:
+                self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
+                               ''.format(float(self.crossmatch_radius)), 
+                               level=4, event=61)
+            else:
+                self.log.write('Using scaled cross-match radius of '
+                               '{:.2f} astrometric sigmas'
+                               ''.format(float(self.crossmatch_nsigma)), 
+                               level=4, event=61)
+
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -2880,14 +2926,35 @@ class SolveProcess:
                 ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
                                                             nthneighbor=1)
                 ind_plate = np.arange(ind_tyc.size)
-                indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+
+                if self.crossmatch_radius is not None:
+                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                else:
+                    indmask = (ds2d/coorderr_finite 
+                               < float(self.crossmatch_nsigma)*units.arcsec)
+
+                    if self.crossmatch_maxradius is not None:
+                        maxradius_arcsec = (float(self.crossmatch_maxradius) 
+                                            * units.arcsec)
+                        indmask = indmask & (ds2d < maxradius_arcsec)
+
                 ind_plate = ind_plate[indmask]
                 ind_tyc = ind_tyc[indmask]
                 matchdist = ds2d[indmask].to(units.arcsec).value
             elif have_pyspherematch:
+                if self.crossmatch_radius is not None:
+                    crossmatch_radius = float(self.crossmatch_radius)
+                else:
+                    crossmatch_radius = (float(self.crossmatch_nsigma) 
+                                         * np.mean(coorderr_finite))
+
+                    if self.crossmatch_maxradius is not None:
+                        if crossmatch_radius > self.crossmatch_maxradius:
+                            crossmatch_radius = float(self.crossmatch_maxradius)
+
                 ind_plate,ind_tyc,ds = \
                     spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
-                                tol=float(self.crossmatch_radius)/3600., 
+                                tol=crossmatch_radius/3600., 
                                 nnearest=1)
                 matchdist = ds * 3600.
 
@@ -2939,10 +3006,10 @@ class SolveProcess:
 
             sql3 = ''
 
-            if self.stars_sqdeg < 200:
-                sql3 += ' AND V < 13'
-            elif self.stars_sqdeg < 1000:
-                sql3 += ' AND V < 15'
+            #if self.stars_sqdeg < 200:
+            #    sql3 += ' AND V < 13'
+            #elif self.stars_sqdeg < 1000:
+            #    sql3 += ' AND V < 15'
 
             sql = sql1 + sql2 + sql3 + ';'
             self.log.write(sql)
@@ -2964,6 +3031,17 @@ class SolveProcess:
             if num_apass == 0:
                 self.log.write('Missing APASS data', level=2, event=63)
             else:
+                if self.crossmatch_radius is not None:
+                    self.log.write('Using fixed cross-match radius of '
+                                   '{:.2f} arcsec'
+                                   ''.format(float(self.crossmatch_radius)), 
+                                   level=4, event=61)
+                else:
+                    self.log.write('Using scaled cross-match radius of '
+                                   '{:.2f} astrometric sigmas'
+                                   ''.format(float(self.crossmatch_nsigma)), 
+                                   level=4, event=61)
+
                 if have_match_coord:
                     coords = ICRS(ra_finite, dec_finite, 
                                   unit=(units.degree, units.degree))
@@ -2972,15 +3050,36 @@ class SolveProcess:
                     ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                                   nthneighbor=1)
                     ind_plate = np.arange(ind_apass.size)
-                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+
+                    if self.crossmatch_radius is not None:
+                        indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
+                    else:
+                        indmask = (ds2d/coorderr_finite 
+                                   < float(self.crossmatch_nsigma)*units.arcsec)
+
+                        if self.crossmatch_maxradius is not None:
+                            maxradius_arcsec = (float(self.crossmatch_maxradius) 
+                                                * units.arcsec)
+                            indmask = indmask & (ds2d < maxradius_arcsec)
+
                     ind_plate = ind_plate[indmask]
                     ind_apass = ind_apass[indmask]
                     matchdist = ds2d[indmask].to(units.arcsec).value
                 elif have_pyspherematch:
+                    if self.crossmatch_radius is not None:
+                        crossmatch_radius = float(self.crossmatch_radius)
+                    else:
+                        crossmatch_radius = (float(self.crossmatch_nsigma) 
+                                             * np.mean(coorderr_finite))
+
+                        if self.crossmatch_maxradius is not None:
+                            if crossmatch_radius > self.crossmatch_maxradius:
+                                crossmatch_radius = float(self.crossmatch_maxradius)
+
                     ind_plate,ind_apass,ds = \
                             spherematch(ra_finite, dec_finite, 
                                         self.ra_apass, self.dec_apass,
-                                        tol=float(self.crossmatch_radius)/3600., 
+                                        tol=crossmatch_radius/3600., 
                                         nnearest=1)
                     matchdist = ds * 3600.
 
