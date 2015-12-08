@@ -2269,6 +2269,7 @@ class SolveProcess:
         #                             self.basefn + '_scampref.cat'))
         ra_ref = self.scampref[2].data.field(0)
         dec_ref = self.scampref[2].data.field(1)
+        mag_ref = self.scampref[2].data.field(4)
         reftmp = fits.HDUList()
         reftmp.append(self.scampref[0].copy())
         reftmp.append(self.scampref[1].copy())
@@ -2322,6 +2323,7 @@ class SolveProcess:
             bsub = ((x >= xmin_ext + 0.5) & (x < xmax_ext + 0.5) &
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
                     (self.sources['flag_clean'] == 1))
+            nsubstars = bsub.sum()
 
             db_log_msg = ('Sub-field: {:d}x{:d}, '
                           'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
@@ -2330,12 +2332,12 @@ class SolveProcess:
                           .format(2**recdepth, 2**recdepth, 
                                   xmin, xmax, ymin, ymax, 
                                   xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
-                                  bsub.sum()))
+                                  nsubstars))
 
             self.log.write('Found {:d} stars in the sub-field'
-                           .format(bsub.sum()), double_newline=False)
+                           .format(nsubstars), double_newline=False)
 
-            if bsub.sum() < 50:
+            if nsubstars < 50:
                 self.log.write('Fewer stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
                 self.log.to_db(4, db_log_msg, event=51)
@@ -2372,23 +2374,35 @@ class SolveProcess:
                     (ra_ref < corners[:,0].max()) &
                     (dec_ref > corners[:,1].min()) & 
                     (dec_ref < corners[:,1].max()))
+            nrefstars = bref.sum()
+            nrefset = nrefstars
 
             self.log.write('Found {:d} reference stars in the sub-field'
-                           .format(bref.sum()), double_newline=False)
-            db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, bref.sum())
+                           .format(nrefstars), double_newline=False)
+            db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, nrefstars)
 
-            if bref.sum() < 50:
+            if nrefstars < 50:
                 self.log.write('Fewer reference stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
                 self.log.to_db(4, db_log_msg, event=51)
                 continue
 
+            indref = np.where(bref)[0]
+
+            if nrefstars > (1.5 * nsubstars):
+                indsort = np.argsort(mag_ref[indref])
+                nrefset = int(1.5 * nsubstars)
+                indref = indref[indsort][:nrefset]
+                self.log.write('Selected {:d} brighter reference stars in the '
+                               'sub-field'
+                               .format(nrefset), double_newline=False)
+                db_log_msg = '{}, #ref-selected: {:d}'.format(db_log_msg, 
+                                                              nrefset)
+
             self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
-            indref = np.where(bref)
             reftmp[2].data = self.scampref[2].data[indref]
-
             scampref_file = os.path.join(self.scratch_dir, 
                                          fnsub + '_scampref.cat')
 
