@@ -471,27 +471,30 @@ _source_meta = OrderedDict([
     ('bmagerr',             ('f4', '%7.4f', '')),
     ('vmag',                ('f4', '%7.4f', '')),
     ('vmagerr',             ('f4', '%7.4f', '')),
+    ('flag_calib_star',     ('i1', '%1d', '')),
+    ('flag_calib_outlier',  ('i1', '%1d', '')),
     ('color_term',          ('f4', '%7.4f', '')),
     ('color_bv',            ('f4', '%7.4f', '')),
+    ('cat_natmag',          ('f4', '%7.4f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
-    ('ucac4_bmag',          ('f8', '%7.4f', '')),
-    ('ucac4_vmag',          ('f8', '%7.4f', '')),
+    ('ucac4_bmag',          ('f4', '%7.4f', '')),
+    ('ucac4_vmag',          ('f4', '%7.4f', '')),
     ('ucac4_dist',          ('f4', '%6.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
-    ('tycho2_btmag',        ('f8', '%7.4f', '')),
-    ('tycho2_vtmag',        ('f8', '%7.4f', '')),
+    ('tycho2_btmag',        ('f4', '%7.4f', '')),
+    ('tycho2_vtmag',        ('f4', '%7.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', '')),
     ('tycho2_dist',         ('f4', '%6.3f', '')),
     ('apass_ra',            ('f8', '%11.7f', '')),
     ('apass_dec',           ('f8', '%11.7f', '')),
-    ('apass_bmag',          ('f8', '%7.4f', '')),
-    ('apass_vmag',          ('f8', '%7.4f', '')),
-    ('apass_berr',          ('f8', '%6.4f', '')),
-    ('apass_verr',          ('f8', '%6.4f', '')),
+    ('apass_bmag',          ('f4', '%7.4f', '')),
+    ('apass_vmag',          ('f4', '%7.4f', '')),
+    ('apass_berr',          ('f4', '%6.4f', '')),
+    ('apass_verr',          ('f4', '%6.4f', '')),
     ('apass_dist',          ('f4', '%6.3f', ''))
 ])
 
@@ -1373,6 +1376,8 @@ class SolveProcess:
         self.sources['vmagerr'] = np.nan
         self.sources['color_term'] = np.nan
         self.sources['color_bv'] = np.nan
+        self.sources['flag_calib_star'] = 0
+        self.sources['flag_calib_outlier'] = 0
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -3152,6 +3157,8 @@ class SolveProcess:
                      'flag_rim', 'flag_negradius', 'flag_clean',
                      'natmag', 'natmagerr',
                      'bmag', 'bmagerr', 'vmag', 'vmagerr',
+                     'flag_calib_star', 'flag_calib_outlier',
+                     'color_term', 'color_bv', 'cat_natmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
@@ -3251,6 +3258,7 @@ class SolveProcess:
             return
 
         src_cal = self.sources[ind_cal]
+        ind_calibstar = ind_cal
 
         if self.use_apass_db:
             # Use APASS magnitudes
@@ -3265,11 +3273,13 @@ class SolveProcess:
                 cat_vmag = src_cal[ind_ucacmag]['apass_vmag']
                 plate_mag = src_cal[ind_ucacmag]['mag_auto']
                 plate_bin = src_cal[ind_ucacmag]['annular_bin']
+                ind_calibstar = ind_cal[ind_ucacmag]
             else:
                 cat_bmag = np.array([])
                 cat_vmag = np.array([])
                 plate_mag = np.array([])
                 plate_bin = np.array([])
+                ind_calibstar = np.array([], dtype=int)
         else:
             # Use UCAC4 magnitudes
             ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
@@ -3283,11 +3293,13 @@ class SolveProcess:
                 cat_vmag = src_cal[ind_ucacmag]['ucac4_vmag']
                 plate_mag = src_cal[ind_ucacmag]['mag_auto']
                 plate_bin = src_cal[ind_ucacmag]['annular_bin']
+                ind_calibstar = ind_cal[ind_ucacmag]
             else:
                 cat_bmag = np.array([])
                 cat_vmag = np.array([])
                 plate_mag = np.array([])
                 plate_bin = np.array([])
+                ind_calibstar = np.array([], dtype=int)
 
         # Complement UCAC4 magnitudes with Tycho-2 magnitudes converted to 
         # B and V
@@ -3311,6 +3323,8 @@ class SolveProcess:
                 cat_vmag = np.append(cat_vmag, tycho2_vmag)
                 plate_mag = np.append(plate_mag, add_platemag)
                 plate_bin = np.append(plate_bin, add_platebin)
+                ind_calibstar = np.append(ind_calibstar, 
+                                          ind_cal[ind_noucacmag[ind_tycmag]])
 
         # Discard very red stars (B-V > 2)
         if len(plate_mag) > 0:
@@ -3324,6 +3338,7 @@ class SolveProcess:
                 cat_vmag = cat_vmag[ind_nored]
                 plate_mag = plate_mag[ind_nored]
                 plate_bin = plate_bin[ind_nored]
+                ind_calibstar = ind_calibstar[ind_nored]
 
         num_calstars = len(plate_mag)
         
@@ -3582,8 +3597,10 @@ class SolveProcess:
             plate_mag_u,uind = np.unique(plate_mag[ind_bin], return_index=True)
             cat_bmag_u = cat_bmag[ind_bin[uind]]
             cat_vmag_u = cat_vmag[ind_bin[uind]]
+            ind_calibstar_u = ind_calibstar[ind_bin[uind]]
 
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+            self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
             # For bins 1-8, find calibration curve. For bin 9, use calibration
             # from bin 8.
@@ -3639,7 +3656,7 @@ class SolveProcess:
 
                     # Exclude bright outliers by fitting a line and checking 
                     # if residuals are larger than 2 mag
-                    ind_outliers = np.array([])
+                    ind_outliers = np.array([], dtype=int)
                     xdata = gpmag[:nbright]
                     ydata = gcmag[:nbright]
                     p1 = np.poly1d(np.polyfit(xdata, ydata, 1))
@@ -3855,6 +3872,13 @@ class SolveProcess:
                 self.log.write('Annular bin {:d}: {:d} good calibration stars'
                                ''.format(b, num_valid), 
                                double_newline=False, level=4, event=73)
+
+                ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
+                self.sources['flag_calib_star'][ind_calibstar_valid] = 1
+
+                if num_outliers > 0:
+                    ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
+                    self.sources['flag_calib_outlier'][ind_calibstar_outlier] = 1
 
                 cat_natmag = cat_natmag[ind_good[ind_valid]]
                 plate_mag_u = plate_mag_u[ind_good[ind_valid]]
