@@ -3374,12 +3374,6 @@ class SolveProcess:
         cat_bmag_u = cat_bmag[ind_bin[uind]]
         cat_vmag_u = cat_vmag[ind_bin[uind]]
 
-        if self.write_phot_dir:
-            fn_cterm = os.path.join(self.write_phot_dir,
-                                    '{}_cterm0.txt'.format(self.basefn))
-            np.savetxt(fn_cterm, np.column_stack((plate_mag_u, cat_bmag_u,
-                                                  cat_vmag_u)))
-
         # Discard faint sources (up to 3 mag brighter than plate limit)
         kde = sm.nonparametric.KDEUnivariate(plate_mag_u
                                              .astype(np.double))
@@ -3409,11 +3403,6 @@ class SolveProcess:
         cterm_list = np.arange(25) * 0.25 - 3.
         stdev_list = []
 
-        if self.write_phot_dir:
-            fn_cterm = os.path.join(self.write_phot_dir,
-                                    '{}_cterm1.txt'.format(self.basefn))
-            fcterm1 = open(fn_cterm, 'wb')
-
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
@@ -3423,19 +3412,12 @@ class SolveProcess:
             mag_diff = cat_mag - s(plate_mag_u)
             stdev_list.append(mag_diff.std())
             
-            if self.write_phot_dir:
-                np.savetxt(fcterm1, np.column_stack((plate_mag_u, cat_mag, 
-                                                     s(plate_mag_u), 
-                                                     mag_diff)))
-                fcterm1.write('\n\n')
-
         if self.write_phot_dir:
             fn_color = os.path.join(self.write_phot_dir,
                                     '{}_color.txt'.format(self.basefn))
             fcolor = open(fn_color, 'wb')
             np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
             fcolor.write('\n\n')
-            fcterm1.close()
 
         cf = np.polyfit(cterm_list, stdev_list, 4)
         cf1d = np.poly1d(cf)
@@ -3466,14 +3448,7 @@ class SolveProcess:
 
         # Iteration 2
         cterm_list = np.arange(25) * 0.25 - 3.
-        #cterm_list = (np.arange(17) * 0.05 + 
-        #              round(cterm_min*20.)/20. - 0.4)
         stdev_list = []
-
-        if self.write_phot_dir:
-            fn_cterm = os.path.join(self.write_phot_dir,
-                                    '{}_cterm2.txt'.format(self.basefn))
-            fcterm2 = open(fn_cterm, 'wb')
 
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
@@ -3485,18 +3460,10 @@ class SolveProcess:
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
             stdev_list.append(mag_diff.std())
 
-            if self.write_phot_dir:
-                np.savetxt(fcterm2, np.column_stack((plate_mag_u[ind_good], 
-                                                     cat_mag[ind_good], 
-                                                     s(plate_mag_u[ind_good]), 
-                                                     mag_diff)))
-                fcterm2.write('\n\n')
-
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.write('\n\n')
-            fcterm2.close()
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2, cov=True)
         cterm_min = -0.5 * cf[1] / cf[0]
@@ -3512,14 +3479,7 @@ class SolveProcess:
         # Iteration 3
         cterm_list = (np.arange(61) * 0.02 + 
                       round(cterm_min*50.)/50. - 0.6)
-        #cterm_list = (np.arange(41) * 0.01 + 
-        #              round(cterm_min*100.)/100. - 0.2)
         stdev_list = []
-
-        if self.write_phot_dir:
-            fn_cterm = os.path.join(self.write_phot_dir,
-                                    '{}_cterm3.txt'.format(self.basefn))
-            fcterm3 = open(fn_cterm, 'wb')
 
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
@@ -3531,18 +3491,10 @@ class SolveProcess:
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
             stdev_list.append(mag_diff.std())
 
-            if self.write_phot_dir:
-                np.savetxt(fcterm3, np.column_stack((plate_mag_u[ind_good], 
-                                                     cat_mag[ind_good], 
-                                                     s(plate_mag_u[ind_good]), 
-                                                     mag_diff)))
-                fcterm3.write('\n\n')
-
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.close()
-            fcterm3.close()
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2, cov=True)
         cterm = -0.5 * cf[1] / cf[0]
