@@ -168,7 +168,10 @@ class PlateImagePipeline:
                 proc.calibrate_photometry()
 
             if self.output_calibration_db:
+                proc.output_cterm_db()
+                proc.output_color_db()
                 proc.output_calibration_db()
+                proc.output_rmse_db()
 
             if self.output_sources_db:
                 proc.output_sources_db()

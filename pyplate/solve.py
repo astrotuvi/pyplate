@@ -596,7 +596,10 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solution = None
+        self.phot_cterm = []
+        self.phot_color = None
         self.phot_calib = []
+        self.phot_rmse = []
 
         self.ra_ucac = None
         self.dec_ucac = None
@@ -864,9 +867,10 @@ class SolveProcess:
         platedb.close_connection()
 
     def db_update_process(self, sky=None, sky_sigma=None, threshold=None,
-                          num_sources=None, num_ucac4=None, num_tycho2=None, 
-                          solved=None, color_term=None, bright_limit=None,
-                          faint_limit=None, mag_range=None, calibrated=None):
+                          num_sources=None, solved=None,
+                          num_ucac4=None, num_tycho2=None, num_apass=None,
+                          color_term=None, bright_limit=None, faint_limit=None, 
+                          mag_range=None, calibrated=None):
         """
         Update process in the database.
 
@@ -889,9 +893,11 @@ class SolveProcess:
             platedb.update_process(self.process_id, sky=sky, 
                                    sky_sigma=sky_sigma,
                                    threshold=threshold,
-                                   num_sources=num_sources, 
+                                   num_sources=num_sources,
+                                   solved=solved,
                                    num_ucac4=num_ucac4, num_tycho2=num_tycho2,
-                                   solved=solved, color_term=color_term,
+                                   num_apass=num_apass,
+                                   color_term=color_term,
                                    bright_limit=bright_limit,
                                    faint_limit=faint_limit, 
                                    mag_range=mag_range,
@@ -1368,6 +1374,13 @@ class SolveProcess:
         self.sources['tycho2_btmag'] = np.nan
         self.sources['tycho2_vtmag'] = np.nan
         self.sources['tycho2_dist'] = np.nan
+        self.sources['apass_ra'] = np.nan
+        self.sources['apass_dec'] = np.nan
+        self.sources['apass_bmag'] = np.nan
+        self.sources['apass_vmag'] = np.nan
+        self.sources['apass_berr'] = np.nan
+        self.sources['apass_verr'] = np.nan
+        self.sources['apass_dist'] = np.nan
         self.sources['natmag'] = np.nan
         self.sources['natmagerr'] = np.nan
         self.sources['bmag'] = np.nan
@@ -1376,6 +1389,7 @@ class SolveProcess:
         self.sources['vmagerr'] = np.nan
         self.sources['color_term'] = np.nan
         self.sources['color_bv'] = np.nan
+        self.sources['cat_natmag'] = np.nan
         self.sources['flag_calib_star'] = 0
         self.sources['flag_calib_outlier'] = 0
         
@@ -3104,6 +3118,7 @@ class SolveProcess:
 
                 if have_match_coord or have_pyspherematch:
                     num_match = len(ind_plate)
+                    self.db_update_process(num_apass=num_match)
                     self.log.write('Matched {:d} sources with APASS'.format(num_match))
 
                     if num_match > 0:
@@ -3410,8 +3425,17 @@ class SolveProcess:
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag - s(plate_mag_u)
-            stdev_list.append(mag_diff.std())
+            stdev_val = mag_diff.std()
+            stdev_list.append(stdev_val)
             
+            # Store cterm data
+            self.phot_cterm.append(OrderedDict([
+                ('iteration', 1),
+                ('cterm', cterm),
+                ('stdev', stdev_val),
+                ('num_stars', len(mag_diff))
+            ]))
+
         if self.write_phot_dir:
             fn_color = os.path.join(self.write_phot_dir,
                                     '{}_color.txt'.format(self.basefn))
@@ -3458,7 +3482,16 @@ class SolveProcess:
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
-            stdev_list.append(mag_diff.std())
+            stdev_val = mag_diff.std()
+            stdev_list.append(stdev_val)
+
+            # Store cterm data
+            self.phot_cterm.append(OrderedDict([
+                ('iteration', 2),
+                ('cterm', cterm),
+                ('stdev', stdev_val),
+                ('num_stars', len(mag_diff))
+            ]))
 
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
@@ -3470,6 +3503,12 @@ class SolveProcess:
         cf_err = np.sqrt(np.diag(cov))
         cterm_min_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 + 
                                 (0.5 * cf[1] * cf_err[0] / cf[0]**2)**2)
+        p2 = np.poly1d(cf)
+        stdev_fit_iter2 = p2(cterm_min)
+        stdev_min_iter2 = np.min(stdev_list)
+        cterm_minval_iter2 = np.min(cterm_list)
+        cterm_maxval_iter2 = np.max(cterm_list)
+        num_stars_iter2 = len(mag_diff)
 
         if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
             self.log.write('Color term fit failed!', level=2, event=72)
@@ -3489,7 +3528,16 @@ class SolveProcess:
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
-            stdev_list.append(mag_diff.std())
+            stdev_val = mag_diff.std()
+            stdev_list.append(stdev_val)
+
+            # Store cterm data
+            self.phot_cterm.append(OrderedDict([
+                ('iteration', 3),
+                ('cterm', cterm),
+                ('stdev', stdev_val),
+                ('num_stars', len(mag_diff))
+            ]))
 
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
@@ -3501,6 +3549,13 @@ class SolveProcess:
         cf_err = np.sqrt(np.diag(cov))
         cterm_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 + 
                             (0.5 * cf[1] * cf_err[0] / cf[0]**2)**2)
+        p2 = np.poly1d(cf)
+        stdev_fit = p2(cterm)
+        stdev_min = np.min(stdev_list)
+        cterm_minval = np.min(cterm_list)
+        cterm_maxval = np.max(cterm_list)
+        num_stars = len(mag_diff)
+        iteration = 3
 
         if cf[0] < 0 or cterm < -2 or cterm > 2:
             if cf[0] < 0:
@@ -3521,9 +3576,27 @@ class SolveProcess:
             else:
                 cterm = cterm_min
                 cterm_err = cterm_min_err
+                stdev_fit = stdev_fit_iter2
+                stdev_min = stdev_min_iter2
+                cterm_minval = cterm_minval_iter2
+                cterm_maxval = cterm_maxval_iter2
+                num_stars = num_stars_iter2
+                iteration = 2
 
             self.log.write('Taking color term from previous iteration',
                            level=4, event=72)
+
+        # Store color term result
+        self.phot_color = OrderedDict([
+            ('color_term', cterm),
+            ('color_term_err', cterm_err),
+            ('stdev_fit', stdev_fit),
+            ('stdev_min', stdev_min),
+            ('cterm_min', cterm_minval),
+            ('cterm_max', cterm_maxval),
+            ('iteration', iteration),
+            ('num_stars', num_stars)
+        ])
 
         self.log.write('Plate color term: {:.3f} ({:.3f})'
                        ''.format(cterm, cterm_err), level=4, event=72)
@@ -3887,21 +3960,33 @@ class SolveProcess:
                 rmse = np.array([])
 
                 for mag_loc in np.linspace(plate_mag_brightest, plate_mag_lim, 100):
-                    ind_loc = np.where((plate_mag_u > mag_loc-0.5) &
-                                       (plate_mag_u < mag_loc+0.5))[0]
+                    wnd = 0.5
+                    ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
+                                       (plate_mag_u < mag_loc+wnd))[0]
 
                     if len(ind_loc) < 5:
-                        ind_loc = np.where((plate_mag_u > mag_loc-1.0) &
-                                           (plate_mag_u < mag_loc+1.0))[0]
+                        wnd = 1.0
+                        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
+                                           (plate_mag_u < mag_loc+wnd))[0]
 
                     if len(ind_loc) < 5:
-                        ind_loc = np.where((plate_mag_u > mag_loc-2.0) &
-                                           (plate_mag_u < mag_loc+2.0))[0]
+                        wnd = 2.0
+                        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
+                                           (plate_mag_u < mag_loc+wnd))[0]
 
                     if len(ind_loc) >= 5:
                         pmag = np.append(pmag, mag_loc)
                         rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
                         rmse = np.append(rmse, rmse_loc)
+
+                        # Store RMSE data
+                        self.phot_rmse.append(OrderedDict([
+                            ('annular_bin', b),
+                            ('plate_mag', mag_loc),
+                            ('rmse', rmse_loc),
+                            ('mag_window', wnd),
+                            ('num_stars', len(ind_loc))
+                        ]))
 
                 np.savetxt(frmse, np.column_stack((pmag, rmse)))
                 frmse.write('\n\n')
@@ -4003,6 +4088,72 @@ class SolveProcess:
             fcutcurve.close()
             frmse.close()
 
+    def output_cterm_db(self):
+        """
+        Write photometric color term data to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing photometric color term data to the database', 
+                       event=74)
+
+        if self.phot_cterm == []:
+            self.log.write('No photometric color term data to write to the database', 
+                           level=2, event=74)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'phot_cterm table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            for cterm in self.phot_cterm:
+                platedb.write_phot_cterm(cterm, process_id=self.process_id,
+                                         scan_id=self.scan_id,
+                                         plate_id=self.plate_id,
+                                         archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
+
+    def output_color_db(self):
+        """
+        Write photometric color term result to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing photometric color term result to the database', 
+                       event=75)
+
+        if self.phot_color is None:
+            self.log.write('No photometric color term result to write to the database', 
+                           level=2, event=75)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'phot_color table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            platedb.write_phot_color(self.phot_color, 
+                                     process_id=self.process_id,
+                                     scan_id=self.scan_id,
+                                     plate_id=self.plate_id,
+                                     archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
+
     def output_calibration_db(self):
         """
         Write photometric calibration to the database.
@@ -4010,15 +4161,15 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric calibration to the database', 
-                       event=74)
+                       event=76)
 
         if self.phot_calib == []:
             self.log.write('No photometric calibration to write to the database', 
-                           level=2, event=74)
+                           level=2, event=76)
             return
 
         self.log.write('Open database connection for writing to the '
-                       'calibration table')
+                       'phot_calib table')
         platedb = PlateDB()
         platedb.open_connection(host=self.output_db_host,
                                 user=self.output_db_user,
@@ -4032,6 +4183,39 @@ class SolveProcess:
                                          scan_id=self.scan_id,
                                          plate_id=self.plate_id,
                                          archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
+
+    def output_rmse_db(self):
+        """
+        Write photometric calibration errors to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing photometric calibration errors to the '
+                       'database', event=77)
+
+        if self.phot_rmse == []:
+            self.log.write('No photometric calibration errors to write '
+                           'to the database', level=2, event=77)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'phot_rmse table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            for rmse in self.phot_rmse:
+                platedb.write_phot_rmse(rmse, process_id=self.process_id,
+                                        scan_id=self.scan_id,
+                                        plate_id=self.plate_id,
+                                        archive_id=self.archive_id)
             
         platedb.close_connection()
         self.log.write('Closed database connection')

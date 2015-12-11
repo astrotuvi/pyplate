@@ -310,8 +310,11 @@ _schema['source_calib'] = OrderedDict([
     ('bmagerr',          ('FLOAT', True)),
     ('vmag',             ('FLOAT', True)),
     ('vmagerr',          ('FLOAT', True)),
+    ('flag_calib_star',  ('TINYINT', True)),
+    ('flag_calib_outlier', ('TINYINT', True)),
     ('color_term',       ('FLOAT', True)),
     ('color_bv',         ('FLOAT', True)),
+    ('cat_natmag',       ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
     ('tycho2_vtmag',     ('FLOAT', True)),
@@ -321,6 +324,9 @@ _schema['source_calib'] = OrderedDict([
     ('ucac4_bmag',       ('FLOAT', True)),
     ('ucac4_vmag',       ('FLOAT', True)),
     ('ucac4_dist',       ('FLOAT', True)),
+    ('apass_bmag',       ('FLOAT', True)),
+    ('apass_vmag',       ('FLOAT', True)),
+    ('apass_dist',       ('FLOAT', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -411,6 +417,78 @@ _schema['phot_calib'] = OrderedDict([
     ('INDEX annularbin_ind', ('(annular_bin)', None))
     ])
     
+_schema['phot_rmse'] = OrderedDict([
+    ('rmse_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('annular_bin',      ('TINYINT', True)),
+    ('plate_mag',        ('FLOAT', True)),
+    ('rmse',             ('FLOAT', True)),
+    ('mag_window',       ('FLOAT', True)),
+    ('num_stars',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX annularbin_ind', ('(annular_bin)', None))
+    ])
+    
+_schema['phot_color'] = OrderedDict([
+    ('color_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('color_term',       ('FLOAT', True)),
+    ('color_term_err',   ('FLOAT', True)),
+    ('stdev_fit',        ('FLOAT', True)),
+    ('stdev_min',        ('FLOAT', True)),
+    ('cterm_min',        ('FLOAT', True)),
+    ('cterm_max',        ('FLOAT', True)),
+    ('iteration',        ('TINYINT UNSIGNED', True)),
+    ('num_stars',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None))
+    ])
+    
+_schema['phot_cterm'] = OrderedDict([
+    ('cterm_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('iteration',        ('INT UNSIGNED', True)),
+    ('cterm',            ('FLOAT', True)),
+    ('stdev',            ('FLOAT', True)),
+    ('num_stars',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None))
+    ])
+    
 _schema['process'] = OrderedDict([
     ('process_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           None)),
@@ -430,6 +508,7 @@ _schema['process'] = OrderedDict([
     ('solved',           ('TINYINT(1)', None)),
     ('num_ucac4',        ('INT UNSIGNED', None)),
     ('num_tycho2',       ('INT UNSIGNED', None)),
+    ('num_apass',        ('INT UNSIGNED', None)),
     ('color_term',       ('FLOAT', None)),
     ('bright_limit',     ('FLOAT', None)),
     ('faint_limit',      ('FLOAT', None)),
@@ -846,6 +925,50 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
+    def write_phot_cterm(self, phot_cterm, process_id=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
+        """
+        Write photometric color term data to the database.
+
+        """
+
+        col_list = ['cterm_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_cterm'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_cterm[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_cterm ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_phot_color(self, phot_color, process_id=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
+        """
+        Write photometric color term result to the database.
+
+        """
+
+        col_list = ['color_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_color'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_color[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_color ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
     def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
                          plate_id=None, archive_id=None):
         """
@@ -865,6 +988,28 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO phot_calib ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_phot_rmse(self, phot_rmse, process_id=None, scan_id=None, 
+                        plate_id=None, archive_id=None):
+        """
+        Write photometric calibration errors to the database.
+
+        """
+
+        col_list = ['rmse_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_rmse'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_rmse[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_rmse ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
@@ -962,8 +1107,9 @@ class PlateDB:
         return process_id
 
     def update_process(self, process_id, sky=None, sky_sigma=None, 
-                       threshold=None, num_sources=None, num_ucac4=None, 
-                       num_tycho2=None, solved=None, color_term=None,
+                       threshold=None, num_sources=None, solved=None,
+                       num_ucac4=None, num_tycho2=None, num_apass=None, 
+                       color_term=None,
                        bright_limit=None, faint_limit=None, mag_range=None, 
                        calibrated=None):
         """
@@ -973,7 +1119,8 @@ class PlateDB:
 
         if (sky is None and sky_sigma is None and threshold is None 
             and num_sources is None and num_ucac4 is None 
-            and num_tycho2 is None and solved is None 
+            and num_tycho2 is None and num_apass is None
+            and solved is None 
             and color_term is None and bright_limit is None
             and faint_limit is None and mag_range is None
             and calibrated is None):
@@ -998,6 +1145,10 @@ class PlateDB:
             col_list.append('num_sources=%s')
             val_tuple = val_tuple + (num_sources, )
 
+        if solved is not None:
+            col_list.append('solved=%s')
+            val_tuple = val_tuple + (solved, )
+
         if num_ucac4 is not None:
             col_list.append('num_ucac4=%s')
             val_tuple = val_tuple + (num_ucac4, )
@@ -1006,9 +1157,9 @@ class PlateDB:
             col_list.append('num_tycho2=%s')
             val_tuple = val_tuple + (num_tycho2, )
 
-        if solved is not None:
-            col_list.append('solved=%s')
-            val_tuple = val_tuple + (solved, )
+        if num_apass is not None:
+            col_list.append('num_apass=%s')
+            val_tuple = val_tuple + (num_apass, )
 
         if color_term is not None:
             col_list.append('color_term=%s')
