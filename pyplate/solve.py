@@ -523,6 +523,8 @@ class SolveProcess:
         self.write_log_dir = ''
 
         self.use_tycho2_fits = False
+        self.use_tycho2_astrometry = False
+
         self.use_ucac4_db = False
         self.ucac4_db_host = 'localhost'
         self.ucac4_db_user = ''
@@ -531,6 +533,7 @@ class SolveProcess:
         self.ucac4_db_table = 'ucac4'
 
         self.use_apass_db = False
+        self.use_apass_photometry = False
         self.apass_db_host = 'localhost'
         self.apass_db_user = ''
         self.apass_db_name = ''
@@ -651,7 +654,8 @@ class SolveProcess:
         if self.write_log_dir:
             self.enable_log = True
 
-        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'use_apass_db', 
+        for attr in ['use_tycho2_fits', 'use_tycho2_astrometry', 
+                     'use_ucac4_db', 'use_apass_db', 'use_apass_photometry',
                      'enable_db_log']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
@@ -2089,10 +2093,11 @@ class SolveProcess:
 
             if self.use_ucac4_db:
                 astref_catalog = 'UCAC-4'
-            elif self.use_tycho2_fits:
-                astref_catalog = 'Tycho-2'
 
-            if astref_catalog == 'Tycho-2':
+            if self.use_tycho2_astrometry:
+                astref_catalog = 'TYCHO-2'
+
+            if (astref_catalog == 'TYCHO-2') and self.use_tycho2_fits:
                 # Build custom SCAMP reference catalog from Tycho-2 FITS file
                 fn_tycho = os.path.join(self.tycho2_dir, 'tycho2_{:d}.fits'
                                         .format(plate_year))
@@ -2872,15 +2877,18 @@ class SolveProcess:
                                                        .astype(np.float32))
 
         # Match sources with the Tycho-2 catalogue
-        self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
-                       level=3, event=62)
-        fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+        if self.use_tycho2_fits:
+            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
+                           level=3, event=62)
+            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
 
-        try:
-            tycho2 = fits.open(fn_tycho2)
-            tycho2_available = True
-        except IOError:
-            self.log.write('Missing Tycho-2 data', level=2, event=62)
+            try:
+                tycho2 = fits.open(fn_tycho2)
+                tycho2_available = True
+            except IOError:
+                self.log.write('Missing Tycho-2 data', level=2, event=62)
+                tycho2_available = False
+        else:
             tycho2_available = False
 
         if tycho2_available:
@@ -3279,7 +3287,7 @@ class SolveProcess:
         src_cal = self.sources[ind_cal]
         ind_calibstar = ind_cal
 
-        if self.use_apass_db:
+        if self.use_apass_db and self.use_apass_photometry:
             # Use APASS magnitudes
             ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
                                    (src_cal['apass_vmag'] > 10))[0]
