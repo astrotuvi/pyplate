@@ -570,7 +570,7 @@ class SolveProcess:
         self.circular_film = False
         self.crossmatch_radius = None
         self.crossmatch_nsigma = 10.
-        self.crossmatch_maxradius = 20.
+        self.crossmatch_maxradius = 10.
 
         self.plate_header = None
         self.imwidth = None
@@ -2896,6 +2896,10 @@ class SolveProcess:
             tyc2 = tycho2[1].data.field(9)
             tyc3 = tycho2[1].data.field(10)
             hip_tyc = tycho2[1].data.field(11)
+            ind_nullhip = np.where(hip_tyc == -2147483648)[0]
+
+            if len(ind_nullhip) > 0:
+                hip_tyc[ind_nullhip] = 0
 
             # For stars that have proper motion data, calculate RA, Dec
             # for the plate epoch
@@ -3385,9 +3389,11 @@ class SolveProcess:
             self.db_update_process(calibrated=0)
             return
 
-        plate_mag_u,uind = np.unique(plate_mag[ind_bin], return_index=True)
-        cat_bmag_u = cat_bmag[ind_bin[uind]]
-        cat_vmag_u = cat_vmag[ind_bin[uind]]
+        _,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
+        plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
+                                      return_index=True)
+        cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
+        cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
 
         # Discard faint sources (up to 3 mag brighter than plate limit)
         kde = sm.nonparametric.KDEUnivariate(plate_mag_u
@@ -3421,7 +3427,7 @@ class SolveProcess:
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
-                                        frac=0.2, it=3, delta=0.2,
+                                        frac=0.2, it=0, delta=0.2,
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag - s(plate_mag_u)
@@ -3478,7 +3484,7 @@ class SolveProcess:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag[ind_good], 
                                         plate_mag_u[ind_good], 
-                                        frac=0.2, it=3, delta=0.2,
+                                        frac=0.2, it=0, delta=0.2,
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
@@ -3493,12 +3499,15 @@ class SolveProcess:
                 ('num_stars', len(mag_diff))
             ]))
 
+        stdev_list = np.array(stdev_list)
+
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.write('\n\n')
 
-        cf, cov = np.polyfit(cterm_list, stdev_list, 2, cov=True)
+        cf, cov = np.polyfit(cterm_list, stdev_list, 2, 
+                             w=1./stdev_list**2, cov=True)
         cterm_min = -0.5 * cf[1] / cf[0]
         cf_err = np.sqrt(np.diag(cov))
         cterm_min_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 + 
@@ -3524,7 +3533,7 @@ class SolveProcess:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag[ind_good], 
                                         plate_mag_u[ind_good], 
-                                        frac=0.2, it=3, delta=0.2,
+                                        frac=0.2, it=0, delta=0.2,
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
@@ -3539,12 +3548,15 @@ class SolveProcess:
                 ('num_stars', len(mag_diff))
             ]))
 
+        stdev_list = np.array(stdev_list)
+
         if self.write_phot_dir:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.close()
 
-        cf, cov = np.polyfit(cterm_list, stdev_list, 2, cov=True)
+        cf, cov = np.polyfit(cterm_list, stdev_list, 2, 
+                             w=1./stdev_list**2, cov=True)
         cterm = -0.5 * cf[1] / cf[0]
         cf_err = np.sqrt(np.diag(cov))
         cterm_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 + 
@@ -3606,23 +3618,29 @@ class SolveProcess:
                        level=3, event=73)
 
         # Loop over annular bins
-        for b in np.arange(9)+1:
-            ind_bin = np.where(plate_bin == b)[0]
+        for b in np.arange(10):
+            if b == 0:
+                ind_bin = np.where(plate_bin < 9)[0]
+            else:
+                ind_bin = np.where(plate_bin == b)[0]
+
             num_calstars = len(ind_bin)
             
-            self.log.write('Annular bin {:d}: {:d} calibration stars'
+            self.log.write('Annular bin {:d}: {:d} calibration-star candidates'
                            ''.format(b, num_calstars), 
                            double_newline=False, level=4, event=73)
 
-            if num_calstars < 10:
-                self.log.write('Annular bin {:d}: too few calibration stars!'
+            if num_calstars < 20:
+                self.log.write('Annular bin {:d}: too few calibration-star candidates!'
                                ''.format(b), level=2, event=73)
                 continue
 
-            plate_mag_u,uind = np.unique(plate_mag[ind_bin], return_index=True)
-            cat_bmag_u = cat_bmag[ind_bin[uind]]
-            cat_vmag_u = cat_vmag[ind_bin[uind]]
-            ind_calibstar_u = ind_calibstar[ind_bin[uind]]
+            _,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
+            plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
+                                          return_index=True)
+            cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
+            cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
+            ind_calibstar_u = ind_calibstar[ind_bin[uind1[uind2]]]
 
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
@@ -3806,7 +3824,7 @@ class SolveProcess:
                     mag_cut_prev = mag_cut
                     #mag_slope_prev = mag_slope
 
-                    if b == 6 and self.write_phot_dir:
+                    if b == 0 and self.write_phot_dir:
                         np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
                                                               cat_natmag[ind_cut], 
                                                               fit_mag, residuals)))
@@ -3816,6 +3834,8 @@ class SolveProcess:
                         fcutdata.write('\n\n')
                         np.savetxt(fcutcurve, z)
                         fcutcurve.write('\n\n')
+
+                    ind_outliers = np.array([], dtype=int)
 
                     # Mark as outliers those stars that deviate more than 1 mag
                     ind_out = np.where(np.absolute(residuals) > 1.0)
@@ -3833,8 +3853,9 @@ class SolveProcess:
                         ind_loc = np.setdiff1d(ind_loc, ind_outliers)
 
                         if len(ind_loc) >= 5:
+                            rms_res = np.sqrt((residuals[ind_loc]**2).sum())
                             ind_locout = np.where(np.absolute(residuals[ind_loc]) > 
-                                                  3.*residuals[ind_loc].std())[0]
+                                                  3.*rms_res)[0]
 
                             if len(ind_locout) > 0:
                                 ind_outliers = np.append(ind_outliers, 
@@ -3845,41 +3866,52 @@ class SolveProcess:
                     ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
                                             ind_outliers)
 
+                    #print b, mag_cut, len(ind_cut), len(ind_good), len(ind_outliers)
                     #flt = sigma_clip(residuals, iters=None)
                     #ind_good = ~flt.mask
                     #ind_good = np.where(np.absolute(residuals) < 3*residuals.std())[0]
 
+                    # Stop outlier elimination if there is a gap in magnitudes
                     if mag_cut - plate_mag_u[ind_cut[ind_good]].max() > 1.5:
-                        ind_faintout = np.where(plate_mag_u[ind_cut] > mag_cut)[0]
+                        ind_faintout = np.where(plate_mag_u > mag_cut)[0]
 
                         if len(ind_faintout) > 0:
-                            ind_outliers = np.append(ind_outliers,
-                                                     ind_cut[ind_faintout])
+                            ind_outliers = np.append(ind_outliers, ind_faintout)
                             ind_outliers = np.unique(ind_outliers)
-                            ind_good = np.setdiff1d(np.arange(len(ind_cut)),
+                            ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
                                                     ind_outliers)
                             self.log.write('Annular bin {:d}: {:d} faint stars '
                                            'eliminated as outliers'
-                                           ''.format(b, len(ind_faintout)), 
+                                           ''.format(b, len(ind_faintout)),
+                                           double_newline=False,
                                            level=4, event=73)
 
                         self.log.write('Annular bin {:d}: outlier elimination '
                                        'stopped due to a long gap in '
                                        'magnitudes!'.format(b), 
+                                        double_newline=False,
                                        level=2, event=73)
                         break
-
 
                     if len(ind_good) < 10:
                         self.log.write('Annular bin {:d}: outlier elimination stopped '
                                        'due to insufficient stars left!'.format(b), 
-                                       level=2, event=73)
+                                        double_newline=False, level=2, event=73)
                         break
 
                 num_outliers = len(ind_outliers)
                 self.log.write('Annular bin {:d}: {:d} outliers eliminated'
                                ''.format(b, num_outliers), 
                                double_newline=False, level=4, event=73)
+                ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
+                                        ind_outliers)
+
+                if len(ind_good) < 20:
+                    self.log.write('Annular bin {:d}: too few calibration '
+                                   'stars ({:d}) after outlier elimination!'
+                                   ''.format(b, len(ind_good)), 
+                                   double_newline=False, level=2, event=73)
+                    continue
 
                 # Continue with photometric calibration without outliers
 
@@ -4022,7 +4054,11 @@ class SolveProcess:
             ]))
 
             # Apply photometric calibration to sources in the annular bin
-            ind_bin = np.where(self.sources['annular_bin'] == b)[0]
+            if b == 0:
+                ind_bin = np.where(self.sources['annular_bin'] <= 9)[0]
+            else:
+                ind_bin = np.where(self.sources['annular_bin'] == b)[0]
+
             src_bin = self.sources[ind_bin]
             ind_ucacmag = np.where((src_bin['ucac4_bmag'] > 10) &
                                    (src_bin['ucac4_vmag'] > 10))[0]
