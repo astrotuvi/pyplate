@@ -465,6 +465,7 @@ _source_meta = OrderedDict([
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
     ('gridsize_sub',        ('i2', '%3d', '')),
+    ('nn_dist',             ('f4', '%6.3f', '')),
     ('natmag',              ('f4', '%7.4f', '')),
     ('natmagerr',           ('f4', '%7.4f', '')),
     ('bmag',                ('f4', '%7.4f', '')),
@@ -481,25 +482,31 @@ _source_meta = OrderedDict([
     ('ucac4_dec',           ('f8', '%11.7f', '')),
     ('ucac4_bmag',          ('f4', '%7.4f', '')),
     ('ucac4_vmag',          ('f4', '%7.4f', '')),
-    ('ucac4_berr',          ('f4', '%6.4f', '')),
-    ('ucac4_verr',          ('f4', '%6.4f', '')),
+    ('ucac4_bmagerr',       ('f4', '%6.4f', '')),
+    ('ucac4_vmagerr',       ('f4', '%6.4f', '')),
     ('ucac4_dist',          ('f4', '%6.3f', '')),
+    ('ucac4_dist2',         ('f4', '%6.3f', '')),
+    ('ucac4_nn_dist',       ('f4', '%6.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
     ('tycho2_btmag',        ('f4', '%7.4f', '')),
     ('tycho2_vtmag',        ('f4', '%7.4f', '')),
-    ('tycho2_bterr',        ('f4', '%6.4f', '')),
-    ('tycho2_vterr',        ('f4', '%6.4f', '')),
+    ('tycho2_btmagerr',     ('f4', '%6.4f', '')),
+    ('tycho2_vtmagerr',     ('f4', '%6.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', '')),
     ('tycho2_dist',         ('f4', '%6.3f', '')),
+    ('tycho2_dist2',        ('f4', '%6.3f', '')),
+    ('tycho2_nn_dist',      ('f4', '%6.3f', '')),
     ('apass_ra',            ('f8', '%11.7f', '')),
     ('apass_dec',           ('f8', '%11.7f', '')),
     ('apass_bmag',          ('f4', '%7.4f', '')),
     ('apass_vmag',          ('f4', '%7.4f', '')),
-    ('apass_berr',          ('f4', '%6.4f', '')),
-    ('apass_verr',          ('f4', '%6.4f', '')),
-    ('apass_dist',          ('f4', '%6.3f', ''))
+    ('apass_bmagerr',       ('f4', '%6.4f', '')),
+    ('apass_vmagerr',       ('f4', '%6.4f', '')),
+    ('apass_dist',          ('f4', '%6.3f', '')),
+    ('apass_dist2',         ('f4', '%6.3f', '')),
+    ('apass_nn_dist',       ('f4', '%6.3f', ''))
 ])
 
 
@@ -1374,27 +1381,34 @@ class SolveProcess:
         self.sources['y_sphere'] = np.nan
         self.sources['z_sphere'] = np.nan
         self.sources['healpix256'] = -1
+        self.sources['nn_dist'] = np.nan
         self.sources['ucac4_ra'] = np.nan
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
         self.sources['ucac4_vmag'] = np.nan
-        self.sources['ucac4_berr'] = np.nan
-        self.sources['ucac4_verr'] = np.nan
+        self.sources['ucac4_bmagerr'] = np.nan
+        self.sources['ucac4_vmagerr'] = np.nan
         self.sources['ucac4_dist'] = np.nan
+        self.sources['ucac4_dist2'] = np.nan
+        self.sources['ucac4_nn_dist'] = np.nan
         self.sources['tycho2_ra'] = np.nan
         self.sources['tycho2_dec'] = np.nan
         self.sources['tycho2_btmag'] = np.nan
         self.sources['tycho2_vtmag'] = np.nan
-        self.sources['tycho2_bterr'] = np.nan
-        self.sources['tycho2_vterr'] = np.nan
+        self.sources['tycho2_btmagerr'] = np.nan
+        self.sources['tycho2_vtmagerr'] = np.nan
         self.sources['tycho2_dist'] = np.nan
+        self.sources['tycho2_dist2'] = np.nan
+        self.sources['tycho2_nn_dist'] = np.nan
         self.sources['apass_ra'] = np.nan
         self.sources['apass_dec'] = np.nan
         self.sources['apass_bmag'] = np.nan
         self.sources['apass_vmag'] = np.nan
-        self.sources['apass_berr'] = np.nan
-        self.sources['apass_verr'] = np.nan
+        self.sources['apass_bmagerr'] = np.nan
+        self.sources['apass_vmagerr'] = np.nan
         self.sources['apass_dist'] = np.nan
+        self.sources['apass_dist2'] = np.nan
+        self.sources['apass_nn_dist'] = np.nan
         self.sources['natmag'] = np.nan
         self.sources['natmagerr'] = np.nan
         self.sources['bmag'] = np.nan
@@ -2805,12 +2819,10 @@ class SolveProcess:
                        np.isfinite(self.sources['dej2000']))
         num_finite = bool_finite.sum()
 
-        self.log.write('Cross-matching sources with the UCAC4 catalogue', 
-                       level=3, event=61)
-
         if num_finite == 0:
-            self.log.write('No sources with usable coordinates', 
-                           level=2, event=61)
+            self.log.write('No sources with usable coordinates for '
+                           'cross-matching', 
+                           level=2, event=60)
             return
 
         ind_finite = np.where(bool_finite)[0]
@@ -2819,7 +2831,23 @@ class SolveProcess:
         coorderr_finite = np.sqrt(self.sources['raerr_sub'][ind_finite]**2 +
                                   self.sources['decerr_sub'][ind_finite]**2)
 
+        # Find nearest neighbours
+        if have_match_coord:
+            coords = ICRS(ra_finite, dec_finite, 
+                          unit=(units.degree, units.degree))
+            _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
+            matchdist = ds2d.to(units.arcsec).value
+            self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
+        elif have_pyspherematch:
+            _,_,ds = spherematch(ra_finite, dec_finite, ra_finite, dec_finite,
+                                 nnearest=2)
+            matchdist = ds * 3600.
+            self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
+
         # Match sources with the UCAC4 catalogue
+        self.log.write('Cross-matching sources with the UCAC4 catalogue', 
+                       level=3, event=61)
+
         if self.ra_ucac is None or self.dec_ucac is None:
             self.log.write('Missing UCAC4 data', level=2, event=61)
         else:
@@ -2856,6 +2884,13 @@ class SolveProcess:
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
                 matchdist = ds2d[indmask].to(units.arcsec).value
+
+                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                                  nthneighbor=2)
+                matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                    nthneighbor=2)
+                nndist = nn_ds2d[ind_ucac].to(units.arcsec).value
             elif have_pyspherematch:
                 if self.crossmatch_radius is not None:
                     crossmatch_radius = float(self.crossmatch_radius)
@@ -2874,6 +2909,13 @@ class SolveProcess:
                                     nnearest=1)
                 matchdist = ds * 3600.
 
+                _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
+                                      self.ra_ucac, self.dec_ucac, nnearest=2)
+                matchdist2 = ds2[ind_plate] * 3600.
+                _,_,nnds = spherematch(self.ra_ucac, self.dec_ucac,
+                                       self.ra_ucac, self.dec_ucac, nnearest=2)
+                nndist = nnds[ind_ucac] * 3600.
+
             if have_match_coord or have_pyspherematch:
                 num_match = len(ind_plate)
                 self.db_update_process(num_ucac4=num_match)
@@ -2885,10 +2927,14 @@ class SolveProcess:
                     self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
-                    self.sources['ucac4_berr'][ind] = self.berr_ucac[ind_ucac]
-                    self.sources['ucac4_verr'][ind] = self.verr_ucac[ind_ucac]
+                    self.sources['ucac4_bmagerr'][ind] = self.berr_ucac[ind_ucac]
+                    self.sources['ucac4_vmagerr'][ind] = self.verr_ucac[ind_ucac]
                     self.sources['ucac4_dist'][ind] = (matchdist
                                                        .astype(np.float32))
+                    self.sources['ucac4_dist2'][ind] = (matchdist2
+                                                        .astype(np.float32))
+                    self.sources['ucac4_nn_dist'][ind] = (nndist
+                                                          .astype(np.float32))
 
         # Match sources with the Tycho-2 catalogue
         if self.use_tycho2_fits:
@@ -2970,12 +3016,12 @@ class SolveProcess:
             if self.crossmatch_radius is not None:
                 self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
                                ''.format(float(self.crossmatch_radius)), 
-                               level=4, event=61)
+                               level=4, event=62)
             else:
                 self.log.write('Using scaled cross-match radius of '
                                '{:.2f} astrometric sigmas'
                                ''.format(float(self.crossmatch_nsigma)), 
-                               level=4, event=61)
+                               level=4, event=62)
 
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
@@ -3000,6 +3046,13 @@ class SolveProcess:
                 ind_plate = ind_plate[indmask]
                 ind_tyc = ind_tyc[indmask]
                 matchdist = ds2d[indmask].to(units.arcsec).value
+
+                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                                  nthneighbor=2)
+                matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                    nthneighbor=2)
+                nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
             elif have_pyspherematch:
                 if self.crossmatch_radius is not None:
                     crossmatch_radius = float(self.crossmatch_radius)
@@ -3017,6 +3070,13 @@ class SolveProcess:
                                 nnearest=1)
                 matchdist = ds * 3600.
 
+                _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
+                                      self.ra_tyc, self.dec_tyc, nnearest=2)
+                matchdist2 = ds2[ind_plate] * 3600.
+                _,_,nnds = spherematch(self.ra_tyc, self.dec_tyc,
+                                       self.ra_tyc, self.dec_tyc, nnearest=2)
+                nndist = nnds[ind_tyc] * 3600.
+
             if have_match_coord or have_pyspherematch:
                 num_match = len(ind_plate)
                 self.db_update_process(num_tycho2=num_match)
@@ -3028,11 +3088,15 @@ class SolveProcess:
                     self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
                     self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
                     self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
-                    self.sources['tycho2_bterr'][ind] = ebtmag_tyc[ind_tyc]
-                    self.sources['tycho2_vterr'][ind] = evtmag_tyc[ind_tyc]
+                    self.sources['tycho2_btmagerr'][ind] = ebtmag_tyc[ind_tyc]
+                    self.sources['tycho2_vtmagerr'][ind] = evtmag_tyc[ind_tyc]
                     self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
                     self.sources['tycho2_dist'][ind] = (matchdist
                                                         .astype(np.float32))
+                    self.sources['tycho2_dist2'][ind] = (matchdist2
+                                                         .astype(np.float32))
+                    self.sources['tycho2_nn_dist'][ind] = (nndist
+                                                           .astype(np.float32))
 
         # Match sources with the APASS catalogue
         if self.use_apass_db:
@@ -3126,6 +3190,13 @@ class SolveProcess:
                     ind_plate = ind_plate[indmask]
                     ind_apass = ind_apass[indmask]
                     matchdist = ds2d[indmask].to(units.arcsec).value
+
+                    _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                                      nthneighbor=2)
+                    matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                    _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                        nthneighbor=2)
+                    nndist = nn_ds2d[ind_apass].to(units.arcsec).value
                 elif have_pyspherematch:
                     if self.crossmatch_radius is not None:
                         crossmatch_radius = float(self.crossmatch_radius)
@@ -3144,6 +3215,15 @@ class SolveProcess:
                                         nnearest=1)
                     matchdist = ds * 3600.
 
+                    _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
+                                          self.ra_apass, self.dec_apass, 
+                                          nnearest=2)
+                    matchdist2 = ds2[ind_plate] * 3600.
+                    _,_,nnds = spherematch(self.ra_apass, self.dec_apass,
+                                           self.ra_apass, self.dec_apass, 
+                                           nnearest=2)
+                    nndist = nnds[ind_apass] * 3600.
+
                 if have_match_coord or have_pyspherematch:
                     num_match = len(ind_plate)
                     self.db_update_process(num_apass=num_match)
@@ -3155,10 +3235,14 @@ class SolveProcess:
                         self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
                         self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
                         self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
-                        self.sources['apass_verr'][ind] = self.verr_apass[ind_apass]
-                        self.sources['apass_berr'][ind] = self.berr_apass[ind_apass]
+                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
+                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
                         self.sources['apass_dist'][ind] = (matchdist
                                                            .astype(np.float32))
+                        self.sources['apass_dist2'][ind] = (matchdist2
+                                                            .astype(np.float32))
+                        self.sources['apass_nn_dist'][ind] = (nndist
+                                                              .astype(np.float32))
 
     def output_sources_csv(self, filename=None):
         """
@@ -3307,8 +3391,8 @@ class SolveProcess:
             # Use APASS magnitudes
             ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
                                    (src_cal['apass_vmag'] > 10) &
-                                   (src_cal['apass_berr'] > 0) &
-                                   (src_cal['apass_berr'] < 0.1) &
+                                   (src_cal['apass_bmagerr'] > 0) &
+                                   (src_cal['apass_bmagerr'] < 0.1) &
                                    (src_cal['apass_verr'] > 0) &
                                    (src_cal['apass_verr'] < 0.1))[0]
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
@@ -3318,8 +3402,8 @@ class SolveProcess:
             if len(ind_ucacmag) > 0:
                 cat_bmag = src_cal[ind_ucacmag]['apass_bmag']
                 cat_vmag = src_cal[ind_ucacmag]['apass_vmag']
-                cat_berr = src_cal[ind_ucacmag]['apass_berr']
-                cat_verr = src_cal[ind_ucacmag]['apass_verr']
+                cat_berr = src_cal[ind_ucacmag]['apass_bmagerr']
+                cat_verr = src_cal[ind_ucacmag]['apass_vmagerr']
                 plate_mag = src_cal[ind_ucacmag]['mag_auto']
                 plate_bin = src_cal[ind_ucacmag]['annular_bin']
                 ind_calibstar = ind_cal[ind_ucacmag]
@@ -3333,10 +3417,10 @@ class SolveProcess:
             # Use UCAC4 magnitudes
             ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
                                    (src_cal['ucac4_vmag'] > 10) &
-                                   (src_cal['ucac4_berr'] > 0) &
-                                   (src_cal['ucac4_berr'] < 0.09) &
-                                   (src_cal['ucac4_verr'] > 0) &
-                                   (src_cal['ucac4_verr'] < 0.09))[0]
+                                   (src_cal['ucac4_bmagerr'] > 0) &
+                                   (src_cal['ucac4_bmagerr'] < 0.09) &
+                                   (src_cal['ucac4_vmagerr'] > 0) &
+                                   (src_cal['ucac4_vmagerr'] < 0.09))[0]
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable UCAC4 stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3344,8 +3428,8 @@ class SolveProcess:
             if len(ind_ucacmag) > 0:
                 cat_bmag = src_cal[ind_ucacmag]['ucac4_bmag']
                 cat_vmag = src_cal[ind_ucacmag]['ucac4_vmag']
-                cat_berr = src_cal[ind_ucacmag]['ucac4_berr']
-                cat_verr = src_cal[ind_ucacmag]['ucac4_verr']
+                cat_berr = src_cal[ind_ucacmag]['ucac4_bmagerr']
+                cat_verr = src_cal[ind_ucacmag]['ucac4_vmagerr']
                 plate_mag = src_cal[ind_ucacmag]['mag_auto']
                 plate_bin = src_cal[ind_ucacmag]['annular_bin']
                 ind_calibstar = ind_cal[ind_ucacmag]
@@ -3362,8 +3446,8 @@ class SolveProcess:
             src_nomag = src_cal[ind_noucacmag]
             ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
                                   np.isfinite(src_nomag['tycho2_vtmag']) & 
-                                  (src_nomag['tycho2_bterr'] < 0.1) & 
-                                  (src_nomag['tycho2_vterr'] < 0.1))[0]
+                                  (src_nomag['tycho2_btmagerr'] < 0.1) & 
+                                  (src_nomag['tycho2_vtmagerr'] < 0.1))[0]
 
             if len(ind_tycmag) > 0:
                 self.log.write('Found {:d} usable Tycho-2 stars'
@@ -4123,13 +4207,13 @@ class SolveProcess:
                 if self.use_apass_db and self.use_apass_photometry:
                     b_v = (self.sources[ind]['apass_bmag']
                            - self.sources[ind]['apass_vmag'])
-                    b_v_err = np.sqrt(self.sources[ind]['apass_berr']**2 +
-                                      self.sources[ind]['apass_verr']**2)
+                    b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
+                                      self.sources[ind]['apass_vmagerr']**2)
                 else:
                     b_v = (self.sources[ind]['ucac4_bmag']
                            - self.sources[ind]['ucac4_vmag'])
-                    b_v_err = np.sqrt(self.sources[ind]['ucac4_berr']**2 +
-                                      self.sources[ind]['ucac4_verr']**2)
+                    b_v_err = np.sqrt(self.sources[ind]['ucac4_bmagerr']**2 +
+                                      self.sources[ind]['ucac4_vmagerr']**2)
 
                 self.sources['color_bv'][ind] = b_v
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
@@ -4149,8 +4233,8 @@ class SolveProcess:
                 ind = ind_bin[ind_noucacmag[ind_tycmag]]
                 b_v = 0.85 * (self.sources[ind]['tycho2_btmag']
                               - self.sources[ind]['tycho2_vtmag'])
-                b_v_err = 0.85 * np.sqrt(self.sources[ind]['tycho2_bterr']**2 + 
-                                         self.sources[ind]['tycho2_vterr']**2)
+                b_v_err = 0.85 * np.sqrt(self.sources[ind]['tycho2_btmagerr']**2 + 
+                                         self.sources[ind]['tycho2_vtmagerr']**2)
                 self.sources['color_bv'][ind] = b_v
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
