@@ -481,12 +481,16 @@ _source_meta = OrderedDict([
     ('ucac4_dec',           ('f8', '%11.7f', '')),
     ('ucac4_bmag',          ('f4', '%7.4f', '')),
     ('ucac4_vmag',          ('f4', '%7.4f', '')),
+    ('ucac4_berr',          ('f4', '%6.4f', '')),
+    ('ucac4_verr',          ('f4', '%6.4f', '')),
     ('ucac4_dist',          ('f4', '%6.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
     ('tycho2_btmag',        ('f4', '%7.4f', '')),
     ('tycho2_vtmag',        ('f4', '%7.4f', '')),
+    ('tycho2_bterr',        ('f4', '%6.4f', '')),
+    ('tycho2_vterr',        ('f4', '%6.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', '')),
     ('tycho2_dist',         ('f4', '%6.3f', '')),
     ('apass_ra',            ('f8', '%11.7f', '')),
@@ -609,12 +613,14 @@ class SolveProcess:
         self.id_ucac = None
         self.bmag_ucac = None
         self.vmag_ucac = None
+        self.berr_ucac = None
+        self.verr_ucac = None
         
         self.ra_apass = None
         self.dec_apass = None
         self.bmag_apass = None
-        self.berr_apass = None
         self.vmag_apass = None
+        self.berr_apass = None
         self.verr_apass = None
         
     def assign_conf(self, conf):
@@ -1372,11 +1378,15 @@ class SolveProcess:
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
         self.sources['ucac4_vmag'] = np.nan
+        self.sources['ucac4_berr'] = np.nan
+        self.sources['ucac4_verr'] = np.nan
         self.sources['ucac4_dist'] = np.nan
         self.sources['tycho2_ra'] = np.nan
         self.sources['tycho2_dec'] = np.nan
         self.sources['tycho2_btmag'] = np.nan
         self.sources['tycho2_vtmag'] = np.nan
+        self.sources['tycho2_bterr'] = np.nan
+        self.sources['tycho2_vterr'] = np.nan
         self.sources['tycho2_dist'] = np.nan
         self.sources['apass_ra'] = np.nan
         self.sources['apass_dec'] = np.nan
@@ -2155,7 +2165,7 @@ class SolveProcess:
                 cur = db.cursor()
 
                 sql1 = 'SELECT RAJ2000,DEJ2000,e_RAJ2000,e_DEJ2000,amag,e_amag,'
-                sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,Bmag,Vmag'
+                sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,Bmag,Vmag,e_Bmag,e_Vmag'
                 sql2 = ' FROM {}'.format(self.ucac4_db_table)
                 sql2 += ' FORCE INDEX (idx_radecmag)'
 
@@ -2187,7 +2197,7 @@ class SolveProcess:
                 self.log.write('Fetched {:d} rows'.format(numrows))
 
                 res = np.fromiter(cur.fetchall(), 
-                                  dtype='f8,f8,i,i,f8,f8,f8,f8,f8,f8,a10,f8,f8')
+                                  dtype='f8,f8,i,i,f8,f8,f8,f8,f8,f8,a10,f8,f8,f8,f8')
 
                 cur.close()
                 db.commit()
@@ -2201,6 +2211,8 @@ class SolveProcess:
                 self.id_ucac = res['f10']
                 self.bmag_ucac = res['f11']
                 self.vmag_ucac = res['f12']
+                self.berr_ucac = res['f13']
+                self.verr_ucac = res['f14']
 
                 self.scampref = new_scampref()
                 hduref = fits.new_table(self.scampref[2].columns, 
@@ -2873,6 +2885,8 @@ class SolveProcess:
                     self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
+                    self.sources['ucac4_berr'][ind] = self.berr_ucac[ind_ucac]
+                    self.sources['ucac4_verr'][ind] = self.verr_ucac[ind_ucac]
                     self.sources['ucac4_dist'][ind] = (matchdist
                                                        .astype(np.float32))
 
@@ -3014,6 +3028,8 @@ class SolveProcess:
                     self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
                     self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
                     self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
+                    self.sources['tycho2_bterr'][ind] = ebtmag_tyc[ind_tyc]
+                    self.sources['tycho2_vterr'][ind] = evtmag_tyc[ind_tyc]
                     self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
                     self.sources['tycho2_dist'][ind] = (matchdist
                                                         .astype(np.float32))
@@ -3290,7 +3306,11 @@ class SolveProcess:
         if self.use_apass_db and self.use_apass_photometry:
             # Use APASS magnitudes
             ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
-                                   (src_cal['apass_vmag'] > 10))[0]
+                                   (src_cal['apass_vmag'] > 10) &
+                                   (src_cal['apass_berr'] > 0) &
+                                   (src_cal['apass_berr'] < 0.1) &
+                                   (src_cal['apass_verr'] > 0) &
+                                   (src_cal['apass_verr'] < 0.1))[0]
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable APASS stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3298,6 +3318,8 @@ class SolveProcess:
             if len(ind_ucacmag) > 0:
                 cat_bmag = src_cal[ind_ucacmag]['apass_bmag']
                 cat_vmag = src_cal[ind_ucacmag]['apass_vmag']
+                cat_berr = src_cal[ind_ucacmag]['apass_berr']
+                cat_verr = src_cal[ind_ucacmag]['apass_verr']
                 plate_mag = src_cal[ind_ucacmag]['mag_auto']
                 plate_bin = src_cal[ind_ucacmag]['annular_bin']
                 ind_calibstar = ind_cal[ind_ucacmag]
@@ -3310,7 +3332,11 @@ class SolveProcess:
         else:
             # Use UCAC4 magnitudes
             ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
-                                   (src_cal['ucac4_vmag'] > 10))[0]
+                                   (src_cal['ucac4_vmag'] > 10) &
+                                   (src_cal['ucac4_berr'] > 0) &
+                                   (src_cal['ucac4_berr'] < 0.09) &
+                                   (src_cal['ucac4_verr'] > 0) &
+                                   (src_cal['ucac4_verr'] < 0.09))[0]
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable UCAC4 stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3318,6 +3344,8 @@ class SolveProcess:
             if len(ind_ucacmag) > 0:
                 cat_bmag = src_cal[ind_ucacmag]['ucac4_bmag']
                 cat_vmag = src_cal[ind_ucacmag]['ucac4_vmag']
+                cat_berr = src_cal[ind_ucacmag]['ucac4_berr']
+                cat_verr = src_cal[ind_ucacmag]['ucac4_verr']
                 plate_mag = src_cal[ind_ucacmag]['mag_auto']
                 plate_bin = src_cal[ind_ucacmag]['annular_bin']
                 ind_calibstar = ind_cal[ind_ucacmag]
@@ -3333,7 +3361,9 @@ class SolveProcess:
         if len(ind_noucacmag) > 0:
             src_nomag = src_cal[ind_noucacmag]
             ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
-                                  np.isfinite(src_nomag['tycho2_vtmag']))[0]
+                                  np.isfinite(src_nomag['tycho2_vtmag']) & 
+                                  (src_nomag['tycho2_bterr'] < 0.1) & 
+                                  (src_nomag['tycho2_vterr'] < 0.1))[0]
 
             if len(ind_tycmag) > 0:
                 self.log.write('Found {:d} usable Tycho-2 stars'
@@ -4068,8 +4098,14 @@ class SolveProcess:
                 ind_bin = np.where(self.sources['annular_bin'] == b)[0]
 
             src_bin = self.sources[ind_bin]
-            ind_ucacmag = np.where((src_bin['ucac4_bmag'] > 10) &
-                                   (src_bin['ucac4_vmag'] > 10))[0]
+
+            if self.use_apass_db and self.use_apass_photometry:
+                ind_ucacmag = np.where((src_bin['apass_bmag'] > 10) &
+                                       (src_bin['apass_vmag'] > 10))[0]
+            else:
+                ind_ucacmag = np.where((src_bin['ucac4_bmag'] > 10) &
+                                       (src_bin['ucac4_vmag'] > 10))[0]
+
             ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
 
             if len(ind_noucacmag) > 0:
@@ -4083,17 +4119,29 @@ class SolveProcess:
 
             if len(ind_ucacmag) > 0:
                 ind = ind_bin[ind_ucacmag]
-                b_v = (self.sources[ind]['ucac4_bmag']
-                       - self.sources[ind]['ucac4_vmag'])
+
+                if self.use_apass_db and self.use_apass_photometry:
+                    b_v = (self.sources[ind]['apass_bmag']
+                           - self.sources[ind]['apass_vmag'])
+                    b_v_err = np.sqrt(self.sources[ind]['apass_berr']**2 +
+                                      self.sources[ind]['apass_verr']**2)
+                else:
+                    b_v = (self.sources[ind]['ucac4_bmag']
+                           - self.sources[ind]['ucac4_vmag'])
+                    b_v_err = np.sqrt(self.sources[ind]['ucac4_berr']**2 +
+                                      self.sources[ind]['ucac4_verr']**2)
+
                 self.sources['color_bv'][ind] = b_v
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
                 vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-                                  (cterm_err * b_v)**2)
+                                  (cterm_err * b_v)**2 +
+                                  (cterm * b_v_err)**2)
                 bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-                                  (cterm_err * b_v)**2)
+                                  (cterm_err * b_v)**2 + 
+                                  ((cterm - 1.) * b_v_err)**2)
                 self.sources['vmagerr'][ind] = vmagerr
                 self.sources['bmagerr'][ind] = bmagerr
 
@@ -4101,15 +4149,19 @@ class SolveProcess:
                 ind = ind_bin[ind_noucacmag[ind_tycmag]]
                 b_v = 0.85 * (self.sources[ind]['tycho2_btmag']
                               - self.sources[ind]['tycho2_vtmag'])
+                b_v_err = 0.85 * np.sqrt(self.sources[ind]['tycho2_bterr']**2 + 
+                                         self.sources[ind]['tycho2_vterr']**2)
                 self.sources['color_bv'][ind] = b_v
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
                                              - (cterm - 1.) * b_v)
                 vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-                                  (cterm_err * b_v)**2)
+                                  (cterm_err * b_v)**2 + 
+                                  (cterm * b_v_err)**2)
                 bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-                                  (cterm_err * b_v)**2)
+                                  (cterm_err * b_v)**2 + 
+                                  ((cterm - 1.) * b_v_err)**2)
                 self.sources['vmagerr'][ind] = vmagerr
                 self.sources['bmagerr'][ind] = bmagerr
 
