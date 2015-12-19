@@ -22,11 +22,15 @@ from .conf import read_conf
 from ._version import __version__
 
 try:
-    from astropy.coordinates import ICRS
+    from astropy.coordinates import SkyCoord as ICRS
     use_newangsep = True
 except ImportError:
-    from astropy.coordinates import ICRSCoordinates as ICRS
-    use_newangsep = False
+    try:
+        from astropy.coordinates import ICRS
+        use_newangsep = True
+    except ImportError:
+        from astropy.coordinates import ICRSCoordinates as ICRS
+        use_newangsep = False
 
 try:
     from astropy.coordinates import match_coordinates_sky
@@ -161,7 +165,12 @@ class AstrometryNetIndex:
         cols = tyc[1].columns[0:2] + tyc[1].columns[4:6]
         cols[0].name = 'RA'
         cols[1].name = 'Dec'
-        hdu = fits.new_table(cols)
+
+        try:
+            hdu = fits.BinTableHDU.from_columns(cols)
+        except AttributeError:
+            hdu = fits.new_table(cols)
+
         tyc.close()
 
         hdu.data.field(0)[:] = data.field(0) + (year - 2000. + 0.5) * \
@@ -349,7 +358,12 @@ def new_scampref():
     hdummystr = hdummy.tostring()
     col = fits.Column(name='Field Header Card', format='2880A', 
                       array=[hdummystr])
-    tbl = fits.new_table([col])
+
+    try:
+        tbl = fits.BinTableHDU.from_columns([col])
+    except AttributeError:
+        tbl = fits.new_table([col])
+
     tbl.header.set('EXTNAME', 'LDAC_IMHEAD', 'table name', after='TFIELDS')
     tbl.header.set('TDIM1', '(80, 36)', after='TFORM1')
     hdulist.append(tbl)
@@ -364,7 +378,13 @@ def new_scampref():
     col6 = fits.Column(name='MAGERR', format='1E', unit='mag', disp='F8.4')
     col7 = fits.Column(name='OBSDATE', format='1D', unit='yr', 
                        disp='F13.8')
-    tbl = fits.new_table([col1, col2, col3, col4, col5, col6, col7])
+
+    try:
+        tbl = fits.BinTableHDU.from_columns([col1, col2, col3, col4, col5, 
+                                             col6, col7])
+    except AttributeError:
+        tbl = fits.new_table([col1, col2, col3, col4, col5, col6, col7])
+
     tbl.header.set('EXTNAME', 'LDAC_OBJECTS', 'table name', 
                    after='TFIELDS')
     hdulist.append(tbl)
@@ -1706,7 +1726,13 @@ class SolveProcess:
                            disp='F8.4')
         col4 = fits.Column(name='FLUX', format='1E', unit='count', 
                            disp='F12.7')
-        tbl = fits.new_table([col1, col2, col3, col4], nrows=nrows)
+
+        try:
+            tbl = fits.BinTableHDU.from_columns([col1, col2, col3, col4], 
+                                                nrows=nrows)
+        except AttributeError:
+            tbl = fits.new_table([col1, col2, col3, col4], nrows=nrows)
+
         tbl.data.field('X_IMAGE')[:] = self.sources[indsel]['x_image']
         tbl.data.field('Y_IMAGE')[:] = self.sources[indsel]['y_image']
         tbl.data.field('MAG_AUTO')[:] = self.sources[indsel]['mag_auto']
@@ -2152,7 +2178,13 @@ class SolveProcess:
                                ''.format(numtyc))
 
                 self.scampref = new_scampref()
-                hduref = fits.new_table(scampref[2].columns, nrows=numtyc)
+
+                try:
+                    hduref = fits.BinTableHDU.from_columns(scampref[2].columns, 
+                                                           nrows=numtyc)
+                except AttributeError:
+                    hduref = fits.new_table(scampref[2].columns, nrows=numtyc)
+
                 hduref.data.field('X_WORLD')[:] = ra_tyc[indtyc]
                 hduref.data.field('Y_WORLD')[:] = dec_tyc[indtyc]
                 hduref.data.field('ERRA_WORLD')[:] = np.zeros(numtyc) + 1./3600.
@@ -2211,7 +2243,8 @@ class SolveProcess:
                 self.log.write('Fetched {:d} rows'.format(numrows))
 
                 res = np.fromiter(cur.fetchall(), 
-                                  dtype='f8,f8,i,i,f8,f8,f8,f8,f8,f8,a10,f8,f8,f8,f8')
+                                  dtype='f8,f8,i,i,f8,f8,f8,f8,f8,f8,a10,'
+                                  'f8,f8,f8,f8')
 
                 cur.close()
                 db.commit()
@@ -2229,8 +2262,15 @@ class SolveProcess:
                 self.verr_ucac = res['f14']
 
                 self.scampref = new_scampref()
-                hduref = fits.new_table(self.scampref[2].columns, 
-                                        nrows=numrows)
+
+                try:
+                    hduref = fits.BinTableHDU.from_columns(self.scampref[2]
+                                                           .columns,
+                                                           nrows=numrows)
+                except AttributeError:
+                    hduref = fits.new_table(self.scampref[2].columns, 
+                                            nrows=numrows)
+
                 hduref.data.field('X_WORLD')[:] = self.ra_ucac
                 hduref.data.field('Y_WORLD')[:] = self.dec_ucac
                 hduref.data.field('ERRA_WORLD')[:] = res['f2']
@@ -2396,8 +2436,14 @@ class SolveProcess:
             indsub = np.where(bsub)
 
             # Create a SCAMP catalog for the sub-field
-            scampdata = fits.new_table(self.scampcat[2].columns, 
-                                       nrows=bsub.sum()).data
+            try:
+                scampdata = fits.BinTableHDU.from_columns(self.scampcat[2]
+                                                          .columns,
+                                                          nrows=bsub.sum()).data
+            except AttributeError:
+                scampdata = fits.new_table(self.scampcat[2].columns, 
+                                           nrows=bsub.sum()).data
+
             scampdata.field('X_IMAGE')[:] = x[indsub] - xmin_ext
             scampdata.field('Y_IMAGE')[:] = y[indsub] - ymin_ext
             scampdata.field('ERR_A')[:] = self.sources[indsub]['erra_source']
