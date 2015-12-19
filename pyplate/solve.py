@@ -3394,7 +3394,10 @@ class SolveProcess:
                                    (src_cal['apass_bmagerr'] > 0) &
                                    (src_cal['apass_bmagerr'] < 0.1) &
                                    (src_cal['apass_verr'] > 0) &
-                                   (src_cal['apass_verr'] < 0.1))[0]
+                                   (src_cal['apass_verr'] < 0.1) &
+                                   (src_cal['apass_nn_dist'] > 10) &
+                                   (src_cal['apass_dist2'] >
+                                    2. * src_cal['apass_dist']))[0]
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable APASS stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3420,7 +3423,10 @@ class SolveProcess:
                                    (src_cal['ucac4_bmagerr'] > 0) &
                                    (src_cal['ucac4_bmagerr'] < 0.09) &
                                    (src_cal['ucac4_vmagerr'] > 0) &
-                                   (src_cal['ucac4_vmagerr'] < 0.09))[0]
+                                   (src_cal['ucac4_vmagerr'] < 0.09) & 
+                                   (src_cal['ucac4_nn_dist'] > 10) &
+                                   (src_cal['ucac4_dist2'] >
+                                    src_cal['ucac4_dist']+10.))[0]
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable UCAC4 stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3447,7 +3453,10 @@ class SolveProcess:
             ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
                                   np.isfinite(src_nomag['tycho2_vtmag']) & 
                                   (src_nomag['tycho2_btmagerr'] < 0.1) & 
-                                  (src_nomag['tycho2_vtmagerr'] < 0.1))[0]
+                                  (src_nomag['tycho2_vtmagerr'] < 0.1) &
+                                  (src_nomag['tycho2_nn_dist'] > 10) &
+                                  (src_nomag['tycho2_dist2'] > 
+                                   src_nomag['tycho2_dist']+10.))[0]
 
             if len(ind_tycmag) > 0:
                 self.log.write('Found {:d} usable Tycho-2 stars'
@@ -3517,7 +3526,7 @@ class SolveProcess:
         cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
         cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
 
-        # Discard faint sources (up to 3 mag brighter than plate limit)
+        # Discard faint sources (within 1 mag from the plate limit)
         kde = sm.nonparametric.KDEUnivariate(plate_mag_u
                                              .astype(np.double))
         kde.fit()
@@ -3525,7 +3534,7 @@ class SolveProcess:
         #plate_mag_maxden = kde.support[ind_maxden]
         ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
         plate_mag_lim = kde.support[ind_dense[-1]]
-        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 3.)[0]
+        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 1.)[0]
         num_nofaint = len(ind_nofaint)
 
         self.log.write('Finding color term: {:d} stars after discarding faint sources'
@@ -3702,7 +3711,7 @@ class SolveProcess:
 
             if cterm_min < -2 or cterm_min > 2:
                 self.log.write('Color term from previous iteration '
-                               'outside of allowed range ({:.3d})!'
+                               'outside of allowed range ({:.3f})!'
                                ''.format(cterm_min),
                                level=2, event=72)
                 self.db_update_process(calibrated=0)
