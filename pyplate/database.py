@@ -125,6 +125,7 @@ _schema['exposure'] = OrderedDict([
     ])
 
 _schema['exposure_sub'] = OrderedDict([
+    ('subexposure_id',   ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', None)),
     ('exposure_id',      ('INT UNSIGNED NOT NULL', None)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('exposure_num',     ('TINYINT UNSIGNED NOT NULL', None)),
@@ -232,12 +233,12 @@ _schema['source'] = OrderedDict([
     ('source_num',       ('INT UNSIGNED', True)),
     ('x_source',         ('DOUBLE', True)),
     ('y_source',         ('DOUBLE', True)),
-    ('erra_source',      ('FLOAT', True)),
-    ('errb_source',      ('FLOAT', True)),
-    ('errtheta_source',  ('FLOAT', True)),
     ('a_source',         ('FLOAT', True)),
     ('b_source',         ('FLOAT', True)),
     ('theta_source',     ('FLOAT', True)),
+    ('erra_source',      ('FLOAT', True)),
+    ('errb_source',      ('FLOAT', True)),
+    ('errtheta_source',  ('FLOAT', True)),
     ('elongation',       ('FLOAT', True)),
     ('x_peak',           ('INT', True)),
     ('y_peak',           ('INT', True)),
@@ -284,13 +285,17 @@ _schema['source'] = OrderedDict([
     ])
 
 _schema['source_calib'] = OrderedDict([
-    ('source_id',        ('INT UNSIGNED NOT NULL PRIMARY KEY', False)),
+    ('calibsource_id',   ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', False)),
+    ('source_id',        ('INT UNSIGNED NOT NULL', False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
     ('annular_bin',      ('TINYINT', True)),
+    ('dist_center',      ('DOUBLE', True)),
+    ('dist_edge',        ('DOUBLE', True)),
+    ('sextractor_flags', ('SMALLINT', True)),
     ('raj2000',          ('DOUBLE', True)),
     ('dej2000',          ('DOUBLE', True)),
     ('x_sphere',         ('DOUBLE', True)),
@@ -317,6 +322,8 @@ _schema['source_calib'] = OrderedDict([
     ('color_bv',         ('FLOAT', True)),
     ('cat_natmag',       ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
+    ('tycho2_ra',        ('DOUBLE', True)),
+    ('tycho2_dec',       ('DOUBLE', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
     ('tycho2_vtmag',     ('FLOAT', True)),
     ('tycho2_btmagerr',  ('FLOAT', True)),
@@ -326,6 +333,8 @@ _schema['source_calib'] = OrderedDict([
     ('tycho2_dist2',     ('FLOAT', True)),
     ('tycho2_nn_dist',   ('FLOAT', True)),
     ('ucac4_id',         ('CHAR(10)', True)),
+    ('ucac4_ra',         ('DOUBLE', True)),
+    ('ucac4_dec',        ('DOUBLE', True)),
     ('ucac4_bmag',       ('FLOAT', True)),
     ('ucac4_vmag',       ('FLOAT', True)),
     ('ucac4_bmagerr',    ('FLOAT', True)),
@@ -333,6 +342,8 @@ _schema['source_calib'] = OrderedDict([
     ('ucac4_dist',       ('FLOAT', True)),
     ('ucac4_dist2',      ('FLOAT', True)),
     ('ucac4_nn_dist',    ('FLOAT', True)),
+    ('apass_ra',         ('DOUBLE', True)),
+    ('apass_dec',        ('DOUBLE', True)),
     ('apass_bmag',       ('FLOAT', True)),
     ('apass_vmag',       ('FLOAT', True)),
     ('apass_bmagerr',    ('FLOAT', True)),
@@ -343,17 +354,23 @@ _schema['source_calib'] = OrderedDict([
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX source_ind',   ('(source_id)', None)),
     ('INDEX process_ind',  ('(process_id)', None)),
     ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX annularbin_ind', ('(annular_bin)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None)),
     ('INDEX x_ind',        ('(x_sphere)', None)),
     ('INDEX y_ind',        ('(y_sphere)', None)),
     ('INDEX z_ind',        ('(z_sphere)', None)),
     ('INDEX healpix256_ind', ('(healpix256)', None)),
+    ('INDEX nndist_ind',   ('(nn_dist)', None)),
+    ('INDEX natmag_ind',   ('(natmag)', None)),
+    ('INDEX bmag_ind',     ('(bmag)', None)),
+    ('INDEX vmag_ind',     ('(vmag)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX hip_ind',      ('(tycho2_hip)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
@@ -775,9 +792,10 @@ class PlateDB:
             if len(platemeta['numsub']) > exp and platemeta['numsub'][exp] > 1:
                 for subexp in np.arange(platemeta['numsub'][exp]):
                     subexp_num = subexp + 1
-                    col_list = ['exposure_id', 'plate_id',
+                    col_list = ['subexposure_id' ,'exposure_id', 'plate_id',
                                 'exposure_num', 'subexposure_num']
-                    val_tuple = (exposure_id, plate_id, exp_num, subexp_num)
+                    val_tuple = (None, exposure_id, plate_id, exp_num, 
+                                 subexp_num)
 
                     expmeta = platemeta.exposures[exp]
 
@@ -1052,9 +1070,9 @@ class PlateDB:
             self.execute_query(sql, val_tuple)
             source_id = self.cursor.lastrowid
 
-            col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
-                        'plate_id', 'archive_id']
-            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
+            col_list = ['calibsource_id', 'source_id', 'process_id', 'scan_id', 
+                        'exposure_id', 'plate_id', 'archive_id']
+            val_tuple = (None, source_id, process_id, scan_id, None, plate_id, 
                          archive_id)
 
             for k,v in _schema['source_calib'].items():
@@ -1075,6 +1093,9 @@ class PlateDB:
                         source_val = None
                         
                     if 'tycho2_id' in k and source_val == '':
+                        source_val = None
+
+                    if 'tycho2_hip' in k and source_val < 0:
                         source_val = None
                         
                     val_tuple = val_tuple + (source_val, )
