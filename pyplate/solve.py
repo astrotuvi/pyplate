@@ -3404,15 +3404,15 @@ class SolveProcess:
             fn_caldata = os.path.join(self.write_phot_dir, 
                                       '{}_caldata.txt'.format(self.basefn))
             fcaldata = open(fn_caldata, 'wb')
-            fn_calcurve = os.path.join(self.write_phot_dir, 
-                                       '{}_calcurve.txt'.format(self.basefn))
-            fcalcurve = open(fn_calcurve, 'wb')
-            fn_cutdata = os.path.join(self.write_phot_dir, 
-                                      '{}_cutdata.txt'.format(self.basefn))
-            fcutdata = open(fn_cutdata, 'wb')
-            fn_cutcurve = os.path.join(self.write_phot_dir, 
-                                       '{}_cutcurve.txt'.format(self.basefn))
-            fcutcurve = open(fn_cutcurve, 'wb')
+            #fn_calcurve = os.path.join(self.write_phot_dir, 
+            #                           '{}_calcurve.txt'.format(self.basefn))
+            #fcalcurve = open(fn_calcurve, 'wb')
+            #fn_cutdata = os.path.join(self.write_phot_dir, 
+            #                          '{}_cutdata.txt'.format(self.basefn))
+            #fcutdata = open(fn_cutdata, 'wb')
+            #fn_cutcurve = os.path.join(self.write_phot_dir, 
+            #                           '{}_cutcurve.txt'.format(self.basefn))
+            #fcutcurve = open(fn_cutcurve, 'wb')
             fn_rmse = os.path.join(self.write_phot_dir, 
                                       '{}_rmse.txt'.format(self.basefn))
             frmse = open(fn_rmse, 'wb')
@@ -3593,6 +3593,11 @@ class SolveProcess:
             self.db_update_process(calibrated=0)
             return
 
+        frac = 0.2
+
+        if num_nofaint < 500:
+            frac = 0.2 + 0.3 * (500 - num_nofaint) / 500.
+
         plate_mag_u = plate_mag_u[ind_nofaint]
         cat_bmag_u = cat_bmag_u[ind_nofaint]
         cat_vmag_u = cat_vmag_u[ind_nofaint]
@@ -3604,7 +3609,7 @@ class SolveProcess:
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag, plate_mag_u, 
-                                        frac=0.2, it=0, delta=0.2,
+                                        frac=frac, it=0, delta=0.2,
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag - s(plate_mag_u)
@@ -3626,6 +3631,11 @@ class SolveProcess:
             np.savetxt(fcolor, np.column_stack((cterm_list, stdev_list)))
             fcolor.write('\n\n')
 
+        if max(stdev_list) < 0.01:
+            self.log.write('Color term fit failed!', level=2, event=72)
+            self.db_update_process(calibrated=0)
+            return
+
         cf = np.polyfit(cterm_list, stdev_list, 4)
         cf1d = np.poly1d(cf)
         extrema = cf1d.deriv().r
@@ -3644,7 +3654,7 @@ class SolveProcess:
         # Eliminate outliers (over 1 mag + sigma clip)
         cat_mag = cat_vmag_u + cterm_min * (cat_bmag_u - cat_vmag_u)
         z = sm.nonparametric.lowess(cat_mag, plate_mag_u,
-                                    frac=0.2, it=3, delta=0.2,
+                                    frac=frac, it=3, delta=0.2,
                                     return_sorted=True)
         s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
         mag_diff = cat_mag - s(plate_mag_u)
@@ -3657,11 +3667,16 @@ class SolveProcess:
         cterm_list = np.arange(25) * 0.25 - 3.
         stdev_list = []
 
+        frac = 0.2
+
+        if len(ind_good) < 500:
+            frac = 0.2 + 0.3 * (500 - len(ind_good)) / 500.
+
         for cterm in cterm_list:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag[ind_good], 
                                         plate_mag_u[ind_good], 
-                                        frac=0.2, it=0, delta=0.2,
+                                        frac=frac, it=0, delta=0.2,
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
@@ -3682,6 +3697,11 @@ class SolveProcess:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.write('\n\n')
+
+        if max(stdev_list) < 0.01:
+            self.log.write('Color term fit failed!', level=2, event=72)
+            self.db_update_process(calibrated=0)
+            return
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2, 
                              w=1./stdev_list**2, cov=True)
@@ -3710,7 +3730,7 @@ class SolveProcess:
             cat_mag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             z = sm.nonparametric.lowess(cat_mag[ind_good], 
                                         plate_mag_u[ind_good], 
-                                        frac=0.2, it=0, delta=0.2,
+                                        frac=frac, it=0, delta=0.2,
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag[ind_good] - s(plate_mag_u[ind_good])
@@ -4001,16 +4021,16 @@ class SolveProcess:
                     mag_cut_prev = mag_cut
                     #mag_slope_prev = mag_slope
 
-                    if b == 0 and self.write_phot_dir:
-                        np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
-                                                              cat_natmag[ind_cut], 
-                                                              fit_mag, residuals)))
-                        fcutdata.write('\n\n')
-                        np.savetxt(fcutdata, np.column_stack((gpmag, gcmag, 
-                                                              fit_mag[ind_good], residuals[ind_good])))
-                        fcutdata.write('\n\n')
-                        np.savetxt(fcutcurve, z)
-                        fcutcurve.write('\n\n')
+                    #if b == 0 and self.write_phot_dir:
+                    #    np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
+                    #                                          cat_natmag[ind_cut], 
+                    #                                          fit_mag, residuals)))
+                    #    fcutdata.write('\n\n')
+                    #    np.savetxt(fcutdata, np.column_stack((gpmag, gcmag, 
+                    #                                          fit_mag[ind_good], residuals[ind_good])))
+                    #    fcutdata.write('\n\n')
+                    #    np.savetxt(fcutcurve, z)
+                    #    fcutcurve.write('\n\n')
 
                     ind_outliers = np.array([], dtype=int)
 
@@ -4197,8 +4217,9 @@ class SolveProcess:
                             ('num_stars', len(ind_loc))
                         ]))
 
-                np.savetxt(frmse, np.column_stack((pmag, rmse)))
-                frmse.write('\n\n')
+                if self.write_phot_dir:
+                    np.savetxt(frmse, np.column_stack((pmag, rmse)))
+                    frmse.write('\n\n')
 
                 # Interpolate rms error values
                 s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
@@ -4210,8 +4231,8 @@ class SolveProcess:
                                                       s(plate_mag_u), 
                                                       cat_natmag-s(plate_mag_u))))
                 fcaldata.write('\n\n')
-                np.savetxt(fcalcurve, z)
-                fcalcurve.write('\n\n')
+                #np.savetxt(fcalcurve, z)
+                #fcalcurve.write('\n\n')
 
             # Store calibration statistics
             self.phot_calib.append(OrderedDict([
@@ -4318,9 +4339,9 @@ class SolveProcess:
 
         if self.write_phot_dir:
             fcaldata.close()
-            fcalcurve.close()
-            fcutdata.close()
-            fcutcurve.close()
+            #fcalcurve.close()
+            #fcutdata.close()
+            #fcutcurve.close()
             frmse.close()
 
     def output_cterm_db(self):
