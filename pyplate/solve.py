@@ -3401,6 +3401,9 @@ class SolveProcess:
             os.makedirs(self.write_phot_dir)
 
         if self.write_phot_dir:
+            fn_cterm = os.path.join(self.write_phot_dir,
+                                    '{}_cterm.txt'.format(self.basefn))
+            fcterm = open(fn_cterm, 'wb')
             fn_caldata = os.path.join(self.write_phot_dir, 
                                       '{}_caldata.txt'.format(self.basefn))
             fcaldata = open(fn_caldata, 'wb')
@@ -3617,6 +3620,11 @@ class SolveProcess:
             stdev_list.append(stdev_val)
             
             # Store cterm data
+            if self.write_phot_dir:
+                np.savetxt(fcterm, np.column_stack((plate_mag_u, cat_mag,
+                                                    s(plate_mag_u), mag_diff)))
+                fcterm.write('\n\n')
+
             self.phot_cterm.append(OrderedDict([
                 ('iteration', 1),
                 ('cterm', cterm),
@@ -3634,6 +3642,8 @@ class SolveProcess:
         if max(stdev_list) < 0.01:
             self.log.write('Color term fit failed!', level=2, event=72)
             self.db_update_process(calibrated=0)
+            fcterm.close()
+            fcolor.close()
             return
 
         cf = np.polyfit(cterm_list, stdev_list, 4)
@@ -3649,6 +3659,8 @@ class SolveProcess:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72)
             self.db_update_process(calibrated=0)
+            fcterm.close()
+            fcolor.close()
             return
 
         # Eliminate outliers (over 1 mag + sigma clip)
@@ -3684,6 +3696,13 @@ class SolveProcess:
             stdev_list.append(stdev_val)
 
             # Store cterm data
+            if self.write_phot_dir:
+                np.savetxt(fcterm, np.column_stack((plate_mag_u[ind_good], 
+                                                    cat_mag[ind_good],
+                                                    s(plate_mag_u[ind_good]), 
+                                                    mag_diff)))
+                fcterm.write('\n\n')
+
             self.phot_cterm.append(OrderedDict([
                 ('iteration', 2),
                 ('cterm', cterm),
@@ -3701,6 +3720,8 @@ class SolveProcess:
         if max(stdev_list) < 0.01:
             self.log.write('Color term fit failed!', level=2, event=72)
             self.db_update_process(calibrated=0)
+            fcterm.close()
+            fcolor.close()
             return
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2, 
@@ -3719,6 +3740,8 @@ class SolveProcess:
         if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
             self.log.write('Color term fit failed!', level=2, event=72)
             self.db_update_process(calibrated=0)
+            fcterm.close()
+            fcolor.close()
             return
 
         # Iteration 3
@@ -3751,6 +3774,7 @@ class SolveProcess:
             np.savetxt(fcolor, np.column_stack((cterm_list, 
                                                 stdev_list)))
             fcolor.close()
+            fcterm.close()
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2, 
                              w=1./stdev_list**2, cov=True)
