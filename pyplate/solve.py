@@ -4350,8 +4350,10 @@ class SolveProcess:
                 self.sources['bmagerr'][ind] = bmagerr
 
         try:
-            brightlim = min([cal['bright_limit'] for cal in self.phot_calib])
-            faintlim = max([cal['faint_limit'] for cal in self.phot_calib])
+            brightlim = min([cal['bright_limit'] for cal in self.phot_calib 
+                             if cal['annular_bin'] < 9])
+            faintlim = max([cal['faint_limit'] for cal in self.phot_calib 
+                            if cal['annular_bin'] < 9])
             mag_range = faintlim - brightlim
         except Exception:
             brightlim = None
