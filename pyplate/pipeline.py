@@ -244,6 +244,8 @@ class PlateImagePipeline:
             job = mp.Process(target=self.worker)
             job.start()
             jobs.append(job)
+            # Wait 10 seconds before starting another process
+            time.sleep(10)
 
         # Write unfinished and finished file lists to disk every 10 seconds
         while True:
