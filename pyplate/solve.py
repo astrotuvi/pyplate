@@ -1034,6 +1034,9 @@ class SolveProcess:
             circular_film = self.circular_film
 
         self.log.write('Extracting sources from image', level=3, event=30)
+        sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
+        self.log.write('Using {}'.format(sex_ver), level=4, event=30)
+
         self.log.write('Running SExtractor to get sky value', level=3, 
                        event=31)
 
@@ -1191,6 +1194,8 @@ class SolveProcess:
                 not os.path.exists(os.path.join(self.scratch_dir, 
                                                 self.basefn + '_psfex.psf'))):
                 self.log.write('Running PSFEx', level=3, event=33)
+                psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
+                self.log.write('Using {}'.format(psfex_ver), level=4, event=33)
 
                 #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
                 #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
@@ -2103,6 +2108,8 @@ class SolveProcess:
             except ValueError:
                 plate_year = self.plate_year
 
+        scamp_ver = sp.check_output([self.scamp_path, '-v']).strip()
+        self.log.write('Using {}'.format(scamp_ver), level=4, event=50)
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
                        level=4, event=50)
 
