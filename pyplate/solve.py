@@ -3606,7 +3606,7 @@ class SolveProcess:
         cat_vmag_u = cat_vmag_u[ind_nofaint]
 
         # Iteration 1
-        cterm_list = np.arange(25) * 0.25 - 3.
+        cterm_list = np.arange(29) * 0.25 - 3.
         stdev_list = []
 
         for cterm in cterm_list:
@@ -3657,7 +3657,7 @@ class SolveProcess:
 
         try:
             cterm_min = cterm_extr[np.where((der2 > 0) & (cterm_extr > -2.5) &
-                                            (cterm_extr < 2.5))][0]
+                                            (cterm_extr < 3.5))][0]
         except IndexError:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72)
@@ -3682,7 +3682,7 @@ class SolveProcess:
         ind_good = ind1[ind_good1]
 
         # Iteration 2
-        cterm_list = np.arange(25) * 0.25 - 3.
+        cterm_list = np.arange(29) * 0.25 - 3.
         stdev_list = []
 
         frac = 0.2
@@ -3802,7 +3802,7 @@ class SolveProcess:
         num_stars = len(mag_diff)
         iteration = 3
 
-        if cf[0] < 0 or cterm < -2 or cterm > 2:
+        if cf[0] < 0 or cterm < -2 or cterm > 3:
             if cf[0] < 0:
                 self.log.write('Color term fit not reliable!',
                                level=2, event=72)
@@ -3811,7 +3811,7 @@ class SolveProcess:
                                '({:.3f})!'.format(cterm),
                                level=2, event=72)
 
-            if cterm_min < -2 or cterm_min > 2:
+            if cterm_min < -2 or cterm_min > 3:
                 self.log.write('Color term from previous iteration '
                                'outside of allowed range ({:.3f})!'
                                ''.format(cterm_min),
