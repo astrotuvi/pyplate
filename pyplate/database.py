@@ -49,8 +49,6 @@ _schema['plate'] = OrderedDict([
     ('tel_aper',         ('FLOAT', 'tel_aperture')),
     ('tel_foc',          ('FLOAT', 'tel_foclength')),
     ('tel_scale',        ('FLOAT', 'tel_scale')),
-    ('plate_fov1',       ('FLOAT', None)),
-    ('plate_fov2',       ('FLOAT', None)),
     ('instrument',       ('VARCHAR(80)', 'instrument')),
     ('method',           ('TINYINT UNSIGNED', 'method_code')),
     ('prism',            ('VARCHAR(80)', 'prism')),
@@ -91,9 +89,8 @@ _schema['exposure'] = OrderedDict([
     ('dej2000',          ('DOUBLE', 'dec_deg')),
     ('raj2000_hms',      ('CHAR(11)', 'ra')),
     ('dej2000_dms',      ('CHAR(11)', 'dec')),
-    ('flag_wcs',         ('TINYINT UNSIGNED', None)),
-    ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
-    ('date_orig_end',    ('VARCHAR(10)', 'date_orig_end')),
+    ('date_orig_start',  ('VARCHAR(80)', 'date_orig')),
+    ('date_orig_end',    ('VARCHAR(80)', 'date_orig_end')),
     ('time_orig_start',  ('VARCHAR(255)', 'tms_orig')),
     ('time_orig_end',    ('VARCHAR(255)', 'tme_orig')),
     ('flag_time',        ('CHAR(1)', 'time_flag')),
@@ -223,8 +220,7 @@ _schema['plate_logpage'] = OrderedDict([
     ])
 
 _schema['source'] = OrderedDict([
-    ('source_id',        ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
-                          False)),
+    ('source_id',        ('BIGINT UNSIGNED NOT NULL PRIMARY KEY', False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
@@ -285,8 +281,7 @@ _schema['source'] = OrderedDict([
     ])
 
 _schema['source_calib'] = OrderedDict([
-    ('calibsource_id',   ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', False)),
-    ('source_id',        ('INT UNSIGNED NOT NULL', False)),
+    ('source_id',        ('BIGINT UNSIGNED NOT NULL PRIMARY KEY', False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
@@ -712,11 +707,36 @@ class PlateDB:
             if e.args[0] == 2006:
                 print 'MySQL server has gone away, trying to reconnect'
 
-                # Wait for 10 seconds, then open new connection and execute 
+                # Wait for 20 seconds, then open new connection and execute 
                 # query again
-                time.sleep(10)
+                time.sleep(20)
                 self.open_connection()
                 numrows = self.cursor.execute(*args)
+            else:
+                raise
+
+        return numrows
+
+    def executemany_query(self, *args):
+        """
+        Execute SQL query with mutliple data rows and reopen connection if 
+        connection has been lost.
+
+        """
+
+        try:
+            numrows = self.cursor.executemany(*args)
+        except AttributeError:
+            numrows = None
+        except MySQLdb.OperationalError, e:
+            if e.args[0] == 2006:
+                print 'MySQL server has gone away, trying to reconnect'
+
+                # Wait for 20 seconds, then open new connection and execute 
+                # query again
+                time.sleep(20)
+                self.open_connection()
+                numrows = self.cursor.executemany(*args)
             else:
                 raise
 
@@ -1051,40 +1071,67 @@ class PlateDB:
 
         """
 
-        for i in np.arange(len(sources)):
-            col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
-                        'plate_id', 'archive_id']
-            val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+        # Prepare query for the source table
+        col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        for k,v in _schema['source'].items():
+            if v[1]:
+                col_list.append(k)
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql_source = ('INSERT INTO source ({}) VALUES ({})'
+                      .format(col_str, val_str))
+
+        # Prepare query for the source_calib table
+        col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+
+        for k,v in _schema['source_calib'].items():
+            if v[1]:
+                col_list.append(k)
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql_source_calib = ('INSERT INTO source_calib ({}) VALUES ({})'
+                            .format(col_str, val_str))
+
+        # Prepare data and execute queries
+        source_data = []
+        source_calib_data = []
+
+        for i, source in enumerate(sources):
+            # Insert 1000 rows simultaneously
+            if i > 0 and i%1000 == 0:
+                self.executemany_query(sql_source, source_data)
+                source_data = []
+                self.executemany_query(sql_source_calib, source_calib_data)
+                source_calib_data = []
+
+            # Prepare source data
+            source_id = process_id * 10000000 + i + 1
+            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
+                         archive_id)
 
             for k,v in _schema['source'].items():
                 if v[1]:
-                    col_list.append(k)
-                    source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
+                    source_val = (source[k] if np.isfinite(source[k]) 
                                   else None)
                     val_tuple = val_tuple + (source_val, )
 
-            col_str = ','.join(col_list)
-            val_str = ','.join(['%s'] * len(col_list))
-            sql = ('INSERT INTO source ({}) VALUES ({})'
-                   .format(col_str, val_str))
-            self.execute_query(sql, val_tuple)
-            source_id = self.cursor.lastrowid
+            source_data.append(val_tuple)
 
-            col_list = ['calibsource_id', 'source_id', 'process_id', 'scan_id', 
-                        'exposure_id', 'plate_id', 'archive_id']
-            val_tuple = (None, source_id, process_id, scan_id, None, plate_id, 
+            # Prepare source_calib data
+            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
                          archive_id)
 
             for k,v in _schema['source_calib'].items():
                 if v[1]:
-                    col_list.append(k)
-
                     try:
-                        source_val = (sources[i][k] 
-                                      if np.isfinite(sources[i][k])
+                        source_val = (source[k] if np.isfinite(source[k])
                                       else None)
                     except TypeError:
-                        source_val = sources[i][k]
+                        source_val = source[k]
 
                     if 'healpix' in k and source_val < 0:
                         source_val = None
@@ -1100,11 +1147,11 @@ class PlateDB:
                         
                     val_tuple = val_tuple + (source_val, )
 
-            col_str = ','.join(col_list)
-            val_str = ','.join(['%s'] * len(col_list))
-            sql = ('INSERT INTO source_calib ({}) VALUES ({})'
-                   .format(col_str, val_str))
-            self.execute_query(sql, val_tuple)
+            source_calib_data.append(val_tuple)
+
+        # Insert remaining rows
+        self.executemany_query(sql_source, source_data)
+        self.executemany_query(sql_source_calib, source_calib_data)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):

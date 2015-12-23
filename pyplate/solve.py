@@ -3296,12 +3296,12 @@ class SolveProcess:
 
         """
 
-        self.log.to_db(3, 'Writing sources to a file', event=65)
+        self.log.to_db(3, 'Writing sources to a file', event=81)
 
         # Create output directory, if missing
         if self.write_source_dir and not os.path.isdir(self.write_source_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4, event=65)
+                           .format(self.write_source_dir), level=4, event=81)
             os.makedirs(self.write_source_dir)
 
         if filename:
@@ -3345,7 +3345,7 @@ class SolveProcess:
 
         # Output ascii file with refined coordinates
         self.log.write('Writing output file {}'.format(fn_world), level=4, 
-                       event=65)
+                       event=81)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
@@ -3355,7 +3355,7 @@ class SolveProcess:
 
         """
 
-        self.log.to_db(3, 'Writing sources to the database', event=64)
+        self.log.to_db(3, 'Writing sources to the database', event=80)
         self.log.write('Open database connection for writing to the '
                        'source and source_calib tables.')
         platedb = PlateDB()
@@ -3642,8 +3642,11 @@ class SolveProcess:
         if max(stdev_list) < 0.01:
             self.log.write('Color term fit failed!', level=2, event=72)
             self.db_update_process(calibrated=0)
-            fcterm.close()
-            fcolor.close()
+
+            if self.write_phot_dir:
+                fcterm.close()
+                fcolor.close()
+
             return
 
         cf = np.polyfit(cterm_list, stdev_list, 4)
@@ -3659,8 +3662,11 @@ class SolveProcess:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72)
             self.db_update_process(calibrated=0)
-            fcterm.close()
-            fcolor.close()
+
+            if self.write_phot_dir:
+                fcterm.close()
+                fcolor.close()
+
             return
 
         # Eliminate outliers (over 1 mag + sigma clip)
@@ -3720,8 +3726,11 @@ class SolveProcess:
         if max(stdev_list) < 0.01:
             self.log.write('Color term fit failed!', level=2, event=72)
             self.db_update_process(calibrated=0)
-            fcterm.close()
-            fcolor.close()
+
+            if self.write_phot_dir:
+                fcterm.close()
+                fcolor.close()
+
             return
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2, 
@@ -3740,8 +3749,11 @@ class SolveProcess:
         if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
             self.log.write('Color term fit failed!', level=2, event=72)
             self.db_update_process(calibrated=0)
-            fcterm.close()
-            fcolor.close()
+
+            if self.write_phot_dir:
+                fcterm.close()
+                fcolor.close()
+
             return
 
         # Iteration 3
