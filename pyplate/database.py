@@ -49,8 +49,6 @@ _schema['plate'] = OrderedDict([
     ('tel_aper',         ('FLOAT', 'tel_aperture')),
     ('tel_foc',          ('FLOAT', 'tel_foclength')),
     ('tel_scale',        ('FLOAT', 'tel_scale')),
-    ('plate_fov1',       ('FLOAT', None)),
-    ('plate_fov2',       ('FLOAT', None)),
     ('instrument',       ('VARCHAR(80)', 'instrument')),
     ('method',           ('TINYINT UNSIGNED', 'method_code')),
     ('prism',            ('VARCHAR(80)', 'prism')),
@@ -58,9 +56,9 @@ _schema['plate'] = OrderedDict([
     ('dispersion',       ('FLOAT', 'dispersion')),
     ('grating',          ('VARCHAR(80)', 'grating')),
     ('air_temp',         ('FLOAT', 'temperature')),
-    ('calmness',         ('CHAR(3)', 'calmness')),
-    ('sharpness',        ('CHAR(3)', 'sharpness')),
-    ('transparency',     ('CHAR(3)', 'transparency')),
+    ('calmness',         ('VARCHAR(10)', 'calmness')),
+    ('sharpness',        ('VARCHAR(10)', 'sharpness')),
+    ('transparency',     ('VARCHAR(10)', 'transparency')),
     ('sky_conditions',   ('VARCHAR(80)', 'skycond')),
     ('observer',         ('VARCHAR(80)', 'observer')),
     ('obs_notes',        ('VARCHAR(255)', 'obsnotes')),
@@ -91,28 +89,27 @@ _schema['exposure'] = OrderedDict([
     ('dej2000',          ('DOUBLE', 'dec_deg')),
     ('raj2000_hms',      ('CHAR(11)', 'ra')),
     ('dej2000_dms',      ('CHAR(11)', 'dec')),
-    ('flag_wcs',         ('TINYINT UNSIGNED', None)),
-    ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
-    ('date_orig_end',    ('VARCHAR(10)', 'date_orig_end')),
-    ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
-    ('time_orig_end',    ('VARCHAR(40)', 'tme_orig')),
+    ('date_orig_start',  ('VARCHAR(80)', 'date_orig')),
+    ('date_orig_end',    ('VARCHAR(80)', 'date_orig_end')),
+    ('time_orig_start',  ('VARCHAR(255)', 'tms_orig')),
+    ('time_orig_end',    ('VARCHAR(255)', 'tme_orig')),
     ('flag_time',        ('CHAR(1)', 'time_flag')),
     ('ut_start',         ('DATETIME', 'date_obs')),
     ('ut_mid',           ('DATETIME', 'date_avg')),
-    ('ut_weighted',      ('DATETIME', None)),
+    ('ut_weighted',      ('DATETIME', 'date_weighted')),
     ('ut_end',           ('DATETIME', 'date_end')),
     ('year_start',       ('DOUBLE', 'year')),
     ('year_mid',         ('DOUBLE', 'year_avg')),
-    ('year_weighted',    ('DOUBLE', None)),
+    ('year_weighted',    ('DOUBLE', 'year_weighted')),
     ('year_end',         ('DOUBLE', 'year_end')),
     ('jd_start',         ('DOUBLE', 'jd')),
     ('jd_mid',           ('DOUBLE', 'jd_avg')),
-    ('jd_weighted',      ('DOUBLE', None)),
+    ('jd_weighted',      ('DOUBLE', 'jd_weighted')),
     ('jd_end',           ('DOUBLE', 'jd_end')),
     ('hjd_mid',          ('DOUBLE', None)),
     ('hjd_weighted',     ('DOUBLE', None)),
     ('exptime',          ('FLOAT', 'exptime')),
-    ('num_sub',          ('TINYINT UNSIGNED', None)),
+    ('num_sub',          ('TINYINT UNSIGNED', 'numsub')),
     ('method',           ('TINYINT UNSIGNED', None)),
     ('focus',            ('FLOAT', 'focus')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
@@ -125,20 +122,21 @@ _schema['exposure'] = OrderedDict([
     ])
 
 _schema['exposure_sub'] = OrderedDict([
+    ('subexposure_id',   ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', None)),
     ('exposure_id',      ('INT UNSIGNED NOT NULL', None)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', None)),
     ('exposure_num',     ('TINYINT UNSIGNED NOT NULL', None)),
     ('subexposure_num',  ('TINYINT UNSIGNED NOT NULL', None)),
-    ('date_orig_start',  ('VARCHAR(10)', None)),
-    ('time_orig_start',  ('VARCHAR(40)', None)),
-    ('time_orig_end',    ('VARCHAR(40)', None)),
-    ('ut_start',         ('DATETIME', None)),
-    ('ut_mid',           ('DATETIME', None)),
-    ('ut_end',           ('DATETIME', None)),
-    ('jd_start',         ('DOUBLE', None)),
-    ('jd_mid',           ('DOUBLE', None)),
-    ('jd_end',           ('DOUBLE', None)),
-    ('exptime',          ('FLOAT', None)),
+    ('date_orig_start',  ('VARCHAR(10)', 'date_orig')),
+    ('time_orig_start',  ('VARCHAR(40)', 'tms_orig')),
+    ('time_orig_end',    ('VARCHAR(40)', 'tme_orig')),
+    ('ut_start',         ('DATETIME', 'date_obs')),
+    ('ut_mid',           ('DATETIME', 'date_avg')),
+    ('ut_end',           ('DATETIME', 'date_end')),
+    ('jd_start',         ('DOUBLE', 'jd')),
+    ('jd_mid',           ('DOUBLE', 'jd_avg')),
+    ('jd_end',           ('DOUBLE', 'jd_end')),
+    ('exptime',          ('FLOAT', 'exptime')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -222,8 +220,7 @@ _schema['plate_logpage'] = OrderedDict([
     ])
 
 _schema['source'] = OrderedDict([
-    ('source_id',        ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
-                          False)),
+    ('source_id',        ('BIGINT UNSIGNED NOT NULL PRIMARY KEY', False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
@@ -232,12 +229,12 @@ _schema['source'] = OrderedDict([
     ('source_num',       ('INT UNSIGNED', True)),
     ('x_source',         ('DOUBLE', True)),
     ('y_source',         ('DOUBLE', True)),
-    ('erra_source',      ('FLOAT', True)),
-    ('errb_source',      ('FLOAT', True)),
-    ('errtheta_source',  ('FLOAT', True)),
     ('a_source',         ('FLOAT', True)),
     ('b_source',         ('FLOAT', True)),
     ('theta_source',     ('FLOAT', True)),
+    ('erra_source',      ('FLOAT', True)),
+    ('errb_source',      ('FLOAT', True)),
+    ('errtheta_source',  ('FLOAT', True)),
     ('elongation',       ('FLOAT', True)),
     ('x_peak',           ('INT', True)),
     ('y_peak',           ('INT', True)),
@@ -284,12 +281,16 @@ _schema['source'] = OrderedDict([
     ])
 
 _schema['source_calib'] = OrderedDict([
-    ('source_id',        ('INT UNSIGNED NOT NULL PRIMARY KEY', False)),
+    ('source_id',        ('BIGINT UNSIGNED NOT NULL PRIMARY KEY', False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('annular_bin',      ('TINYINT', True)),
+    ('dist_center',      ('DOUBLE', True)),
+    ('dist_edge',        ('DOUBLE', True)),
+    ('sextractor_flags', ('SMALLINT', True)),
     ('raj2000',          ('DOUBLE', True)),
     ('dej2000',          ('DOUBLE', True)),
     ('x_sphere',         ('DOUBLE', True)),
@@ -303,33 +304,68 @@ _schema['source_calib'] = OrderedDict([
     ('raerr_sub',        ('FLOAT', True)),
     ('decerr_sub',       ('FLOAT', True)),
     ('gridsize_sub',     ('SMALLINT', True)),
-    ('bmag',             ('FLOAT', False)),
-    ('err_bmag',         ('FLOAT', False)),
-    ('vmag',             ('FLOAT', False)),
-    ('err_vmag',         ('FLOAT', False)),
+    ('nn_dist',          ('FLOAT', True)),
+    ('natmag',           ('FLOAT', True)),
+    ('natmagerr',        ('FLOAT', True)),
+    ('bmag',             ('FLOAT', True)),
+    ('bmagerr',          ('FLOAT', True)),
+    ('vmag',             ('FLOAT', True)),
+    ('vmagerr',          ('FLOAT', True)),
+    ('flag_calib_star',  ('TINYINT', True)),
+    ('flag_calib_outlier', ('TINYINT', True)),
+    ('color_term',       ('FLOAT', True)),
+    ('color_bv',         ('FLOAT', True)),
+    ('cat_natmag',       ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
+    ('tycho2_ra',        ('DOUBLE', True)),
+    ('tycho2_dec',       ('DOUBLE', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
     ('tycho2_vtmag',     ('FLOAT', True)),
+    ('tycho2_btmagerr',  ('FLOAT', True)),
+    ('tycho2_vtmagerr',  ('FLOAT', True)),
     ('tycho2_hip',       ('INT UNSIGNED', True)),
     ('tycho2_dist',      ('FLOAT', True)),
+    ('tycho2_dist2',     ('FLOAT', True)),
+    ('tycho2_nn_dist',   ('FLOAT', True)),
     ('ucac4_id',         ('CHAR(10)', True)),
+    ('ucac4_ra',         ('DOUBLE', True)),
+    ('ucac4_dec',        ('DOUBLE', True)),
     ('ucac4_bmag',       ('FLOAT', True)),
     ('ucac4_vmag',       ('FLOAT', True)),
+    ('ucac4_bmagerr',    ('FLOAT', True)),
+    ('ucac4_vmagerr',    ('FLOAT', True)),
     ('ucac4_dist',       ('FLOAT', True)),
+    ('ucac4_dist2',      ('FLOAT', True)),
+    ('ucac4_nn_dist',    ('FLOAT', True)),
+    ('apass_ra',         ('DOUBLE', True)),
+    ('apass_dec',        ('DOUBLE', True)),
+    ('apass_bmag',       ('FLOAT', True)),
+    ('apass_vmag',       ('FLOAT', True)),
+    ('apass_bmagerr',    ('FLOAT', True)),
+    ('apass_vmagerr',    ('FLOAT', True)),
+    ('apass_dist',       ('FLOAT', True)),
+    ('apass_dist2',      ('FLOAT', True)),
+    ('apass_nn_dist',    ('FLOAT', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX source_ind',   ('(source_id)', None)),
     ('INDEX process_ind',  ('(process_id)', None)),
     ('INDEX scan_ind',     ('(scan_id)', None)),
     ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX annularbin_ind', ('(annular_bin)', None)),
     ('INDEX raj2000_ind',  ('(raj2000)', None)),
     ('INDEX dej2000_ind',  ('(dej2000)', None)),
     ('INDEX x_ind',        ('(x_sphere)', None)),
     ('INDEX y_ind',        ('(y_sphere)', None)),
     ('INDEX z_ind',        ('(z_sphere)', None)),
     ('INDEX healpix256_ind', ('(healpix256)', None)),
+    ('INDEX nndist_ind',   ('(nn_dist)', None)),
+    ('INDEX natmag_ind',   ('(natmag)', None)),
+    ('INDEX bmag_ind',     ('(bmag)', None)),
+    ('INDEX vmag_ind',     ('(vmag)', None)),
     ('INDEX tycho2_ind',   ('(tycho2_id)', None)),
     ('INDEX hip_ind',      ('(tycho2_hip)', None)),
     ('INDEX ucac4_ind',    ('(ucac4_id)', None))
@@ -374,6 +410,110 @@ _schema['solution'] = OrderedDict([
     ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
 
+_schema['phot_calib'] = OrderedDict([
+    ('calib_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('annular_bin',      ('TINYINT', True)),
+    ('color_term',       ('FLOAT', True)),
+    ('color_term_err',   ('FLOAT', True)),
+    ('num_bin_stars',    ('INT UNSIGNED', True)),
+    ('num_calib_stars',  ('INT UNSIGNED', True)),
+    ('num_bright_stars', ('INT UNSIGNED', True)),
+    ('num_outliers',     ('INT UNSIGNED', True)),
+    ('bright_limit',     ('FLOAT', True)),
+    ('faint_limit',      ('FLOAT', True)),
+    ('mag_range',        ('FLOAT', True)),
+    ('rmse_min',         ('FLOAT', True)),
+    ('rmse_median',      ('FLOAT', True)),
+    ('rmse_max',         ('FLOAT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX annularbin_ind', ('(annular_bin)', None))
+    ])
+    
+_schema['phot_rmse'] = OrderedDict([
+    ('rmse_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('annular_bin',      ('TINYINT', True)),
+    ('plate_mag',        ('FLOAT', True)),
+    ('rmse',             ('FLOAT', True)),
+    ('mag_window',       ('FLOAT', True)),
+    ('num_stars',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX annularbin_ind', ('(annular_bin)', None))
+    ])
+    
+_schema['phot_color'] = OrderedDict([
+    ('color_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('color_term',       ('FLOAT', True)),
+    ('color_term_err',   ('FLOAT', True)),
+    ('stdev_fit',        ('FLOAT', True)),
+    ('stdev_min',        ('FLOAT', True)),
+    ('cterm_min',        ('FLOAT', True)),
+    ('cterm_max',        ('FLOAT', True)),
+    ('iteration',        ('TINYINT UNSIGNED', True)),
+    ('num_stars',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None))
+    ])
+    
+_schema['phot_cterm'] = OrderedDict([
+    ('cterm_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('iteration',        ('INT UNSIGNED', True)),
+    ('cterm',            ('FLOAT', True)),
+    ('stdev',            ('FLOAT', True)),
+    ('num_stars',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None))
+    ])
+    
 _schema['process'] = OrderedDict([
     ('process_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           None)),
@@ -393,6 +533,12 @@ _schema['process'] = OrderedDict([
     ('solved',           ('TINYINT(1)', None)),
     ('num_ucac4',        ('INT UNSIGNED', None)),
     ('num_tycho2',       ('INT UNSIGNED', None)),
+    ('num_apass',        ('INT UNSIGNED', None)),
+    ('color_term',       ('FLOAT', None)),
+    ('bright_limit',     ('FLOAT', None)),
+    ('faint_limit',      ('FLOAT', None)),
+    ('mag_range',        ('FLOAT', None)),
+    ('calibrated',       ('TINYINT(1)', None)),
     ('completed',        ('TINYINT(1)', None)),
     ('pyplate_version',  ('VARCHAR(15)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
@@ -561,11 +707,36 @@ class PlateDB:
             if e.args[0] == 2006:
                 print 'MySQL server has gone away, trying to reconnect'
 
-                # Wait for 10 seconds, then open new connection and execute 
+                # Wait for 20 seconds, then open new connection and execute 
                 # query again
-                time.sleep(10)
+                time.sleep(20)
                 self.open_connection()
                 numrows = self.cursor.execute(*args)
+            else:
+                raise
+
+        return numrows
+
+    def executemany_query(self, *args):
+        """
+        Execute SQL query with mutliple data rows and reopen connection if 
+        connection has been lost.
+
+        """
+
+        try:
+            numrows = self.cursor.executemany(*args)
+        except AttributeError:
+            numrows = None
+        except MySQLdb.OperationalError, e:
+            if e.args[0] == 2006:
+                print 'MySQL server has gone away, trying to reconnect'
+
+                # Wait for 20 seconds, then open new connection and execute 
+                # query again
+                time.sleep(20)
+                self.open_connection()
+                numrows = self.cursor.executemany(*args)
             else:
                 raise
 
@@ -636,6 +807,30 @@ class PlateDB:
                    .format(col_str, val_str))
             self.execute_query(sql, val_tuple)
             exposure_id = self.cursor.lastrowid
+
+            # The exposure_sub table
+            if len(platemeta['numsub']) > exp and platemeta['numsub'][exp] > 1:
+                for subexp in np.arange(platemeta['numsub'][exp]):
+                    subexp_num = subexp + 1
+                    col_list = ['subexposure_id' ,'exposure_id', 'plate_id',
+                                'exposure_num', 'subexposure_num']
+                    val_tuple = (None, exposure_id, plate_id, exp_num, 
+                                 subexp_num)
+
+                    expmeta = platemeta.exposures[exp]
+
+                    for k,v in _schema['exposure_sub'].items():
+                        if v[1]:
+                            col_list.append(k)
+                            val_tuple = val_tuple \
+                                    + (expmeta.get_value(v[1], exp=subexp), )
+
+                    col_str = ','.join(col_list)
+                    val_str = ','.join(['%s'] * len(col_list))
+
+                    sql = ('INSERT INTO exposure_sub ({}) VALUES ({})'
+                           .format(col_str, val_str))
+                    self.execute_query(sql, val_tuple)
 
         return plate_id
 
@@ -781,6 +976,94 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
+    def write_phot_cterm(self, phot_cterm, process_id=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
+        """
+        Write photometric color term data to the database.
+
+        """
+
+        col_list = ['cterm_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_cterm'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_cterm[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_cterm ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_phot_color(self, phot_color, process_id=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
+        """
+        Write photometric color term result to the database.
+
+        """
+
+        col_list = ['color_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_color'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_color[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_color ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
+                         plate_id=None, archive_id=None):
+        """
+        Write photometric calibration to the database.
+
+        """
+
+        col_list = ['calib_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_calib'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_calib[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_calib ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_phot_rmse(self, phot_rmse, process_id=None, scan_id=None, 
+                        plate_id=None, archive_id=None):
+        """
+        Write photometric calibration errors to the database.
+
+        """
+
+        col_list = ['rmse_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_rmse'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_rmse[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_rmse ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
     def write_sources(self, sources, process_id=None, scan_id=None, 
                       plate_id=None, archive_id=None):
         """
@@ -788,40 +1071,67 @@ class PlateDB:
 
         """
 
-        for i in np.arange(len(sources)):
-            col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
-                        'plate_id', 'archive_id']
-            val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+        # Prepare query for the source table
+        col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        for k,v in _schema['source'].items():
+            if v[1]:
+                col_list.append(k)
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql_source = ('INSERT INTO source ({}) VALUES ({})'
+                      .format(col_str, val_str))
+
+        # Prepare query for the source_calib table
+        col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+
+        for k,v in _schema['source_calib'].items():
+            if v[1]:
+                col_list.append(k)
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql_source_calib = ('INSERT INTO source_calib ({}) VALUES ({})'
+                            .format(col_str, val_str))
+
+        # Prepare data and execute queries
+        source_data = []
+        source_calib_data = []
+
+        for i, source in enumerate(sources):
+            # Insert 1000 rows simultaneously
+            if i > 0 and i%1000 == 0:
+                self.executemany_query(sql_source, source_data)
+                source_data = []
+                self.executemany_query(sql_source_calib, source_calib_data)
+                source_calib_data = []
+
+            # Prepare source data
+            source_id = process_id * 10000000 + i + 1
+            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
+                         archive_id)
 
             for k,v in _schema['source'].items():
                 if v[1]:
-                    col_list.append(k)
-                    source_val = (sources[i][k] if np.isfinite(sources[i][k]) 
+                    source_val = (source[k] if np.isfinite(source[k]) 
                                   else None)
                     val_tuple = val_tuple + (source_val, )
 
-            col_str = ','.join(col_list)
-            val_str = ','.join(['%s'] * len(col_list))
-            sql = ('INSERT INTO source ({}) VALUES ({})'
-                   .format(col_str, val_str))
-            self.execute_query(sql, val_tuple)
-            source_id = self.cursor.lastrowid
+            source_data.append(val_tuple)
 
-            col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
-                        'plate_id', 'archive_id']
+            # Prepare source_calib data
             val_tuple = (source_id, process_id, scan_id, None, plate_id, 
                          archive_id)
 
             for k,v in _schema['source_calib'].items():
                 if v[1]:
-                    col_list.append(k)
-
                     try:
-                        source_val = (sources[i][k] 
-                                      if np.isfinite(sources[i][k])
+                        source_val = (source[k] if np.isfinite(source[k])
                                       else None)
                     except TypeError:
-                        source_val = sources[i][k]
+                        source_val = source[k]
 
                     if 'healpix' in k and source_val < 0:
                         source_val = None
@@ -831,14 +1141,17 @@ class PlateDB:
                         
                     if 'tycho2_id' in k and source_val == '':
                         source_val = None
+
+                    if 'tycho2_hip' in k and source_val < 0:
+                        source_val = None
                         
                     val_tuple = val_tuple + (source_val, )
 
-            col_str = ','.join(col_list)
-            val_str = ','.join(['%s'] * len(col_list))
-            sql = ('INSERT INTO source_calib ({}) VALUES ({})'
-                   .format(col_str, val_str))
-            self.execute_query(sql, val_tuple)
+            source_calib_data.append(val_tuple)
+
+        # Insert remaining rows
+        self.executemany_query(sql_source, source_data)
+        self.executemany_query(sql_source_calib, source_calib_data)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):
@@ -875,8 +1188,11 @@ class PlateDB:
         return process_id
 
     def update_process(self, process_id, sky=None, sky_sigma=None, 
-                       threshold=None, num_sources=None, num_ucac4=None, 
-                       num_tycho2=None, solved=None):
+                       threshold=None, num_sources=None, solved=None,
+                       num_ucac4=None, num_tycho2=None, num_apass=None, 
+                       color_term=None,
+                       bright_limit=None, faint_limit=None, mag_range=None, 
+                       calibrated=None):
         """
         Update plate-solve process in the database.
 
@@ -884,7 +1200,11 @@ class PlateDB:
 
         if (sky is None and sky_sigma is None and threshold is None 
             and num_sources is None and num_ucac4 is None 
-            and num_tycho2 is None and solved is None):
+            and num_tycho2 is None and num_apass is None
+            and solved is None 
+            and color_term is None and bright_limit is None
+            and faint_limit is None and mag_range is None
+            and calibrated is None):
             return
 
         col_list = []
@@ -906,6 +1226,10 @@ class PlateDB:
             col_list.append('num_sources=%s')
             val_tuple = val_tuple + (num_sources, )
 
+        if solved is not None:
+            col_list.append('solved=%s')
+            val_tuple = val_tuple + (solved, )
+
         if num_ucac4 is not None:
             col_list.append('num_ucac4=%s')
             val_tuple = val_tuple + (num_ucac4, )
@@ -914,9 +1238,29 @@ class PlateDB:
             col_list.append('num_tycho2=%s')
             val_tuple = val_tuple + (num_tycho2, )
 
-        if solved is not None:
-            col_list.append('solved=%s')
-            val_tuple = val_tuple + (solved, )
+        if num_apass is not None:
+            col_list.append('num_apass=%s')
+            val_tuple = val_tuple + (num_apass, )
+
+        if color_term is not None:
+            col_list.append('color_term=%s')
+            val_tuple = val_tuple + (color_term, )
+
+        if bright_limit is not None:
+            col_list.append('bright_limit=%s')
+            val_tuple = val_tuple + (bright_limit, )
+
+        if faint_limit is not None:
+            col_list.append('faint_limit=%s')
+            val_tuple = val_tuple + (faint_limit, )
+
+        if mag_range is not None:
+            col_list.append('mag_range=%s')
+            val_tuple = val_tuple + (mag_range, )
+
+        if calibrated is not None:
+            col_list.append('calibrated=%s')
+            val_tuple = val_tuple + (calibrated, )
 
         col_str = ','.join(col_list)
         sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))

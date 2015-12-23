@@ -34,6 +34,8 @@ class PlateImagePipeline:
         self.output_solution_db = False
         self.output_wcs_file = False
         self.solve_recursive = False
+        self.calibrate_photometry = False
+        self.output_calibration_db = False
         self.output_sources_db = False
         self.output_sources_csv = False
 
@@ -58,7 +60,8 @@ class PlateImagePipeline:
                      'output_header_file', 'output_header_fits', 
                      'invert_image', 'extract_sources', 'solve_plate', 
                      'output_solution_db', 'output_wcs_file', 
-                     'solve_recursive', 
+                     'solve_recursive', 'calibrate_photometry', 
+                     'output_calibration_db', 
                      'output_sources_db', 'output_sources_csv']:
             try:
                 setattr(self, attr, conf.getboolean('Pipeline', attr))
@@ -161,6 +164,15 @@ class PlateImagePipeline:
 
             proc.process_source_coordinates()
 
+            if self.calibrate_photometry:
+                proc.calibrate_photometry()
+
+            if self.output_calibration_db:
+                proc.output_cterm_db()
+                proc.output_color_db()
+                proc.output_calibration_db()
+                proc.output_rmse_db()
+
             if self.output_sources_db:
                 proc.output_sources_db()
 
@@ -232,6 +244,8 @@ class PlateImagePipeline:
             job = mp.Process(target=self.worker)
             job.start()
             jobs.append(job)
+            # Wait 10 seconds before starting another process
+            time.sleep(10)
 
         # Write unfinished and finished file lists to disk every 10 seconds
         while True:
