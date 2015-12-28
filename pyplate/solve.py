@@ -3865,23 +3865,29 @@ class SolveProcess:
                 ind_bin = np.where(plate_bin == b)[0]
 
             num_calstars = len(ind_bin)
-            
             self.log.write('Annular bin {:d}: {:d} calibration-star candidates'
                            ''.format(b, num_calstars), 
                            double_newline=False, level=4, event=73)
 
             if num_calstars < 20:
-                self.log.write('Annular bin {:d}: too few calibration-star candidates!'
-                               ''.format(b), level=2, event=73)
+                self.log.write('Annular bin {:d}: too few calibration-star '
+                               'candidates!'.format(b), double_newline=False,
+                               level=2, event=73)
                 continue
 
             _,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
             plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
                                           return_index=True)
+
+            if len(plate_mag_u) < 20:
+                self.log.write('Annular bin {:d}: too few unique calibration '
+                               'stars ({:d})!'.format(b, len(plate_mag_u)), 
+                               double_newline=False, level=2, event=73)
+                continue
+
             cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
             cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
             ind_calibstar_u = ind_calibstar[ind_bin[uind1[uind2]]]
-
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
