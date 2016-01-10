@@ -1459,6 +1459,14 @@ class PlateMeta(OrderedDict):
 
         """
 
+        # By default, assume that date refers to observation time, not evening
+        evening_date = False
+
+        if self.conf.has_section('Metadata'):
+            if self.conf.has_option('Metadata', 'evening_date'):
+                evening_date = self.conf.getboolean('Metadata', 'evening_date')
+
+        # Check if observation date is given
         if self['date_orig']:
             tms_missing = False
 
@@ -1508,6 +1516,9 @@ class PlateMeta(OrderedDict):
                     # Cannot work without valid date_orig
                     continue
 
+                date_start_orig = date_orig
+                date_end_orig = date_orig
+
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
 
@@ -1537,6 +1548,7 @@ class PlateMeta(OrderedDict):
                             
                 if (isinstance(tms_orig, list) or isinstance(tme_orig, list)):
                     expmeta = self.copy()
+                    expmeta.conf = self.conf
                     expmeta['tms_orig'] = tms_orig
                     expmeta['tme_orig'] = tme_orig
                     expmeta['numexp'] = len(tms_orig)
@@ -1587,7 +1599,8 @@ class PlateMeta(OrderedDict):
                     ut_start_isot = None
                     ut_end_isot = None
 
-                    # Handle cases where time hours are larger than 24
+                    # Handle cases where time hours are larger than 24, 
+                    # or date refers to evening
                     if tms_orig or tme_orig:
                         t_date_orig = Time(date_orig, scale='tai')
 
@@ -1597,11 +1610,20 @@ class PlateMeta(OrderedDict):
 
                             tsec = pytimeparse.parse(tme_orig)
 
-                            if tsec > 86400:
+                            if evening_date and tsec < 43200:
+                                tsec += 86400
+
+                            if tsec >= 86400:
                                 td_tme = TimeDelta(tsec, format='sec')
                                 t_tme = t_date_orig + td_tme
                                 date_orig = Time(t_tme, out_subfmt='date').iso
-                                tme_orig = Time(t_tme).iso.split()[-1]
+                                date_end_orig = date_orig
+
+                                if '.' in tme_orig:
+                                    tme_orig = Time(t_tme).iso.split()[-1]
+                                else:
+                                    tme_orig = Time(t_tme, 
+                                                    precision=0).iso.split()[-1]
 
                         if tms_orig:
                             if tms_orig.count(':') == 1:
@@ -1609,11 +1631,20 @@ class PlateMeta(OrderedDict):
 
                             tsec = pytimeparse.parse(tms_orig)
                             
-                            if tsec > 86400:
+                            if evening_date and tsec < 43200:
+                                tsec += 86400
+
+                            if tsec >= 86400:
                                 td_tms = TimeDelta(tsec, format='sec')
                                 t_tms = t_date_orig + td_tms
                                 date_orig = Time(t_tms, out_subfmt='date').iso
-                                tms_orig = Time(t_tms).iso.split()[-1]
+                                date_start_orig = date_orig
+
+                                if '.' in tms_orig:
+                                    tms_orig = Time(t_tms).iso.split()[-1]
+                                else:
+                                    tms_orig = Time(t_tms, 
+                                                    precision=0).iso.split()[-1]
 
                     if ((self['tz_orig'] == 'ST') and (tms_orig or tme_orig) and 
                         self['site_latitude'] and self['site_longitude']):
@@ -1644,31 +1675,41 @@ class PlateMeta(OrderedDict):
                             ut_end_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
 
                     elif self['tz_orig'] == 'UT':
-                        if self['ut_start_orig']:
-                            ut_start_orig = self['ut_start_orig'][iexp]
+                        ut_start_orig = None
+                        ut_end_orig = None
+
+                        if self['ut_start_orig'] or tms_orig:
+                            if self['ut_start_orig']:
+                                ut_start_orig = self['ut_start_orig'][iexp]
+                            else:
+                                ut_start_orig = tms_orig
 
                             if not ':' in ut_start_orig:
                                 ut_start_orig += ':00'
 
-                            ut_start_isot = '{}T{}'.format(date_orig, ut_start_orig)
+                            ut_start_isot = '{}T{}'.format(date_start_orig, 
+                                                           ut_start_orig)
 
                             # Make sure that ut_start_isot formatting is correct
                             if not '.' in ut_start_orig:
                                 ut_start_isot = Time(ut_start_isot, format='isot', 
                                                      scale='ut1', precision=0).isot
 
-                        if self['ut_end_orig']:
-                            ut_end_orig = self['ut_end_orig'][iexp]
+                        if self['ut_end_orig'] or tme_orig:
+                            if self['ut_end_orig']:
+                                ut_end_orig = self['ut_end_orig'][iexp]
+                            else:
+                                ut_end_orig = tme_orig
 
                             if not ':' in ut_end_orig:
                                 ut_end_orig += ':00'
 
-                            ut_end_isot = '{}T{}'.format(date_orig, ut_end_orig)
+                            ut_end_isot = '{}T{}'.format(date_end_orig, 
+                                                         ut_end_orig)
 
-                            # Check if end time is after midnight. If so, use next
-                            # date.
-                            if (self['ut_start_orig'] and 
-                                ut_end_orig < ut_start_orig):
+                            # Check if end time is after midnight. If so, use 
+                            # next date.
+                            if ut_start_isot and ut_end_isot < ut_start_isot:
                                 next_day = (Time(ut_end_isot, format='isot', 
                                                  scale='ut1', precision=0) 
                                             + TimeDelta(1, format='jd'))
