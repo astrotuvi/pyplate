@@ -2201,6 +2201,11 @@ class PlateHeader(fits.Header):
                          .replace('ö','oe').replace('Ö','OE')
                          .replace('ü','ue').replace('Ü','UE'))
 
+                # Workaround for Astropy treating colon in string as assignment
+                # of numerical value
+                if ':' in value:
+                    self.set(key, '')
+
             self.set(key, value)
         elif not key in self:
             if valtype is str:
@@ -2530,8 +2535,14 @@ class PlateHeader(fits.Header):
                 cardstr = k.ljust(8) + '='.ljust(22) + ' / ' + c
                 self.append(fits.Card.fromstring(cardstr))
             else:
-                #self.set(k, v, c)
-                self.append((k, v, c), bottom=True)
+                # Workaround for Astropy treating colon in string as assignment
+                # of numerical value
+                if (isinstance(v, str) and (k != 'COMMENT') and (k != 'HISTORY') 
+                    and ':' in v):
+                    self.append((k, '', c), bottom=True)
+                    self[k] = v
+                else:
+                    self.append((k, v, c), bottom=True)
 
             # Pad empty strings in card values
             if (isinstance(v, str) and not v and k and (k != 'COMMENT') 
