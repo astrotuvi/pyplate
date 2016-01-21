@@ -20,8 +20,12 @@ class PlateImagePipeline:
         self.write_log_dir = ''
         self.input_queue = None
         self.done_queue = None
+        self.renew_worker_queue = None
         self.plate_converter = plate_converter
         self.plate_epoch = None
+        self.processes = 1
+        self.worker_max_tasks = 0
+        self.wait_start = 1.0
 
         self.read_wfpdb = False
         self.read_csv = False
@@ -67,6 +71,24 @@ class PlateImagePipeline:
                 setattr(self, attr, conf.getboolean('Pipeline', attr))
             except ValueError:
                 print ('Error in configuration file: not a boolean value '
+                       '([{}], {})'.format('Pipeline', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['processes', 'worker_max_tasks']:
+            try:
+                setattr(self, attr, conf.getint('Pipeline', attr))
+            except ValueError:
+                print ('Error in configuration file: not an integer value '
+                       '([{}], {})'.format('Pipeline', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['wait_start']:
+            try:
+                setattr(self, attr, conf.getfloat('Pipeline', attr))
+            except ValueError:
+                print ('Error in configuration file: not a float value '
                        '([{}], {})'.format('Pipeline', attr))
             except ConfigParser.Error:
                 pass
@@ -190,6 +212,8 @@ class PlateImagePipeline:
         if self.input_queue is None:
             return
 
+        task_count = 0
+
         while True:
             if os.path.exists(os.path.join(self.work_dir, 'pyplate.stop')):
                 break
@@ -207,8 +231,14 @@ class PlateImagePipeline:
                 self.single_image(fn)
 
             self.done_queue.put(fn)
+            task_count += 1
 
-    def parallel_run(self, filenames, processes=1):
+            if self.worker_max_tasks > 0 and task_count >= self.worker_max_tasks:
+                self.renew_worker_queue.put(True)
+                break
+
+    def parallel_run(self, filenames, processes=None, worker_max_tasks=None,
+                     wait_start=None):
         """
         Run plate image processes in parallel.
 
@@ -218,11 +248,41 @@ class PlateImagePipeline:
             List of filenames to process
         processes : int
             Number of parallel processes
+        worker_max_tasks : int
+            Number of images processed after which the worker process is renewed
+        wait_start : float
+            Number of seconds to wait before starting another worker process 
+            at the beginning
 
         """
 
+        if processes is None:
+            processes = self.processes
+
+        if not isinstance(processes, int) or processes < 1:
+            processes = 1
+
+        if wait_start is None:
+            wait_start = self.wait_start
+
+        if not isinstance(wait_start, float):
+            try:
+                wait_start = float(wait_start)
+            except ValueError:
+                wait_start = 1.0
+
+        if wait_start < 0:
+            wait_start = 1.0
+
+        if worker_max_tasks is not None:
+            try:
+                self.worker_max_tasks = int(worker_max_tasks)
+            except ValueError:
+                pass
+
         self.input_queue = mp.Queue()
         self.done_queue = mp.Queue()
+        self.renew_worker_queue = mp.Queue()
         jobs = []
         queue_list = []
 
@@ -244,8 +304,8 @@ class PlateImagePipeline:
             job = mp.Process(target=self.worker)
             job.start()
             jobs.append(job)
-            # Wait 10 seconds before starting another process
-            time.sleep(10)
+            # Wait before starting another process
+            time.sleep(wait_start)
 
         # Write unfinished and finished file lists to disk every 10 seconds
         while True:
@@ -271,10 +331,29 @@ class PlateImagePipeline:
                 pass
 
             if os.path.exists(os.path.join(self.work_dir, 'pyplate.stop')):
-                break
+                jobs_finished = True
+
+                for job in jobs:
+                    if job.is_alive():
+                        jobs_finished = False
+
+                if jobs_finished:
+                    break
 
             if queue_list == []:
                 break
+
+            if not self.renew_worker_queue.empty():
+                # Clean job list
+                for i,job in enumerate(jobs):
+                    if not job.is_alive():
+                        del jobs[i]
+
+                # Start new worker process
+                self.renew_worker_queue.get()
+                job = mp.Process(target=self.worker)
+                job.start()
+                jobs.append(job)
 
         for job in jobs:
             job.join()
@@ -298,6 +377,10 @@ class PlateImagePipeline:
                     f.write('{}\n'.format(fn))
         except IOError:
             pass
+
+        # Empty the input queue
+        while not self.input_queue.empty():
+            self.input_queue.get()
 
 def run_pipeline(filenames, fn_conf):
     """
