@@ -37,7 +37,7 @@ class PlateConverter:
         self.tiff_dir = ''
         self.write_fits_dir = ''
         self.write_wedge_dir = ''
-        self.exif_timezone = None
+        self.scan_exif_timezone = None
         self.wedge_height = None
 
     def assign_conf(self, conf):
@@ -55,7 +55,7 @@ class PlateConverter:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['exif_timezone']:
+        for attr in ['scan_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
             except ConfigParser.Error:
@@ -109,11 +109,12 @@ class PlateConverter:
                                                .replace(':', '-'),
                                                exif_datetime[11:])
 
-            if pytz_available and self.exif_timezone:
+            if pytz_available and self.scan_exif_timezone:
                 dt = datetime.strptime(exif_datetime, '%Y-%m-%d %H:%M:%S')
 
                 try:
-                    dt_local = pytz.timezone(self.exif_timezone).localize(dt)
+                    dt_local = (pytz.timezone(self.scan_exif_timezone)
+                                .localize(dt))
                     exif_datetime = (dt_local.astimezone(pytz.utc)
                                      .strftime('%Y-%m-%dT%H:%M:%S'))
                 except pytz.exceptions.UnknownTimeZoneError:

@@ -774,6 +774,7 @@ class LogpageMeta(OrderedDict):
 
         self.logpage_dir = ''
         self.cover_dir = ''
+        self.logpage_exif_timezone = None
         self['filename'] = filename
         fmt = filename.split('.')[-1].upper()
 
@@ -799,6 +800,12 @@ class LogpageMeta(OrderedDict):
         for attr in ['logpage_dir', 'cover_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['logpage_exif_timezone']:
+            try:
+                setattr(self, attr, conf.get('Image', attr))
             except ConfigParser.Error:
                 pass
 
@@ -886,13 +893,17 @@ class LogpageMeta(OrderedDict):
                                                    .replace(':', '-'),
                                                    exif_datetime[11:])
 
-                if pytz_available:
+                if pytz_available and self.logpage_exif_timezone:
                     dt_exif = dt.datetime.strptime(exif_datetime, 
                                                    '%Y-%m-%d %H:%M:%S')
-                    # !!! Need to read timezone from configuration!
-                    dt_local = pytz.timezone('Europe/Berlin').localize(dt_exif)
-                    exif_datetime = (dt_local.astimezone(pytz.utc)
-                                     .strftime('%Y-%m-%dT%H:%M:%S'))
+
+                    try:
+                        dt_local = (pytz.timezone(self.logpage_exif_timezone)
+                                    .localize(dt_exif))
+                        exif_datetime = (dt_local.astimezone(pytz.utc)
+                                         .strftime('%Y-%m-%dT%H:%M:%S'))
+                    except pytz.exceptions.UnknownTimeZoneError:
+                        pass
 
                 self['image_datetime'] = exif_datetime
 
@@ -1092,7 +1103,12 @@ class PlateMeta(OrderedDict):
             if self.conf.has_section('WFPDB'):
                 if self.conf.has_option('WFPDB', 'maindata_timezone'):
                     maindata_tz = self.conf.get('WFPDB', 'maindata_timezone')
-                    self['tz_orig'] = maindata_tz.upper()
+
+                    if (maindata_tz.upper() == 'ST' or 
+                        maindata_tz.upper() == 'UT'):
+                        self['tz_orig'] = maindata_tz.upper()
+                    else:
+                        self['tz_orig'] = maindata_tz
 
                     if self['tz_orig'] == 'ST':
                         self['st_start_orig'] = self['tms_orig']
@@ -1179,8 +1195,12 @@ class PlateMeta(OrderedDict):
 
             if self.conf.has_section('WFPDB'):
                 if self.conf.has_option('WFPDB', 'notes_timezone'):
-                    self['tz_orig'] = self.conf.get('WFPDB', 
-                                                    'notes_timezone').upper()
+                    notes_tz = self.conf.get('WFPDB', 'notes_timezone')
+
+                    if notes_tz.upper() == 'ST' or notes_tz.upper() == 'UT':
+                        self['tz_orig'] = notes_tz.upper()
+                    else:
+                        self['tz_orig'] = notes_tz
 
             key, val = (s.strip() for s in note.split(':', 1))
 
@@ -1333,6 +1353,16 @@ class PlateMeta(OrderedDict):
             if self.conf.has_option(csv_filename, 'csv_list_delimiter'):
                 csv_list_delimiter = self.conf.get(csv_filename, 
                                                    'csv_list_delimiter')
+
+            # Get timezone from configuration file
+            if self.conf.has_option(csv_filename, 'csv_timezone'):
+                csv_timezone = self.conf.get(csv_filename, 'csv_timezone')
+
+                if (csv_timezone.upper() == 'ST' or 
+                    csv_timezone.upper() == 'UT'):
+                    self['tz_orig'] = csv_timezone.upper()
+                else:
+                    self['tz_orig'] = csv_timezone
 
             for (key, pos) in self.conf.items(csv_filename):
                 if key in self:
@@ -1675,7 +1705,11 @@ class PlateMeta(OrderedDict):
                             st.compute()
                             ut_end_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
 
-                    elif self['tz_orig'] == 'UT':
+                    elif (self['tz_orig'] == 'UT' or 
+                          (pytz_available and 
+                           self['tz_orig'] in pytz.all_timezones)):
+                        # Handle UT times and local times with specified 
+                        # pytz-compatible timezones
                         ut_start_orig = None
                         ut_end_orig = None
 
@@ -1683,7 +1717,20 @@ class PlateMeta(OrderedDict):
                             if self['ut_start_orig']:
                                 ut_start_orig = self['ut_start_orig'][iexp]
                             else:
-                                ut_start_orig = tms_orig
+                                if self['tz_orig'] == 'UT':
+                                    ut_start_orig = tms_orig
+                                else:
+                                    str_start = '{} {}'.format(date_start_orig,
+                                                               tms_orig)
+                                    dt_start = (Time(str_start, scale='tai', 
+                                                     format='iso')
+                                                .datetime)
+                                    dt_local = (pytz.timezone(self['tz_orig'])
+                                                .localize(dt_start))
+                                    date_start_orig = (dt_local.astimezone(pytz.utc)
+                                                       .strftime('%Y-%m-%d'))
+                                    ut_start_orig = (dt_local.astimezone(pytz.utc)
+                                                     .strftime('%H:%M:%S'))
 
                             if not ':' in ut_start_orig:
                                 ut_start_orig += ':00'
@@ -1700,7 +1747,20 @@ class PlateMeta(OrderedDict):
                             if self['ut_end_orig']:
                                 ut_end_orig = self['ut_end_orig'][iexp]
                             else:
-                                ut_end_orig = tme_orig
+                                if self['tz_orig'] == 'UT':
+                                    ut_end_orig = tme_orig
+                                else:
+                                    str_end = '{} {}'.format(date_end_orig,
+                                                             tme_orig)
+                                    dt_end = (Time(str_end, scale='tai', 
+                                                   format='iso')
+                                              .datetime)
+                                    dt_local = (pytz.timezone(self['tz_orig'])
+                                                .localize(dt_end))
+                                    date_end_orig = (dt_local.astimezone(pytz.utc)
+                                                     .strftime('%Y-%m-%d'))
+                                    ut_end_orig = (dt_local.astimezone(pytz.utc)
+                                                   .strftime('%H:%M:%S'))
 
                             if not ':' in ut_end_orig:
                                 ut_end_orig += ':00'
