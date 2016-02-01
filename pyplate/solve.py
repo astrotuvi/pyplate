@@ -596,6 +596,7 @@ class SolveProcess:
         self.use_psf = False
         self.psf_threshold_sigma = 20.
         self.psf_model_sigma = 20.
+        self.min_model_sources = 100
         self.max_model_sources = 10000
         self.sip = 3
         self.skip_bright = 10
@@ -731,7 +732,8 @@ class SolveProcess:
                 pass
 
         for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
-                     'force_recursion_depth', 'max_model_sources']:
+                     'force_recursion_depth', 'min_model_sources', 
+                     'max_model_sources']:
             try:
                 setattr(self, attr, conf.getint('Solve', attr))
             except ValueError:
@@ -1174,23 +1176,41 @@ class SolveProcess:
                     num_psf_sources = hcat['NAXIS2']
                     self.log.write('Extracted {:d} PSF-model sources'
                                    .format(num_psf_sources), level=4, event=32)
+                    enough_psf_sources = False
 
-                    if num_psf_sources < self.max_model_sources:
+                    if (num_psf_sources >= self.min_model_sources and 
+                        num_psf_sources <= self.max_model_sources):
+                        enough_psf_sources = True
                         break
 
-                    # Repeat with higher threshold to get less sources
-                    if use_fix_threshold:
-                        psf_model_threshold *= 1.2
-                    else:
-                        psf_model_sigma *= 1.2
+                    if num_psf_sources < self.min_model_sources:
+                        # Repeat with lower threshold to get more sources
+                        if use_fix_threshold:
+                            psf_model_threshold *= 0.9
+                        else:
+                            psf_model_sigma *= 0.9
 
-                    self.log.write('Too many PSF-model sources (max {:d}), '
-                                   'repeating extraction with higher threshold'
-                                   .format(self.max_model_sources), 
-                                   level=4, event=32)
+                        self.log.write('Too few PSF-model sources (min {:d}), '
+                                       'repeating extraction with lower '
+                                       'threshold'
+                                       .format(self.min_model_sources), 
+                                       level=4, event=32)
+
+                    if num_psf_sources > self.max_model_sources:
+                        # Repeat with higher threshold to get less sources
+                        if use_fix_threshold:
+                            psf_model_threshold *= 1.2
+                        else:
+                            psf_model_sigma *= 1.2
+
+                        self.log.write('Too many PSF-model sources (max {:d}), '
+                                       'repeating extraction with higher '
+                                       'threshold'
+                                       .format(self.max_model_sources), 
+                                       level=4, event=32)
 
             # Run PSFEx
-            if (num_psf_sources > 0 and
+            if (enough_psf_sources and
                 not os.path.exists(os.path.join(self.scratch_dir, 
                                                 self.basefn + '_psfex.psf'))):
                 self.log.write('Running PSFEx', level=3, event=33)
@@ -1235,7 +1255,7 @@ class SolveProcess:
                 self.log.write('', timestamp=False, double_newline=False)
 
             # Run SExtractor with PSF
-            if (num_psf_sources > 0 and
+            if (enough_psf_sources and
                 not os.path.exists(os.path.join(self.scratch_dir, 
                                                 self.basefn + '.cat-psf'))):
                 self.log.write('Running SExtractor with PSF model',
@@ -1586,7 +1606,7 @@ class SolveProcess:
                        ''.format(len(indnegrad)), level=4, event=36)
 
         # For bright stars, update coordinates with PSF coordinates
-        if use_psf and num_psf_sources > 0:
+        if use_psf and enough_psf_sources:
             self.log.write('Updating coordinates with PSF coordinates '
                            'for bright sources', level=3, event=37)
 
