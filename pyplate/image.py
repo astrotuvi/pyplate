@@ -37,6 +37,7 @@ class PlateConverter:
         self.tiff_dir = ''
         self.write_fits_dir = ''
         self.write_wedge_dir = ''
+        self.exif_timezone = None
         self.wedge_height = None
 
     def assign_conf(self, conf):
@@ -51,6 +52,12 @@ class PlateConverter:
         for attr in ['tiff_dir', 'write_fits_dir', 'write_wedge_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['exif_timezone']:
+            try:
+                setattr(self, attr, conf.get('Image', attr))
             except ConfigParser.Error:
                 pass
 
@@ -98,14 +105,19 @@ class PlateConverter:
 
         if exif_datetime:
             if exif_datetime[4] == ':':
-                exif_datetime = '{} {}'.format(exif_datetime[:10].replace(':', '-'),
+                exif_datetime = '{} {}'.format(exif_datetime[:10]
+                                               .replace(':', '-'),
                                                exif_datetime[11:])
 
-            if pytz_available:
+            if pytz_available and self.exif_timezone:
                 dt = datetime.strptime(exif_datetime, '%Y-%m-%d %H:%M:%S')
-                # !!! Need to read timezone from configuration!
-                dt_local = pytz.timezone('Europe/Berlin').localize(dt)
-                exif_datetime = dt_local.astimezone(pytz.utc).strftime('%Y-%m-%dT%H:%M:%S')
+
+                try:
+                    dt_local = pytz.timezone(self.exif_timezone).localize(dt)
+                    exif_datetime = (dt_local.astimezone(pytz.utc)
+                                     .strftime('%Y-%m-%dT%H:%M:%S'))
+                except pytz.exceptions.UnknownTimeZoneError:
+                    pass
 
         #print '{} Reading {}'.format(str(datetime.now()), fn_tiff)
 
