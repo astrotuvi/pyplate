@@ -979,7 +979,8 @@ class PlateMeta(OrderedDict):
         13: 'focusing',
         15: 'raster scan/trail',
         24: 'objective grating',
-        25: 'objective grating, multi-exposure'}
+        25: 'objective grating, multi-exposure',
+        31: 'objective prism together with a grating'}
 
     def assign_conf(self, conf):
         """
