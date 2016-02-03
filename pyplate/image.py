@@ -39,6 +39,7 @@ class PlateConverter:
         self.write_wedge_dir = ''
         self.scan_exif_timezone = None
         self.wedge_height = None
+        self.cut_wedge = False
 
     def assign_conf(self, conf):
         """
@@ -61,6 +62,18 @@ class PlateConverter:
             except ConfigParser.Error:
                 pass
 
+        for attr in ['wedge_height']:
+            try:
+                setattr(self, attr, conf.getint('Image', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['cut_wedge']:
+            try:
+                setattr(self, attr, conf.getboolean('Image', attr))
+            except ConfigParser.Error:
+                pass
+
     def batch_tiff2fits(self):
         """
         Convert all TIFF images in the TIFF directory to FITS.
@@ -70,7 +83,7 @@ class PlateConverter:
         for fn_tiff in sorted(glob.glob(os.path.join(self.tiff_dir, '*.tif'))):
             self.tiff2fits(os.path.basename(fn_tiff))
 
-    def tiff2fits(self, filename, wedge_height=None):
+    def tiff2fits(self, filename, cut_wedge=None, wedge_height=None):
         """
         Convert TIFF image to FITS.
 
@@ -78,10 +91,15 @@ class PlateConverter:
         ----------
         filename : str
             Filename of the TIFF image
+        cut_wedge : bool
+            If True, a wedge image is separated from below plate image
         wedge_height : int
             Height of the wedge in pixels
 
         """
+
+        if cut_wedge is None and self.cut_wedge is not None:
+            cut_wedge = self.cut_wedge
 
         if wedge_height is None and self.wedge_height is not None:
             wedge_height = self.wedge_height
@@ -129,14 +147,14 @@ class PlateConverter:
         imblack = im.min()
         imwhite = im.max()
 
-        if wedge_height is not None:
-            if wedge_height == 0:
-                im_plates = im
-                im_wedge = None
-            else:
-                ycut_wedge = imheight - wedge_height
-                im_wedge = im[ycut_wedge:,:]
-                im_plates = im[:ycut_wedge,:]
+        # Cut wedge image if necessary
+        if not cut_wedge or wedge_height == 0:
+            im_plates = im
+            im_wedge = None
+        elif cut_wedge and wedge_height != 0:
+            ycut_wedge = imheight - wedge_height
+            im_wedge = im[ycut_wedge:,:]
+            im_plates = im[:ycut_wedge,:]
         else:
             yedge = []
             yedge_plate = []
@@ -193,6 +211,26 @@ class PlateConverter:
 
             hdu_wedge.header.add_history(history_line)
 
+            # Create wedge output directory
+            if self.write_wedge_dir:
+                try:
+                    os.makedirs(self.write_wedge_dir)
+                except OSError:
+                    if not os.path.isdir(self.write_wedge_dir):
+                        print ('Could not create directory {}'
+                               .format(write_wedge_dir))
+                        raise
+
+        # Create FITS image output directory
+        if self.write_fits_dir:
+            try:
+                os.makedirs(self.write_fits_dir)
+            except OSError:
+                if not os.path.isdir(self.write_fits_dir):
+                    print ('Could not create directory {}'
+                           .format(write_fits_dir))
+                    raise
+
         # If filename contains dash, assume that two plates have been scanned 
         # side by side.
         if '-' in os.path.basename(fn_tiff):
@@ -244,9 +282,10 @@ class PlateConverter:
             hdu_right.writeto(os.path.join(self.write_fits_dir, fn_right), 
                               clobber=True)
 
-            fn_wedge = os.path.splitext(fn_right)[0] + '_w.fits'
-            hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
-                              clobber=True)
+            if im_wedge is not None:
+                fn_wedge = os.path.splitext(fn_right)[0] + '_w.fits'
+                hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
+                                  clobber=True)
         else:
             fn_plate = os.path.splitext(os.path.basename(fn_tiff))[0] + '.fits'
             hdu_plate = fits.PrimaryHDU(np.flipud(im_plates))
