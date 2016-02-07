@@ -2260,7 +2260,9 @@ class PlateHeader(fits.Header):
             if isinstance(value, str):
                 value = (value.replace('ä','ae').replace('Ä','AE')
                          .replace('ö','oe').replace('Ö','OE')
-                         .replace('ü','ue').replace('Ü','UE'))
+                         .replace('ü','ue').replace('Ü','UE')
+                         .replace('õ','o').replace('Õ','O')
+                         .replace('ž','z').replace('Ž','Z'))
 
                 # Workaround for Astropy treating colon in string as assignment
                 # of numerical value
