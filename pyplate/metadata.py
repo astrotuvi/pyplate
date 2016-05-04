@@ -613,23 +613,23 @@ class ArchiveMeta:
 
         """
 
-        if self.logbooks or self.logpage_csv_dict:
-            platedb = PlateDB()
-            platedb.assign_conf(self.conf)
-            platedb.open_connection()
+        #if self.logbooks or self.logpage_csv_dict:
+        platedb = PlateDB()
+        platedb.assign_conf(self.conf)
+        platedb.open_connection()
 
-            for k,v in self.logbookmeta.items():
-                platedb.write_logbook(v)
+        for k,v in self.logbookmeta.items():
+            platedb.write_logbook(v)
 
-            for filename in self.logpage_csv_dict.keys():
-                logpagemeta = self.get_logpagemeta(filename=filename)
-                platedb.write_logpage(logpagemeta)
+        for filename in self.logpage_csv_dict.keys():
+            logpagemeta = self.get_logpagemeta(filename=filename)
+            platedb.write_logpage(logpagemeta)
 
-            for plate_id in self.get_platelist():
-                platemeta = self.get_platemeta(plate_id=plate_id)
-                platedb.write_plate_logpage(platemeta)
+        for plate_id in self.get_platelist():
+            platemeta = self.get_platemeta(plate_id=plate_id)
+            platedb.write_plate_logpage(platemeta)
 
-            platedb.close_connection()
+        platedb.close_connection()
 
     def get_platemeta(self, plate_id=None, wfpdb_id=None, filename=None):
         """
