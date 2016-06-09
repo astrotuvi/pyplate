@@ -853,6 +853,10 @@ class PlateDB:
                 col_list = ['plate_id', 'logpage_id', 'logpage_order']
                 plate_id = self.get_plate_id(platemeta['plate_num'],
                                              platemeta['archive_id'])
+
+                if plate_id is None:
+                    plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
+
                 logpage_id = self.get_logpage_id(filename, 
                                                  platemeta['archive_id'])
 

@@ -1,9 +1,8 @@
 from setuptools import setup
-import pyplate
 
 setup(
     name = 'pyplate',
-    version = pyplate.__version__,
+    version = open('pyplate/_version.py').readlines()[-1].split()[-1].strip('"\''),
     url = 'https://github.com/astrotuvi/pyplate',
     license = 'Apache License, Version 2.0',
     author = 'Taavi Tuvikene',
