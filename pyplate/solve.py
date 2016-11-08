@@ -4475,7 +4475,7 @@ class SolveProcess:
 
         """
 
-        self.log.write('Recursive solving of astrometry', level=3, event=78)
+        self.log.write('Recursive improvement of photometry', level=3, event=78)
 
         if max_recursion_depth is None:
             max_recursion_depth = self.max_recursion_depth
@@ -4484,15 +4484,16 @@ class SolveProcess:
         self.wcshead.set('XMAX', self.imwidth)
         self.wcshead.set('YMIN', 0)
         self.wcshead.set('YMAX', self.imheight)
+        self._photrec(self.wcshead, max_recursion_depth=max_recursion_depth)
 
-        mags = self._photrec(self.wcshead, 
-                             max_recursion_depth=max_recursion_depth)
+        #mags = self._photrec(self.wcshead, 
+        #                     max_recursion_depth=max_recursion_depth)
         #self.sources['natmag_sub'] = mags[:,0]
         #self.sources['natmagerr_sub'] = mags[:,1]
-        self.sources['bmag_sub'] = mags[:,2]
-        self.sources['bmagerr_sub'] = mags[:,3]
-        self.sources['vmag_sub'] = mags[:,4]
-        self.sources['vmagerr_sub'] = mags[:,5]
+        #self.sources['bmag_sub'] = mags[:,2]
+        #self.sources['bmagerr_sub'] = mags[:,3]
+        #self.sources['vmag_sub'] = mags[:,4]
+        #self.sources['vmagerr_sub'] = mags[:,5]
         #self.sources['phot_sub_grid'] = mags[:,6]
         #self.sources['phot_sub_id'] = mags[:,7]
 
@@ -4631,15 +4632,15 @@ class SolveProcess:
                          self.sources['natmag_correction'][indout])
             self.sources['natmag_sub'][indout] = natmagsub 
             self.sources['natmagerr_sub'][indout] = self.sources['natmagerr'][indout]
-            natmag[indout] = (self.sources['natmag'][indout] + 
-                              self.sources['natmag_correction'][indout])
-            natmagerr[indout] = self.sources['natmagerr'][indout]
+            #natmag[indout] = (self.sources['natmag'][indout] + 
+            #                  self.sources['natmag_correction'][indout])
+            #natmagerr[indout] = self.sources['natmagerr'][indout]
             #bmag[indout] = 
             #bmagerr[indout] = 
             #vmag[indout] = 
             #vmagerr[indout] = 
-            gridsize[indout] = 2**recdepth
-            subid[indout] = current_sub_id
+            #gridsize[indout] = 2**recdepth
+            #subid[indout] = current_sub_id
 
             # Solve sub-fields recursively if recursion depth is less
             # than maximum.
@@ -4651,25 +4652,26 @@ class SolveProcess:
                 head.set('YMAX', ymax)
                 head.set('DEPTH', recdepth)
                 head.set('SUB-ID', current_sub_id)
+                self._photrec(head, max_recursion_depth=max_recursion_depth)
 
-                new_mags = self._photrec(head, 
-                                         max_recursion_depth=max_recursion_depth)
-                bnew = (np.isfinite(new_mags[:,0]) & 
-                        np.isfinite(new_mags[:,1]))
+                #new_mags = self._photrec(head, 
+                #                         max_recursion_depth=max_recursion_depth)
+                #bnew = (np.isfinite(new_mags[:,0]) & 
+                #        np.isfinite(new_mags[:,1]))
 
-                if bnew.sum() > 0:
-                    indnew = np.where(bnew)
-                    natmag[indnew] = new_mags[indnew,0]
-                    natmagerr[indnew] = new_mags[indnew,1]
-                    bmag[indnew] = new_mags[indnew,2]
-                    bmagerr[indnew] = new_mags[indnew,3]
-                    vmag[indnew] = new_mags[indnew,4]
-                    vmagerr[indnew] = new_mags[indnew,5]
-                    gridsize[indnew] = new_mags[indnew,6]
-                    subid[indnew] = new_mags[indnew,7]
+                #if bnew.sum() > 0:
+                #    indnew = np.where(bnew)
+                #    natmag[indnew] = new_mags[indnew,0]
+                #    natmagerr[indnew] = new_mags[indnew,1]
+                #    bmag[indnew] = new_mags[indnew,2]
+                #    bmagerr[indnew] = new_mags[indnew,3]
+                #    vmag[indnew] = new_mags[indnew,4]
+                #    vmagerr[indnew] = new_mags[indnew,5]
+                #    gridsize[indnew] = new_mags[indnew,6]
+                #    subid[indnew] = new_mags[indnew,7]
 
-        return np.column_stack((natmag, natmagerr, bmag, bmagerr, 
-                                vmag, vmagerr, gridsize, subid))
+        #return np.column_stack((natmag, natmagerr, bmag, bmagerr, 
+        #                        vmag, vmagerr, gridsize, subid))
 
     def output_cterm_db(self):
         """
