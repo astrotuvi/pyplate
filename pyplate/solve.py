@@ -484,7 +484,8 @@ _source_meta = OrderedDict([
     ('dej2000_sub',         ('f8', '%11.7f', '')),
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
-    ('gridsize_sub',        ('i2', '%3d', '')),
+    ('astrom_sub_grid',     ('i2', '%3d', '')),
+    ('astrom_sub_id',       ('i2', '%5d', '')),
     ('nn_dist',             ('f4', '%6.3f', '')),
     ('natmag',              ('f4', '%7.4f', '')),
     ('natmagerr',           ('f4', '%7.4f', '')),
@@ -500,7 +501,7 @@ _source_meta = OrderedDict([
     ('bmagerr_sub',         ('f4', '%7.4f', '')),
     ('vmag_sub',            ('f4', '%7.4f', '')),
     ('vmagerr_sub',         ('f4', '%7.4f', '')),
-    ('phot_gridsize_sub',   ('i2', '%3d', '')),
+    ('phot_sub_grid',       ('i2', '%3d', '')),
     ('phot_sub_id',         ('i2', '%5d', '')),
     ('flag_calib_star',     ('i1', '%1d', '')),
     ('flag_calib_outlier',  ('i1', '%1d', '')),
@@ -2370,7 +2371,7 @@ class SolveProcess:
         self.wcshead.set('YMIN', 0)
         self.wcshead.set('YMAX', self.imheight)
 
-        radec,gridsize = \
+        radec,gridsize,subid = \
                 self._solverec(self.wcshead, np.array([99.,99.]), distort=3,
                                max_recursion_depth=max_recursion_depth,
                                force_recursion_depth=force_recursion_depth)
@@ -2378,7 +2379,8 @@ class SolveProcess:
         self.sources['dej2000_sub'] = radec[:,1]
         self.sources['raerr_sub'] = radec[:,2]
         self.sources['decerr_sub'] = radec[:,3]
-        self.sources['gridsize_sub'] = gridsize
+        self.sources['astrom_sub_grid'] = gridsize
+        self.sources['astrom_sub_id'] = subid
 
     def _solverec(self, in_head, in_astromsigma, distort=3, 
                   max_recursion_depth=None, force_recursion_depth=None):
@@ -2401,6 +2403,11 @@ class SolveProcess:
             recdepth = in_head['DEPTH'] + 1
         else:
             recdepth = 1
+
+        if 'SUB-ID' in in_head:
+            parent_sub_id = in_head['SUB-ID']
+        else:
+            parent_sub_id = 0
 
         # Read SCAMP reference catalog for this plate
         #ref = fits.open(os.path.join(self.scratch_dir, 
@@ -2429,6 +2436,7 @@ class SolveProcess:
         sigma_ra = np.zeros(len(x)) * np.nan
         sigma_dec = np.zeros(len(x)) * np.nan
         gridsize = np.zeros(len(x))
+        subid = np.zeros(len(x))
 
         xsize = (in_head['XMAX'] - in_head['XMIN']) / 2.
         ysize = (in_head['YMAX'] - in_head['YMIN']) / 2.
@@ -2438,6 +2446,7 @@ class SolveProcess:
         yoffset = np.array([0., 0., 1., 1.])
 
         for sub in subrange:
+            current_sub_id = parent_sub_id * 10 + sub + 1
             xmin = in_head['XMIN'] + xoffset[sub] * xsize
             ymin = in_head['YMIN'] + yoffset[sub] * ysize
             xmax = xmin + xsize
@@ -2812,6 +2821,7 @@ class SolveProcess:
                 sigma_ra[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[0]**2)
                 sigma_dec[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[1]**2)
                 gridsize[indout] = 2**recdepth
+                subid[indout] = current_sub_id
 
                 # Solve sub-fields recursively if recursion depth is less
                 # than maximum.
@@ -2821,8 +2831,9 @@ class SolveProcess:
                     head.set('YMIN', ymin)
                     head.set('YMAX', ymax)
                     head.set('DEPTH', recdepth)
+                    head.set('SUB-ID', current_sub_id)
 
-                    new_radec,new_gridsize = \
+                    new_radec,new_gridsize,new_subid = \
                             self._solverec(head, astromsigma, 
                                            distort=distort,
                                            max_recursion_depth=max_recursion_depth,
@@ -2838,6 +2849,7 @@ class SolveProcess:
                         sigma_ra[indnew] = new_radec[indnew,2]
                         sigma_dec[indnew] = new_radec[indnew,3]
                         gridsize[indnew] = new_gridsize[indnew]
+                        subid[indnew] = new_subid[indnew]
             elif recdepth < force_recursion_depth:
                 # Solve sub-fields recursively if recursion depth is less
                 # than the required minimum.
@@ -2846,8 +2858,9 @@ class SolveProcess:
                 head.set('YMIN', ymin)
                 head.set('YMAX', ymax)
                 head.set('DEPTH', recdepth)
+                head.set('SUB-ID', current_sub_id)
 
-                new_radec,new_gridsize = \
+                new_radec,new_gridsize,new_subid = \
                         self._solverec(head, astromsigma,
                                        distort=distort,
                                        max_recursion_depth=max_recursion_depth,
@@ -2863,12 +2876,13 @@ class SolveProcess:
                     sigma_ra[indnew] = new_radec[indnew,2]
                     sigma_dec[indnew] = new_radec[indnew,3]
                     gridsize[indnew] = new_gridsize[indnew]
+                    subid[indnew] = new_subid[indnew]
 
         #ref.close()
         #reftmp.close()
 
         return (np.column_stack((ra, dec, sigma_ra, sigma_dec)), 
-                gridsize)
+                gridsize, subid)
 
     def process_source_coordinates(self):
         """
@@ -3366,7 +3380,7 @@ class SolveProcess:
                      'raj2000_wcs', 'dej2000_wcs',
                      'raj2000_sub', 'dej2000_sub', 
                      'raerr_sub', 'decerr_sub',
-                     'gridsize_sub',
+                     'astrom_sub_grid', 'astrom_sub_id',
                      'mag_auto', 'magerr_auto', 
                      'flux_auto', 'fluxerr_auto',
                      'mag_iso', 'magerr_iso', 
@@ -3380,7 +3394,7 @@ class SolveProcess:
                      'bmag', 'bmagerr', 'vmag', 'vmagerr',
                      'natmag_residual', 'natmag_correction',
                      'natmag_sub', 'natmagerr_sub', 
-                     'phot_gridsize_sub', 'phot_sub_id',
+                     'phot_sub_grid', 'phot_sub_id',
                      'flag_calib_star', 'flag_calib_outlier',
                      'color_term', 'color_bv', 'cat_natmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
@@ -4479,7 +4493,7 @@ class SolveProcess:
         self.sources['bmagerr_sub'] = mags[:,3]
         self.sources['vmag_sub'] = mags[:,4]
         self.sources['vmagerr_sub'] = mags[:,5]
-        #self.sources['phot_gridsize_sub'] = mags[:,6]
+        #self.sources['phot_sub_grid'] = mags[:,6]
         #self.sources['phot_sub_id'] = mags[:,7]
 
     def _photrec(self, in_head, max_recursion_depth=None):
@@ -4520,7 +4534,7 @@ class SolveProcess:
         yoffset = np.array([0., 0., 1., 1.])
 
         for sub in subrange:
-            sub_id = parent_sub_id * 10 + sub + 1
+            current_sub_id = parent_sub_id * 10 + sub + 1
             xmin = in_head['XMIN'] + xoffset[sub] * xsize
             ymin = in_head['YMIN'] + yoffset[sub] * ysize
             xmax = xmin + xsize
@@ -4530,7 +4544,7 @@ class SolveProcess:
             height = ymax - ymin
 
             self.log.write('Sub-field {:d} ({:d}x{:d}) {:.2f} : {:.2f}, '
-                           '{:.2f} : {:.2f}'.format(sub_id,
+                           '{:.2f} : {:.2f}'.format(current_sub_id,
                                                     2**recdepth, 2**recdepth, 
                                                     xmin, xmax, ymin, ymax))
             
@@ -4551,7 +4565,7 @@ class SolveProcess:
                           'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
                           'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
                           '#stars: {:d}'
-                          .format(sub_id, 2**recdepth, 2**recdepth, 
+                          .format(current_sub_id, 2**recdepth, 2**recdepth, 
                                   xmin, xmax, ymin, ymax, 
                                   xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
                                   nsubstars))
@@ -4585,7 +4599,7 @@ class SolveProcess:
             if self.write_phot_dir:
                 fn_sub = os.path.join(self.write_phot_dir,
                                       '{}_sub_{:<05d}.txt'.format(self.basefn,
-                                                                  sub_id))
+                                                                  current_sub_id))
                 fsub = open(fn_sub, 'wb')
                 np.savetxt(fsub, np.column_stack((platemag, residuals, 
                                                   p3(platemag), p3pl(platemag))))
@@ -4611,8 +4625,8 @@ class SolveProcess:
                 self.sources['natmag_correction'][np.where(bnan)] = 0.
 
             self.sources['natmag_correction'][indout] += p3(self.sources['mag_auto'][indout])
-            self.sources['phot_gridsize_sub'][indout] = 2**recdepth
-            self.sources['phot_sub_id'][indout] = sub_id
+            self.sources['phot_sub_grid'][indout] = 2**recdepth
+            self.sources['phot_sub_id'][indout] = current_sub_id
             natmagsub = (self.sources['natmag'][indout] + 
                          self.sources['natmag_correction'][indout])
             self.sources['natmag_sub'][indout] = natmagsub 
@@ -4625,7 +4639,7 @@ class SolveProcess:
             #vmag[indout] = 
             #vmagerr[indout] = 
             gridsize[indout] = 2**recdepth
-            subid[indout] = sub_id
+            subid[indout] = current_sub_id
 
             # Solve sub-fields recursively if recursion depth is less
             # than maximum.
@@ -4636,7 +4650,7 @@ class SolveProcess:
                 head.set('YMIN', ymin)
                 head.set('YMAX', ymax)
                 head.set('DEPTH', recdepth)
-                head.set('SUB-ID', sub_id)
+                head.set('SUB-ID', current_sub_id)
 
                 new_mags = self._photrec(head, 
                                          max_recursion_depth=max_recursion_depth)
