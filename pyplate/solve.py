@@ -2259,6 +2259,7 @@ class SolveProcess:
 
                 sql1 = 'SELECT RAJ2000,DEJ2000,e_RAJ2000,e_DEJ2000,amag,e_amag,'
                 sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,Bmag,Vmag,e_Bmag,e_Vmag'
+                #sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,rmag,imag,e_rmag,e_imag'
                 sql2 = ' FROM {}'.format(self.ucac4_db_table)
                 sql2 += ' FORCE INDEX (idx_radecmag)'
 
@@ -3384,6 +3385,7 @@ class SolveProcess:
                      'color_term', 'color_bv', 'cat_natmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
+                     'ucac4_dist2', 'ucac4_nn_dist',
                      'tycho2_id', 'tycho2_ra', 'tycho2_dec',
                      'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist',
                      'apass_ra', 'apass_dec', 'apass_bmag', 'apass_vmag', 
@@ -3490,10 +3492,10 @@ class SolveProcess:
             # Use APASS magnitudes
             ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
                                    (src_cal['apass_vmag'] > 10) &
-                                   (src_cal['apass_bmagerr'] > 0) &
-                                   (src_cal['apass_bmagerr'] < 0.1) &
-                                   (src_cal['apass_verr'] > 0) &
-                                   (src_cal['apass_verr'] < 0.1) &
+                                   #(src_cal['apass_bmagerr'] > 0) &
+                                   #(src_cal['apass_bmagerr'] < 0.1) &
+                                   #(src_cal['apass_verr'] > 0) &
+                                   #(src_cal['apass_verr'] < 0.1) &
                                    (src_cal['apass_nn_dist'] > 10) &
                                    (src_cal['apass_dist2'] >
                                     2. * src_cal['apass_dist']))[0]
@@ -3519,10 +3521,10 @@ class SolveProcess:
             # Use UCAC4 magnitudes
             ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
                                    (src_cal['ucac4_vmag'] > 10) &
-                                   (src_cal['ucac4_bmagerr'] > 0) &
-                                   (src_cal['ucac4_bmagerr'] < 0.09) &
-                                   (src_cal['ucac4_vmagerr'] > 0) &
-                                   (src_cal['ucac4_vmagerr'] < 0.09) & 
+                                   #(src_cal['ucac4_bmagerr'] > 0) &
+                                   #(src_cal['ucac4_bmagerr'] < 0.09) &
+                                   #(src_cal['ucac4_vmagerr'] > 0) &
+                                   #(src_cal['ucac4_vmagerr'] < 0.09) & 
                                    (src_cal['ucac4_nn_dist'] > 10) &
                                    (src_cal['ucac4_dist2'] >
                                     src_cal['ucac4_dist']+10.))[0]
@@ -3551,8 +3553,8 @@ class SolveProcess:
             src_nomag = src_cal[ind_noucacmag]
             ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
                                   np.isfinite(src_nomag['tycho2_vtmag']) & 
-                                  (src_nomag['tycho2_btmagerr'] < 0.1) & 
-                                  (src_nomag['tycho2_vtmagerr'] < 0.1) &
+                                  #(src_nomag['tycho2_btmagerr'] < 0.1) & 
+                                  #(src_nomag['tycho2_vtmagerr'] < 0.1) &
                                   (src_nomag['tycho2_nn_dist'] > 10) &
                                   (src_nomag['tycho2_dist2'] > 
                                    src_nomag['tycho2_dist']+10.))[0]
@@ -3919,9 +3921,14 @@ class SolveProcess:
                                level=2, event=73)
                 continue
 
-            _,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
-            plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
-                                          return_index=True)
+            #_,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
+            #plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
+            #                              return_index=True)
+            plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
+
+            self.log.write('Annular bin {:d}: {:d} plate_mag_u stars'
+                           ''.format(b, len(plate_mag_u)), 
+                           double_newline=False, level=4, event=73)
 
             if len(plate_mag_u) < 20:
                 self.log.write('Annular bin {:d}: too few unique calibration '
@@ -3929,9 +3936,12 @@ class SolveProcess:
                                double_newline=False, level=2, event=73)
                 continue
 
-            cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
-            cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
-            ind_calibstar_u = ind_calibstar[ind_bin[uind1[uind2]]]
+            #cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
+            #cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
+            #ind_calibstar_u = ind_calibstar[ind_bin[uind1[uind2]]]
+            cat_bmag_u = cat_bmag[ind_bin[uind2]]
+            cat_vmag_u = cat_vmag[ind_bin[uind2]]
+            ind_calibstar_u = ind_calibstar[ind_bin[uind2]]
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
@@ -4216,6 +4226,9 @@ class SolveProcess:
                 ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
                 num_valid = len(ind_valid)
 
+                self.log.write('Annular bin {:d}: {:d} ind_good stars'
+                               ''.format(b, len(ind_good)), 
+                               double_newline=False, level=4, event=73)
                 self.log.write('Annular bin {:d}: {:d} good calibration stars'
                                ''.format(b, num_valid), 
                                double_newline=False, level=4, event=73)
@@ -4460,14 +4473,14 @@ class SolveProcess:
 
         mags = self._photrec(self.wcshead, 
                              max_recursion_depth=max_recursion_depth)
-        self.sources['natmag_sub'] = mags[:,0]
-        self.sources['natmagerr_sub'] = mags[:,1]
+        #self.sources['natmag_sub'] = mags[:,0]
+        #self.sources['natmagerr_sub'] = mags[:,1]
         self.sources['bmag_sub'] = mags[:,2]
         self.sources['bmagerr_sub'] = mags[:,3]
         self.sources['vmag_sub'] = mags[:,4]
         self.sources['vmagerr_sub'] = mags[:,5]
-        self.sources['phot_gridsize_sub'] = mags[:,6]
-        self.sources['phot_sub_id'] = mags[:,7]
+        #self.sources['phot_gridsize_sub'] = mags[:,6]
+        #self.sources['phot_sub_id'] = mags[:,7]
 
     def _photrec(self, in_head, max_recursion_depth=None):
         """
@@ -4598,6 +4611,12 @@ class SolveProcess:
                 self.sources['natmag_correction'][np.where(bnan)] = 0.
 
             self.sources['natmag_correction'][indout] += p3(self.sources['mag_auto'][indout])
+            self.sources['phot_gridsize_sub'][indout] = 2**recdepth
+            self.sources['phot_sub_id'][indout] = sub_id
+            natmagsub = (self.sources['natmag'][indout] + 
+                         self.sources['natmag_correction'][indout])
+            self.sources['natmag_sub'][indout] = natmagsub 
+            self.sources['natmagerr_sub'][indout] = self.sources['natmagerr'][indout]
             natmag[indout] = (self.sources['natmag'][indout] + 
                               self.sources['natmag_correction'][indout])
             natmagerr[indout] = self.sources['natmagerr'][indout]
