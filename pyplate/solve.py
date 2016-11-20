@@ -2455,8 +2455,9 @@ class SolveProcess:
             width = xmax - xmin
             height = ymax - ymin
 
-            self.log.write('Sub-field ({:d}x{:d}) {:.2f} : {:.2f}, '
-                           '{:.2f} : {:.2f}'.format(2**recdepth, 2**recdepth, 
+            self.log.write('Sub-field {:d} ({:d}x{:d}) {:.2f} : {:.2f}, '
+                           '{:.2f} : {:.2f}'.format(current_sub_id,
+                                                    2**recdepth, 2**recdepth, 
                                                     xmin, xmax, ymin, ymax))
             
             xmin_ext = xmin - 0.1 * xsize
@@ -2472,11 +2473,11 @@ class SolveProcess:
                     (self.sources['flag_clean'] == 1))
             nsubstars = bsub.sum()
 
-            db_log_msg = ('Sub-field: {:d}x{:d}, '
+            db_log_msg = ('Sub-field: {:d}, {:d}x{:d}, '
                           'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
                           'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
                           '#stars: {:d}'
-                          .format(2**recdepth, 2**recdepth, 
+                          .format(current_sub_id, 2**recdepth, 2**recdepth, 
                                   xmin, xmax, ymin, ymax, 
                                   xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
                                   nsubstars))

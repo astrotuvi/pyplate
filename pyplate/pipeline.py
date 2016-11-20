@@ -39,6 +39,7 @@ class PlateImagePipeline:
         self.output_wcs_file = False
         self.solve_recursive = False
         self.calibrate_photometry = False
+        self.improve_photometry = False
         self.output_calibration_db = False
         self.output_sources_db = False
         self.output_sources_csv = False
@@ -65,6 +66,7 @@ class PlateImagePipeline:
                      'invert_image', 'extract_sources', 'solve_plate', 
                      'output_solution_db', 'output_wcs_file', 
                      'solve_recursive', 'calibrate_photometry', 
+                     'improve_photometry',
                      'output_calibration_db', 
                      'output_sources_db', 'output_sources_csv']:
             try:
@@ -188,6 +190,9 @@ class PlateImagePipeline:
 
             if self.calibrate_photometry:
                 proc.calibrate_photometry()
+
+            if self.improve_photometry:
+                proc.improve_photometry_recursive()
 
             if self.output_calibration_db:
                 proc.output_cterm_db()
