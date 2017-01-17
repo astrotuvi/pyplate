@@ -4589,14 +4589,26 @@ class SolveProcess:
             # Improvement of calibration
             platemag = self.sources['mag_auto'][indsub]
             residuals = self.sources['natmag_residual'][indsub]
-            kde = sm.nonparametric.KDEUnivariate(platemag.astype(np.double))
-            kde.fit()
-            sden = InterpolatedUnivariateSpline(kde.support, kde.density, k=1)
-            weights = np.sqrt(sden(platemag))/(np.absolute(residuals)+0.2)
-            oldweights = 1./(np.absolute(residuals)+0.2)
 
-            p3 = np.poly1d(np.polyfit(platemag, residuals, 3, w=weights))
-            p3old = np.poly1d(np.polyfit(platemag, residuals, 3, w=oldweights))
+            frac = 0.2
+
+            if nsubstars < 500:
+                frac = 0.2 + 0.3 * (500 - nsubstars) / 500.
+
+            z = sm.nonparametric.lowess(residuals, platemag, 
+                                        frac=frac, it=3, delta=0.1, 
+                                        return_sorted=True)
+            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+            p3 = np.poly1d(np.polyfit(platemag, s(platemag), 3))
+
+            #kde = sm.nonparametric.KDEUnivariate(platemag.astype(np.double))
+            #kde.fit()
+            #sden = InterpolatedUnivariateSpline(kde.support, kde.density, k=1)
+            #weights = np.sqrt(sden(platemag))/(np.absolute(residuals)+0.2)
+            #oldweights = 1./(np.absolute(residuals)+0.2)
+
+            #p3 = np.poly1d(np.polyfit(platemag, residuals, 3, w=weights))
+            #p3old = np.poly1d(np.polyfit(platemag, residuals, 3, w=oldweights))
             #vals = p3(platemag)
 
             self.sources['natmag_residual'][indsub] -= p3(platemag)
@@ -4608,7 +4620,7 @@ class SolveProcess:
                                                                   current_sub_id))
                 fsub = open(fn_sub, 'wb')
                 np.savetxt(fsub, np.column_stack((platemag, residuals, 
-                                                  p3(platemag), p3old(platemag))))
+                                                  p3(platemag), s(platemag))))
                 fsub.write('\n\n')
                 fsub.close
 
