@@ -4590,20 +4590,30 @@ class SolveProcess:
             platemag = self.sources['mag_auto'][indsub]
             residuals = self.sources['natmag_residual'][indsub]
 
-            frac = 0.2
+            flt = sigma_clip(residuals)
+            ind_remain = ~flt.mask
+            platemag_remain = platemag[ind_remain]
+            nremain = ind_remain.size
 
-            if nsubstars < 500:
-                frac = 0.2 + 0.3 * (500 - nsubstars) / 500.
+            frac = 0.7
 
-            z = sm.nonparametric.lowess(residuals, platemag, 
+            #if nremain < 500:
+            #    frac = 0.4 + 0.3 * (500 - nremain) / 500.
+
+            z = sm.nonparametric.lowess(residuals[ind_remain], 
+                                        platemag_remain, 
                                         frac=frac, it=3, delta=0.1, 
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
-            p3 = np.poly1d(np.polyfit(platemag, s(platemag), 3))
 
-            #kde = sm.nonparametric.KDEUnivariate(platemag.astype(np.double))
-            #kde.fit()
-            #sden = InterpolatedUnivariateSpline(kde.support, kde.density, k=1)
+            kde = sm.nonparametric.KDEUnivariate(platemag_remain.astype(np.double))
+            kde.fit()
+            normden = (kde.density / kde.density.max())**(1./3.)
+            sden = InterpolatedUnivariateSpline(kde.support, normden, k=1)
+            #weights = sden(platemag_remain) / kde.density.max()
+
+            #p3 = np.poly1d(np.polyfit(platemag_remain, s(platemag_remain), 3))
+
             #weights = np.sqrt(sden(platemag))/(np.absolute(residuals)+0.2)
             #oldweights = 1./(np.absolute(residuals)+0.2)
 
@@ -4611,7 +4621,8 @@ class SolveProcess:
             #p3old = np.poly1d(np.polyfit(platemag, residuals, 3, w=oldweights))
             #vals = p3(platemag)
 
-            self.sources['natmag_residual'][indsub] -= p3(platemag)
+            weights = sden(platemag)
+            self.sources['natmag_residual'][indsub] -= s(platemag) * weights
 
             # Output of calibration improvement for inspection
             if self.write_phot_dir:
@@ -4620,7 +4631,7 @@ class SolveProcess:
                                                                   current_sub_id))
                 fsub = open(fn_sub, 'wb')
                 np.savetxt(fsub, np.column_stack((platemag, residuals, 
-                                                  p3(platemag), s(platemag))))
+                                                  s(platemag)*weights, s(platemag))))
                 fsub.write('\n\n')
                 fsub.close
 
@@ -4642,7 +4653,9 @@ class SolveProcess:
             if bnan.sum() > 0:
                 self.sources['natmag_correction'][np.where(bnan)] = 0.
 
-            self.sources['natmag_correction'][indout] += p3(self.sources['mag_auto'][indout])
+            weights = sden(self.sources['mag_auto'][indout])
+            self.sources['natmag_correction'][indout] += \
+                    s(self.sources['mag_auto'][indout]) * weights
             self.sources['phot_sub_grid'][indout] = 2**recdepth
             self.sources['phot_sub_id'][indout] = current_sub_id
             natmagsub = (self.sources['natmag'][indout] + 
