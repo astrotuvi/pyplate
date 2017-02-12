@@ -3492,6 +3492,7 @@ class SolveProcess:
                        level=3, event=71)
         ind_cal = np.where((self.sources['mag_auto'] > 0) & 
                            (self.sources['mag_auto'] < 90) &
+                           (self.sources['sextractor_flags'] == 0) &
                            (self.sources['flag_clean'] == 1))[0]
 
         if len(ind_cal) == 0:
@@ -4560,6 +4561,8 @@ class SolveProcess:
 
             bsub = ((x >= xmin_ext + 0.5) & (x < xmax_ext + 0.5) &
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
+                    (self.sources['flag_calib_outlier'] == 0) &
+                    (self.sources['sextractor_flags'] == 0) &
                     np.isfinite(self.sources['natmag_residual']))
             nsubstars = bsub.sum()
 
@@ -4637,10 +4640,10 @@ class SolveProcess:
 
             # Select stars for magnitude improvements
             bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
-                    (y >= ymin + 0.5) & (y < ymax + 0.5) &
-                    (self.sources['flag_clean'] == 1) &
-                    (self.sources['mag_auto'] >= np.min(platemag)) & 
-                    (self.sources['mag_auto'] <= np.max(platemag)))
+                    (y >= ymin + 0.5) & (y < ymax + 0.5))
+                    #(self.sources['flag_clean'] == 1) &
+                    #(self.sources['mag_auto'] >= np.min(platemag)) & 
+                    #(self.sources['mag_auto'] <= np.max(platemag)))
 
             if bout.sum() == 0:
                 continue
@@ -4652,6 +4655,17 @@ class SolveProcess:
 
             if bnan.sum() > 0:
                 self.sources['natmag_correction'][np.where(bnan)] = 0.
+
+            # Apply flags about being outside of magnitude range of calibration stars
+            brange = (bout & (self.sources['mag_auto'] < np.min(platemag)))
+
+            if brange.sum() > 0:
+                self.sources['flag_calib_star'][np.where(brange)] = 5
+
+            brange = (bout & (self.sources['mag_auto'] > np.max(platemag)))
+
+            if brange.sum() > 0:
+                self.sources['flag_calib_star'][np.where(brange)] = 6
 
             weights = sden(self.sources['mag_auto'][indout])
             self.sources['natmag_correction'][indout] += \
