@@ -493,20 +493,20 @@ _source_meta = OrderedDict([
     ('bmagerr',             ('f4', '%7.4f', '')),
     ('vmag',                ('f4', '%7.4f', '')),
     ('vmagerr',             ('f4', '%7.4f', '')),
+    ('natmag_plate',        ('f4', '%7.4f', '')),
+    ('natmagerr_plate',     ('f4', '%7.4f', '')),
+    ('phot_flags',          ('i1', '%1d', '')),
     ('natmag_residual',     ('f4', '%7.4f', '')),
     ('natmag_correction',   ('f4', '%7.4f', '')),
     ('natmag_sub',          ('f4', '%7.4f', '')),
     ('natmagerr_sub',       ('f4', '%7.4f', '')),
-    ('bmag_sub',            ('f4', '%7.4f', '')),
-    ('bmagerr_sub',         ('f4', '%7.4f', '')),
-    ('vmag_sub',            ('f4', '%7.4f', '')),
-    ('vmagerr_sub',         ('f4', '%7.4f', '')),
     ('phot_sub_grid',       ('i2', '%3d', '')),
     ('phot_sub_id',         ('i4', '%5d', '')),
     ('phot_sub_flags',      ('i1', '%1d', '')),
-    ('phot_flags',          ('i1', '%1d', '')),
+    ('phot_calib_flags',    ('i1', '%1d', '')),
     ('color_term',          ('f4', '%7.4f', '')),
     ('color_bv',            ('f4', '%7.4f', '')),
+    ('color_bv_err',        ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
@@ -1476,6 +1476,8 @@ class SolveProcess:
         self.sources['bmagerr'] = np.nan
         self.sources['vmag'] = np.nan
         self.sources['vmagerr'] = np.nan
+        self.sources['natmag_plate'] = np.nan
+        self.sources['natmagerr_plate'] = np.nan
         self.sources['natmag_residual'] = np.nan
         self.sources['natmag_correction'] = np.nan
         self.sources['natmag_sub'] = np.nan
@@ -1484,6 +1486,7 @@ class SolveProcess:
         self.sources['color_bv'] = np.nan
         self.sources['cat_natmag'] = np.nan
         self.sources['phot_flags'] = 0
+        self.sources['phot_calib_flags'] = 0
         self.sources['phot_sub_flags'] = 0
         
         # Copy values from the SExtractor catalog, xycat
@@ -3393,11 +3396,11 @@ class SolveProcess:
                      'flag_rim', 'flag_negradius', 'flag_clean',
                      'natmag', 'natmagerr', 
                      'bmag', 'bmagerr', 'vmag', 'vmagerr',
+                     'natmag_plate', 'natmagerr_plate', 'phot_flags',
                      'natmag_residual', 'natmag_correction',
                      'natmag_sub', 'natmagerr_sub', 
                      'phot_sub_grid', 'phot_sub_id', 'phot_sub_flags',
-                     'phot_flags', 
-                     'color_term', 'color_bv', 'cat_natmag',
+                     'phot_calib_flags', 'color_term', 'color_bv', 'cat_natmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'ucac4_dist2', 'ucac4_nn_dist',
@@ -4250,11 +4253,11 @@ class SolveProcess:
                                double_newline=False, level=4, event=73)
 
                 ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
-                self.sources['phot_flags'][ind_calibstar_valid] = 1
+                self.sources['phot_calib_flags'][ind_calibstar_valid] = 1
 
                 if num_outliers > 0:
                     ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
-                    self.sources['phot_flags'][ind_calibstar_outlier] = 2
+                    self.sources['phot_calib_flags'][ind_calibstar_outlier] = 2
 
                 cat_natmag = cat_natmag[ind_good[ind_valid]]
                 plate_mag_u = plate_mag_u[ind_good[ind_valid]]
@@ -4381,6 +4384,29 @@ class SolveProcess:
 
             src_bin = self.sources[ind_bin]
 
+            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
+            self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
+            self.sources['color_term'][ind_bin] = cterm
+            self.sources['natmag_residual'][ind_calibstar_u] = \
+                    (self.sources['cat_natmag'][ind_calibstar_u] - 
+                     self.sources['natmag'][ind_calibstar_u])
+
+            # Apply flags about being outside of magnitude range of calibration stars
+            brange = (self.sources['mag_auto'][ind_bin] < plate_mag_brightest)
+
+            if brange.sum() > 0:
+                ind_range = ind_bin[np.where(brange)]
+                self.sources['phot_flags'][ind_range] = 1
+
+            brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
+
+            if brange.sum() > 0:
+                ind_range = ind_bin[np.where(brange)]
+                self.sources['phot_sub_flags'][ind_range] = 2
+
+            # Select stars with known UCAC4/APASS/Tycho-2 photometry    
             if self.use_apass_db and self.use_apass_photometry:
                 ind_ucacmag = np.where((src_bin['apass_bmag'] > 10) &
                                        (src_bin['apass_vmag'] > 10))[0]
@@ -4394,13 +4420,6 @@ class SolveProcess:
                 src_nomag = src_bin[ind_noucacmag]
                 ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
                                       np.isfinite(src_nomag['tycho2_vtmag']))[0]
-
-            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
-            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
-            self.sources['color_term'][ind_bin] = cterm
-            self.sources['natmag_residual'][ind_calibstar_u] = \
-                    (self.sources['cat_natmag'][ind_calibstar_u] - 
-                     self.sources['natmag'][ind_calibstar_u])
 
             if len(ind_ucacmag) > 0:
                 ind = ind_bin[ind_ucacmag]
@@ -4417,6 +4436,7 @@ class SolveProcess:
                                       self.sources[ind]['ucac4_vmagerr']**2)
 
                 self.sources['color_bv'][ind] = b_v
+                self.sources['color_bv_err'][ind] = b_v_err
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
@@ -4437,6 +4457,7 @@ class SolveProcess:
                 b_v_err = 0.85 * np.sqrt(self.sources[ind]['tycho2_btmagerr']**2 + 
                                          self.sources[ind]['tycho2_vtmagerr']**2)
                 self.sources['color_bv'][ind] = b_v
+                self.sources['color_bv_err'][ind] = b_v_err
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
@@ -4487,17 +4508,6 @@ class SolveProcess:
         self.wcshead.set('YMIN', 0)
         self.wcshead.set('YMAX', self.imheight)
         self._photrec(self.wcshead, max_recursion_depth=max_recursion_depth)
-
-        #mags = self._photrec(self.wcshead, 
-        #                     max_recursion_depth=max_recursion_depth)
-        #self.sources['natmag_sub'] = mags[:,0]
-        #self.sources['natmagerr_sub'] = mags[:,1]
-        #self.sources['bmag_sub'] = mags[:,2]
-        #self.sources['bmagerr_sub'] = mags[:,3]
-        #self.sources['vmag_sub'] = mags[:,4]
-        #self.sources['vmagerr_sub'] = mags[:,5]
-        #self.sources['phot_sub_grid'] = mags[:,6]
-        #self.sources['phot_sub_id'] = mags[:,7]
 
     def _photrec(self, in_head, max_recursion_depth=None):
         """
@@ -4561,7 +4571,7 @@ class SolveProcess:
 
             bsub = ((x >= xmin_ext + 0.5) & (x < xmax_ext + 0.5) &
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
-                    (self.sources['phot_flags'] < 2) &
+                    (self.sources['phot_calib_flags'] < 2) &
                     (self.sources['sextractor_flags'] == 0) &
                     np.isfinite(self.sources['natmag_residual']))
             nsubstars = bsub.sum()
@@ -4638,7 +4648,35 @@ class SolveProcess:
                 fsub.write('\n\n')
                 fsub.close
 
-            # Select stars for magnitude improvements
+            # Evaluate RMS error from the spread around the calibration curve
+            pmag = np.array([])
+            rmse = np.array([])
+            residuals = self.sources['natmag_residual'][indsub]
+
+            for mag_loc in np.linspace(np.min(platemag), np.max(platemag), 100):
+                wnd = 0.5
+                ind_loc = np.where((platemag > mag_loc-wnd) &
+                                   (platemag < mag_loc+wnd))[0]
+
+                if len(ind_loc) < 5:
+                    wnd = 1.0
+                    ind_loc = np.where((platemag > mag_loc-wnd) &
+                                       (platemag < mag_loc+wnd))[0]
+
+                if len(ind_loc) < 5:
+                    wnd = 2.0
+                    ind_loc = np.where((platemag > mag_loc-wnd) &
+                                       (platemag < mag_loc+wnd))[0]
+
+                if len(ind_loc) >= 5:
+                    pmag = np.append(pmag, mag_loc)
+                    rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
+                    rmse = np.append(rmse, rmse_loc)
+
+            # Interpolate rms error values
+            s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
+
+            # Select stars for application of magnitude corrections
             bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
                     (y >= ymin + 0.5) & (y < ymax + 0.5))
                     #(self.sources['flag_clean'] == 1) &
@@ -4667,6 +4705,7 @@ class SolveProcess:
             if brange.sum() > 0:
                 self.sources['phot_sub_flags'][np.where(brange)] = 2
 
+            # Apply sub-field photometry
             weights = sden(self.sources['mag_auto'][indout])
             self.sources['natmag_correction'][indout] += \
                     s(self.sources['mag_auto'][indout]) * weights
@@ -4674,17 +4713,25 @@ class SolveProcess:
             self.sources['phot_sub_id'][indout] = current_sub_id
             natmagsub = (self.sources['natmag'][indout] + 
                          self.sources['natmag_correction'][indout])
+            natmagerrsub = s_rmse(self.sources['mag_auto'][indout])
             self.sources['natmag_sub'][indout] = natmagsub 
-            self.sources['natmagerr_sub'][indout] = self.sources['natmagerr'][indout]
-            #natmag[indout] = (self.sources['natmag'][indout] + 
-            #                  self.sources['natmag_correction'][indout])
-            #natmagerr[indout] = self.sources['natmagerr'][indout]
-            #bmag[indout] = 
-            #bmagerr[indout] = 
-            #vmag[indout] = 
-            #vmagerr[indout] = 
-            #gridsize[indout] = 2**recdepth
-            #subid[indout] = current_sub_id
+            self.sources['natmagerr_sub'][indout] = natmagerrsub
+            self.sources['natmag'][indout] = natmagsub 
+            self.sources['natmagerr'][indout] = natmagerrsub
+
+            cterm = self.phot_color['color_term']
+            cterm_err = self.phot_color['color_term_err']
+            b_v = self.sources['b_v'][indout]
+            b_v_err = self.sources['b_v_err'][indout]
+
+            self.sources['vmag'][indout] = natmagsub - cterm * b_v
+            self.sources['bmag'][indout] = natmagsub - (cterm - 1.) * b_v
+            vmagerr = np.sqrt(natmagerrsub**2 + 
+                              (cterm_err * b_v)**2 + (cterm * b_v_err)**2)
+            bmagerr = np.sqrt(natmagerrsub**2 + 
+                              (cterm_err * b_v)**2 + ((cterm - 1.) * b_v_err)**2)
+            self.sources['vmagerr'][indout] = vmagerr
+            self.sources['bmagerr'][indout] = bmagerr
 
             # Solve sub-fields recursively if recursion depth is less
             # than maximum.
@@ -4697,25 +4744,6 @@ class SolveProcess:
                 head.set('DEPTH', recdepth)
                 head.set('SUB-ID', current_sub_id)
                 self._photrec(head, max_recursion_depth=max_recursion_depth)
-
-                #new_mags = self._photrec(head, 
-                #                         max_recursion_depth=max_recursion_depth)
-                #bnew = (np.isfinite(new_mags[:,0]) & 
-                #        np.isfinite(new_mags[:,1]))
-
-                #if bnew.sum() > 0:
-                #    indnew = np.where(bnew)
-                #    natmag[indnew] = new_mags[indnew,0]
-                #    natmagerr[indnew] = new_mags[indnew,1]
-                #    bmag[indnew] = new_mags[indnew,2]
-                #    bmagerr[indnew] = new_mags[indnew,3]
-                #    vmag[indnew] = new_mags[indnew,4]
-                #    vmagerr[indnew] = new_mags[indnew,5]
-                #    gridsize[indnew] = new_mags[indnew,6]
-                #    subid[indnew] = new_mags[indnew,7]
-
-        #return np.column_stack((natmag, natmagerr, bmag, bmagerr, 
-        #                        vmag, vmagerr, gridsize, subid))
 
     def output_cterm_db(self):
         """
