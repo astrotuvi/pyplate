@@ -495,11 +495,11 @@ _source_meta = OrderedDict([
     ('vmagerr',             ('f4', '%7.4f', '')),
     ('natmag_plate',        ('f4', '%7.4f', '')),
     ('natmagerr_plate',     ('f4', '%7.4f', '')),
-    ('phot_flags',          ('i1', '%1d', '')),
-    ('natmag_residual',     ('f4', '%7.4f', '')),
+    ('phot_plate_flags',    ('i1', '%1d', '')),
     ('natmag_correction',   ('f4', '%7.4f', '')),
     ('natmag_sub',          ('f4', '%7.4f', '')),
     ('natmagerr_sub',       ('f4', '%7.4f', '')),
+    ('natmag_residual',     ('f4', '%7.4f', '')),
     ('phot_sub_grid',       ('i2', '%3d', '')),
     ('phot_sub_id',         ('i4', '%5d', '')),
     ('phot_sub_flags',      ('i1', '%1d', '')),
@@ -1485,8 +1485,8 @@ class SolveProcess:
         self.sources['color_term'] = np.nan
         self.sources['color_bv'] = np.nan
         self.sources['cat_natmag'] = np.nan
-        self.sources['phot_flags'] = 0
         self.sources['phot_calib_flags'] = 0
+        self.sources['phot_plate_flags'] = 0
         self.sources['phot_sub_flags'] = 0
         
         # Copy values from the SExtractor catalog, xycat
@@ -3396,9 +3396,9 @@ class SolveProcess:
                      'flag_rim', 'flag_negradius', 'flag_clean',
                      'natmag', 'natmagerr', 
                      'bmag', 'bmagerr', 'vmag', 'vmagerr',
-                     'natmag_plate', 'natmagerr_plate', 'phot_flags',
-                     'natmag_residual', 'natmag_correction',
-                     'natmag_sub', 'natmagerr_sub', 
+                     'natmag_plate', 'natmagerr_plate', 'phot_plate_flags',
+                     'natmag_correction',
+                     'natmag_sub', 'natmagerr_sub', 'natmag_residual',
                      'phot_sub_grid', 'phot_sub_id', 'phot_sub_flags',
                      'phot_calib_flags', 'color_term', 'color_bv', 'cat_natmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
@@ -4398,13 +4398,13 @@ class SolveProcess:
 
             if brange.sum() > 0:
                 ind_range = ind_bin[np.where(brange)]
-                self.sources['phot_flags'][ind_range] = 1
+                self.sources['phot_plate_flags'][ind_range] = 1
 
             brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
 
             if brange.sum() > 0:
                 ind_range = ind_bin[np.where(brange)]
-                self.sources['phot_sub_flags'][ind_range] = 2
+                self.sources['phot_plate_flags'][ind_range] = 2
 
             # Select stars with known UCAC4/APASS/Tycho-2 photometry    
             if self.use_apass_db and self.use_apass_photometry:
