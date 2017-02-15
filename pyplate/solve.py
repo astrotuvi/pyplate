@@ -503,8 +503,8 @@ _source_meta = OrderedDict([
     ('vmagerr_sub',         ('f4', '%7.4f', '')),
     ('phot_sub_grid',       ('i2', '%3d', '')),
     ('phot_sub_id',         ('i4', '%5d', '')),
-    ('flag_calib_star',     ('i1', '%1d', '')),
-    ('flag_calib_outlier',  ('i1', '%1d', '')),
+    ('phot_sub_flags',      ('i1', '%1d', '')),
+    ('phot_flags',          ('i1', '%1d', '')),
     ('color_term',          ('f4', '%7.4f', '')),
     ('color_bv',            ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
@@ -1483,8 +1483,8 @@ class SolveProcess:
         self.sources['color_term'] = np.nan
         self.sources['color_bv'] = np.nan
         self.sources['cat_natmag'] = np.nan
-        self.sources['flag_calib_star'] = 0
-        self.sources['flag_calib_outlier'] = 0
+        self.sources['phot_flags'] = 0
+        self.sources['phot_sub_flags'] = 0
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -3395,8 +3395,8 @@ class SolveProcess:
                      'bmag', 'bmagerr', 'vmag', 'vmagerr',
                      'natmag_residual', 'natmag_correction',
                      'natmag_sub', 'natmagerr_sub', 
-                     'phot_sub_grid', 'phot_sub_id',
-                     'flag_calib_star', 'flag_calib_outlier',
+                     'phot_sub_grid', 'phot_sub_id', 'phot_sub_flags',
+                     'phot_flags', 
                      'color_term', 'color_bv', 'cat_natmag',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
@@ -4250,11 +4250,11 @@ class SolveProcess:
                                double_newline=False, level=4, event=73)
 
                 ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
-                self.sources['flag_calib_star'][ind_calibstar_valid] = 1
+                self.sources['phot_flags'][ind_calibstar_valid] = 1
 
                 if num_outliers > 0:
                     ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
-                    self.sources['flag_calib_outlier'][ind_calibstar_outlier] = 1
+                    self.sources['phot_flags'][ind_calibstar_outlier] = 2
 
                 cat_natmag = cat_natmag[ind_good[ind_valid]]
                 plate_mag_u = plate_mag_u[ind_good[ind_valid]]
@@ -4561,7 +4561,7 @@ class SolveProcess:
 
             bsub = ((x >= xmin_ext + 0.5) & (x < xmax_ext + 0.5) &
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
-                    (self.sources['flag_calib_outlier'] == 0) &
+                    (self.sources['phot_flags'] < 2) &
                     (self.sources['sextractor_flags'] == 0) &
                     np.isfinite(self.sources['natmag_residual']))
             nsubstars = bsub.sum()
@@ -4660,12 +4660,12 @@ class SolveProcess:
             brange = (bout & (self.sources['mag_auto'] < np.min(platemag)))
 
             if brange.sum() > 0:
-                self.sources['flag_calib_star'][np.where(brange)] = 5
+                self.sources['phot_sub_flags'][np.where(brange)] = 1
 
             brange = (bout & (self.sources['mag_auto'] > np.max(platemag)))
 
             if brange.sum() > 0:
-                self.sources['flag_calib_star'][np.where(brange)] = 6
+                self.sources['phot_sub_flags'][np.where(brange)] = 2
 
             weights = sden(self.sources['mag_auto'][indout])
             self.sources['natmag_correction'][indout] += \
