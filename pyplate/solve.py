@@ -4729,7 +4729,7 @@ class SolveProcess:
                     s(self.sources['mag_auto'][indout]) * weights
             self.sources['phot_sub_grid'][indout] = 2**recdepth
             self.sources['phot_sub_id'][indout] = current_sub_id
-            natmagsub = (self.sources['natmag'][indout] + 
+            natmagsub = (self.sources['natmag_plate'][indout] + 
                          self.sources['natmag_correction'][indout])
             natmagerrsub = s_rmse(self.sources['mag_auto'][indout])
             self.sources['natmag_sub'][indout] = natmagsub 
