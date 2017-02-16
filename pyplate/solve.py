@@ -487,6 +487,8 @@ _source_meta = OrderedDict([
     ('astrom_sub_grid',     ('i2', '%3d', '')),
     ('astrom_sub_id',       ('i4', '%5d', '')),
     ('nn_dist',             ('f4', '%6.3f', '')),
+    ('zenith_angle',        ('f4', '%7.4f', '')),
+    ('airmass',             ('f4', '%7.4f', '')),
     ('natmag',              ('f4', '%7.4f', '')),
     ('natmagerr',           ('f4', '%7.4f', '')),
     ('bmag',                ('f4', '%7.4f', '')),
@@ -2956,6 +2958,9 @@ class SolveProcess:
             matchdist = ds * 3600.
             self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
+        # Calculate air mass for each source
+        # Check for location and single exposure
+
         # Match sources with the UCAC4 catalogue
         self.log.write('Cross-matching sources with the UCAC4 catalogue', 
                        level=3, event=61)
@@ -4310,44 +4315,49 @@ class SolveProcess:
                 residuals = cat_natmag-s(plate_mag_u)
 
                 # Evaluate RMS error from the spread around the calibration curve
-                pmag = np.array([])
-                rmse = np.array([])
+                svar = sm.nonparametric.lowess(residuals**2, plate_mag_u, 
+                                               frac=0.5, it=3, delta=0.1)
+                #pmag = np.array([])
+                #rmse = np.array([])
 
-                for mag_loc in np.linspace(plate_mag_brightest, plate_mag_lim, 100):
-                    wnd = 0.5
-                    ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                                       (plate_mag_u < mag_loc+wnd))[0]
+                #for mag_loc in np.linspace(plate_mag_brightest, plate_mag_lim, 100):
+                #    wnd = 0.5
+                #    ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
+                #                       (plate_mag_u < mag_loc+wnd))[0]
 
-                    if len(ind_loc) < 5:
-                        wnd = 1.0
-                        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                                           (plate_mag_u < mag_loc+wnd))[0]
+                #    if len(ind_loc) < 5:
+                #        wnd = 1.0
+                #        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
+                #                           (plate_mag_u < mag_loc+wnd))[0]
 
-                    if len(ind_loc) < 5:
-                        wnd = 2.0
-                        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                                           (plate_mag_u < mag_loc+wnd))[0]
+                #    if len(ind_loc) < 5:
+                #        wnd = 2.0
+                #        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
+                #                           (plate_mag_u < mag_loc+wnd))[0]
 
-                    if len(ind_loc) >= 5:
-                        pmag = np.append(pmag, mag_loc)
-                        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
-                        rmse = np.append(rmse, rmse_loc)
+                #    if len(ind_loc) >= 5:
+                #        pmag = np.append(pmag, mag_loc)
+                #        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
+                #        rmse = np.append(rmse, rmse_loc)
 
                         # Store RMSE data
-                        self.phot_rmse.append(OrderedDict([
-                            ('annular_bin', b),
-                            ('plate_mag', mag_loc),
-                            ('rmse', rmse_loc),
-                            ('mag_window', wnd),
-                            ('num_stars', len(ind_loc))
-                        ]))
+                #        self.phot_rmse.append(OrderedDict([
+                #            ('annular_bin', b),
+                #            ('plate_mag', mag_loc),
+                #            ('rmse', rmse_loc),
+                #            ('mag_window', wnd),
+                #            ('num_stars', len(ind_loc))
+                #        ]))
 
-                if self.write_phot_dir:
-                    np.savetxt(frmse, np.column_stack((pmag, rmse)))
-                    frmse.write('\n\n')
+                #if self.write_phot_dir:
+                #    np.savetxt(frmse, np.column_stack((pmag, rmse)))
+                #    frmse.write('\n\n')
 
                 # Interpolate rms error values
-                s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
+                #s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
+                s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
+                                                      np.sqrt(svar[:,1]), k=1)
+                rmse = s_rmse(plate_mag_u)
 
             #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
 
@@ -4378,9 +4388,11 @@ class SolveProcess:
 
             # Apply photometric calibration to sources in the annular bin
             if b == 0:
-                ind_bin = np.where(self.sources['annular_bin'] <= 9)[0]
+                ind_bin = np.where((self.sources['annular_bin'] <= 9) &
+                                   (self.sources['mag_auto'] < 90.))[0]
             else:
-                ind_bin = np.where(self.sources['annular_bin'] == b)[0]
+                ind_bin = np.where((self.sources['annular_bin'] == b) &
+                                   (self.sources['mag_auto'] < 90.))[0]
 
             src_bin = self.sources[ind_bin]
 
@@ -4649,36 +4661,42 @@ class SolveProcess:
                 fsub.close
 
             # Evaluate RMS error from the spread around the calibration curve
-            pmag = np.array([])
-            rmse = np.array([])
             residuals = self.sources['natmag_residual'][indsub]
+            svar = sm.nonparametric.lowess(residuals**2, platemag, frac=0.5, 
+                                           it=3, delta=0.1)
+            #pmag = np.array([])
+            #rmse = np.array([])
+            #residuals = self.sources['natmag_residual'][indsub]
 
-            for mag_loc in np.linspace(np.min(platemag), np.max(platemag), 100):
-                wnd = 0.5
-                ind_loc = np.where((platemag > mag_loc-wnd) &
-                                   (platemag < mag_loc+wnd))[0]
+            #for mag_loc in np.linspace(np.min(platemag), np.max(platemag), 100):
+            #    wnd = 0.5
+            #    ind_loc = np.where((platemag > mag_loc-wnd) &
+            #                       (platemag < mag_loc+wnd))[0]
 
-                if len(ind_loc) < 5:
-                    wnd = 1.0
-                    ind_loc = np.where((platemag > mag_loc-wnd) &
-                                       (platemag < mag_loc+wnd))[0]
+            #    if len(ind_loc) < 5:
+            #        wnd = 1.0
+            #        ind_loc = np.where((platemag > mag_loc-wnd) &
+            #                           (platemag < mag_loc+wnd))[0]
 
-                if len(ind_loc) < 5:
-                    wnd = 2.0
-                    ind_loc = np.where((platemag > mag_loc-wnd) &
-                                       (platemag < mag_loc+wnd))[0]
+            #    if len(ind_loc) < 5:
+            #        wnd = 2.0
+            #        ind_loc = np.where((platemag > mag_loc-wnd) &
+            #                           (platemag < mag_loc+wnd))[0]
 
-                if len(ind_loc) >= 5:
-                    pmag = np.append(pmag, mag_loc)
-                    rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
-                    rmse = np.append(rmse, rmse_loc)
+            #    if len(ind_loc) >= 5:
+            #        pmag = np.append(pmag, mag_loc)
+            #        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
+            #        rmse = np.append(rmse, rmse_loc)
 
             # Interpolate rms error values
-            s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
+            #s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
+            s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
+                                                  np.sqrt(svar[:,1]), k=1)
 
             # Select stars for application of magnitude corrections
             bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
-                    (y >= ymin + 0.5) & (y < ymax + 0.5))
+                    (y >= ymin + 0.5) & (y < ymax + 0.5) &
+                    (self.sources['mag_auto'] < 90.))
                     #(self.sources['flag_clean'] == 1) &
                     #(self.sources['mag_auto'] >= np.min(platemag)) & 
                     #(self.sources['mag_auto'] <= np.max(platemag)))
@@ -4721,8 +4739,8 @@ class SolveProcess:
 
             cterm = self.phot_color['color_term']
             cterm_err = self.phot_color['color_term_err']
-            b_v = self.sources['b_v'][indout]
-            b_v_err = self.sources['b_v_err'][indout]
+            b_v = self.sources['color_bv'][indout]
+            b_v_err = self.sources['color_bv_err'][indout]
 
             self.sources['vmag'][indout] = natmagsub - cterm * b_v
             self.sources['bmag'][indout] = natmagsub - (cterm - 1.) * b_v
