@@ -16,6 +16,7 @@ from astropy.coordinates import Angle
 from astropy import units
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.ndimage.filters import generic_filter
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
@@ -426,6 +427,10 @@ def run_solve_process(filename, conf_file=None, **kwargs):
     proc.output_sources_db()
     proc.output_sources_csv()
     proc.finish()
+
+
+def _rmse(residuals):
+    return np.sqrt(np.mean(residuals**2))
 
 
 _source_meta = OrderedDict([
@@ -4313,10 +4318,13 @@ class SolveProcess:
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
                 residuals = cat_natmag-s(plate_mag_u)
+                rmse_list = generic_filter(residuals, _rmse, size=10)
+                rmse_lowess = sm.nonparametric.lowess(rmse_list, plate_mag_u, 
+                                                      frac=0.5, it=3, delta=0.1)
 
                 # Evaluate RMS error from the spread around the calibration curve
-                svar = sm.nonparametric.lowess(residuals**2, plate_mag_u, 
-                                               frac=0.5, it=3, delta=0.1)
+                #svar = sm.nonparametric.lowess(residuals**2, plate_mag_u, 
+                #                               frac=0.5, it=3, delta=0.1)
                 #pmag = np.array([])
                 #rmse = np.array([])
 
@@ -4355,8 +4363,10 @@ class SolveProcess:
 
                 # Interpolate rms error values
                 #s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
-                s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
-                                                      np.sqrt(svar[:,1]), k=1)
+                #s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
+                #                                      np.sqrt(svar[:,1]), k=1)
+                s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
+                                                      rmse_lowess[:,1], k=1)
                 rmse = s_rmse(plate_mag_u)
 
             #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
@@ -4662,8 +4672,10 @@ class SolveProcess:
 
             # Evaluate RMS error from the spread around the calibration curve
             residuals = self.sources['natmag_residual'][indsub]
-            svar = sm.nonparametric.lowess(residuals**2, platemag, frac=0.5, 
-                                           it=3, delta=0.1)
+            indsort = np.argsort(platemag)
+            rmse_list = generic_filter(residuals[indsort], _rmse, size=10)
+            rmse_lowess = sm.nonparametric.lowess(rmse_list, platemag[indsort], 
+                                                  frac=0.5, it=3, delta=0.1)
             #pmag = np.array([])
             #rmse = np.array([])
             #residuals = self.sources['natmag_residual'][indsub]
@@ -4690,8 +4702,10 @@ class SolveProcess:
 
             # Interpolate rms error values
             #s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
-            s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
-                                                  np.sqrt(svar[:,1]), k=1)
+            #s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
+            #                                      np.sqrt(svar[:,1]), k=1)
+            s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
+                                                  rmse_lowess[:,1], k=1)
 
             # Select stars for application of magnitude corrections
             bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
