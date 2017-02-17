@@ -4415,12 +4415,15 @@ class SolveProcess:
                     (self.sources['cat_natmag'][ind_calibstar_u] - 
                      self.sources['natmag'][ind_calibstar_u])
 
-            # Apply flags about being outside of magnitude range of calibration stars
+            # Apply flags and errors to sources outside the magnitude range 
+            # of calibration stars
             brange = (self.sources['mag_auto'][ind_bin] < plate_mag_brightest)
 
             if brange.sum() > 0:
                 ind_range = ind_bin[np.where(brange)]
                 self.sources['phot_plate_flags'][ind_range] = 1
+                self.sources['natmagerr'][ind_bin] = s_rmse(plate_mag_brightest)
+                self.sources['natmagerr_plate'][ind_bin] = s_rmse(plate_mag_brightest)
 
             brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
 
@@ -4726,7 +4729,8 @@ class SolveProcess:
             if bnan.sum() > 0:
                 self.sources['natmag_correction'][np.where(bnan)] = 0.
 
-            # Apply flags about being outside of magnitude range of calibration stars
+            # Apply flags to sources outside the magnitude range 
+            # of calibration stars
             brange = (bout & (self.sources['mag_auto'] < np.min(platemag)))
 
             if brange.sum() > 0:
@@ -4746,6 +4750,14 @@ class SolveProcess:
             natmagsub = (self.sources['natmag_plate'][indout] + 
                          self.sources['natmag_correction'][indout])
             natmagerrsub = s_rmse(self.sources['mag_auto'][indout])
+
+            # Do not extrapolate magnitude errors
+            brange = (self.sources['mag_auto'][indout] < np.min(platemag))
+            
+            if brange.sum() > 0:
+                ind_range = np.where(brange)
+                natmagerrsub[ind_range] = s_rmse(np.min(platemag))
+
             self.sources['natmag_sub'][indout] = natmagsub 
             self.sources['natmagerr_sub'][indout] = natmagerrsub
             self.sources['natmag'][indout] = natmagsub 
