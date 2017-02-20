@@ -1542,7 +1542,7 @@ class SolveProcess:
                                  (y*sampling - self.imheight/2.)**2)
 
         # Define bin9 as 1/10 of min_halfwidth at all edges
-        bin9_width_s = 0.1 * min_halfwidth / sampling
+        bin9_width_s = int(0.1 * min_halfwidth / sampling)
         dist_s[:bin9_width_s,:] = -100.
         dist_s[imheight_s-bin9_width_s:,:] = -100.
         dist_s[:,:bin9_width_s] = -100.
