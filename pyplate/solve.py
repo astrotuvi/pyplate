@@ -653,6 +653,7 @@ class SolveProcess:
         self.phot_color = None
         self.phot_calib = []
         self.phot_rmse = []
+        self.phot_calibrated = False
 
         self.ra_ucac = None
         self.dec_ucac = None
@@ -4507,6 +4508,7 @@ class SolveProcess:
             faintlim = None
             mag_range = None
 
+        self.phot_calibrated = True
         self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
                                mag_range=mag_range, calibrated=1)
 
@@ -4524,6 +4526,12 @@ class SolveProcess:
         """
 
         self.log.write('Recursive improvement of photometry', level=3, event=78)
+
+        if self.phot_calibrated == False:
+            self.log.write('Cannot improve photometric calibration due to '
+                           'missing global calibration',
+                           level=2, event=78)
+            return
 
         if max_recursion_depth is None:
             max_recursion_depth = self.max_recursion_depth
