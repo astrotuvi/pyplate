@@ -1816,7 +1816,6 @@ class SolveProcess:
         # Construct the solve-field call
         cmd = self.solve_field_path
         cmd += ' {}'.format(fnxy_short)
-        cmd += ' --no-fits2fits'
         cmd += ' --width {:d}'.format(self.imwidth)
         cmd += ' --height {:d}'.format(self.imheight)
         cmd += ' --x-column X_IMAGE'
@@ -1831,18 +1830,14 @@ class SolveProcess:
             cmd += ' --no-tweak'
             
         cmd += ' --crpix-center'
-        #cmd += ' --pixel-error 3'
         cmd += ' --scamp {}_scamp.cat'.format(self.basefn)
         cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
         cmd += ' --no-plots'
         cmd += ' --out {}'.format(self.basefn)
-        #cmd += ' --solved none'
         cmd += ' --match none'
         cmd += ' --rdls none'
         cmd += ' --corr none'
         cmd += ' --overwrite'
-        #cmd += ' --timestamp'
-        #cmd += ' --verbose'
         cmd += ' --cpulimit 120'
         self.log.write('Subprocess: {}'.format(cmd), level=4, event=40)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
