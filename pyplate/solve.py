@@ -571,8 +571,10 @@ class SolveProcess:
         self.write_wcs_dir = ''
         self.write_log_dir = ''
 
+        self.astref_catalog = None
+        self.photref_catalog = None
+
         self.use_tycho2_fits = False
-        self.use_tycho2_astrometry = False
 
         self.use_ucac4_db = False
         self.ucac4_db_host = 'localhost'
@@ -707,7 +709,7 @@ class SolveProcess:
         if self.write_log_dir:
             self.enable_log = True
 
-        for attr in ['use_tycho2_fits', 'use_tycho2_astrometry', 
+        for attr in ['use_tycho2_fits', 
                      'use_ucac4_db', 'use_apass_db', 'use_apass_photometry',
                      'enable_db_log']:
             try:
@@ -752,7 +754,8 @@ class SolveProcess:
 
         for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
                      'force_recursion_depth', 'min_model_sources', 
-                     'max_model_sources']:
+                     'max_model_sources', 
+                     'astref_catalog', 'photref_catalog']:
             try:
                 setattr(self, attr, conf.getint('Solve', attr))
             except ValueError:
@@ -2180,7 +2183,7 @@ class SolveProcess:
         # Check UCAC4 database name
         if self.use_ucac4_db and (self.ucac4_db_name == ''):
             self.use_ucac4_db = False
-            self.log.write('UCAC-4 database name missing!', level=2, event=50)
+            self.log.write('UCAC4 database name missing!', level=2, event=50)
 
         # Read the SCAMP input catalog
         self.scampcat = fits.open(os.path.join(self.scratch_dir,
@@ -2189,17 +2192,14 @@ class SolveProcess:
         # Create or download the SCAMP reference catalog
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                             self.basefn + '_scampref.cat')):
-            if self.stars_sqdeg > 1000:
-                astref_catalog = 'UCAC-4'
-            else:
-                astref_catalog = 'PPMX'
-                #astref_catalog = 'Tycho-2'
+            # Default astrometric catalog
+            astref_catalog = 'UCAC-4'
 
-            if self.use_ucac4_db:
-                astref_catalog = 'UCAC-4'
+            if self.astref_catalog:
+                astref_catalog = self.astref_catalog.upper()
 
-            if self.use_tycho2_astrometry:
-                astref_catalog = 'TYCHO-2'
+            if astref_catalog == 'UCAC4':
+                astref_catalog = 'UCAC-4'
 
             if (astref_catalog == 'TYCHO-2') and self.use_tycho2_fits:
                 # Build custom SCAMP reference catalog from Tycho-2 FITS file
