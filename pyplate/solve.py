@@ -2201,6 +2201,20 @@ class SolveProcess:
             if astref_catalog == 'UCAC4':
                 astref_catalog = 'UCAC-4'
 
+            # List of astrometric catalogs recognized by SCAMP
+            known_catalogs = ['USNO-A1', 'USNO-A2', 'USNO-B1', 
+                              'GSC-1.3', 'GSC-2.2', 'GSC-2.3', 'TYCHO-2',
+                              'UCAC-1', 'UCAC-2', 'UCAC-3', 'UCAC-4', 
+                              'NOMAD-1', 'PPMX', 'CMC-14', '2MASS', 'DENIS-3', 
+                              'SDSS-R3', 'SDSS-R5', 'SDSS-R6', 'SDSS-R7', 
+                              'SDSS-R8', 'SDSS-R9']
+
+            if astref_catalog not in known_catalogs:
+                self.log.write('Unknown astrometric reference catalog, '
+                               'recursive solving not possible!', 
+                               level=2, event=50)
+                return
+
             if (astref_catalog == 'TYCHO-2') and self.use_tycho2_fits:
                 # Build custom SCAMP reference catalog from Tycho-2 FITS file
                 fn_tycho = os.path.join(self.tycho2_dir, 'tycho2_{:d}.fits'
