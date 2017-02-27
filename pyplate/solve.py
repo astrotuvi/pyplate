@@ -657,13 +657,17 @@ class SolveProcess:
         self.phot_rmse = []
         self.phot_calibrated = False
 
+        self.id_ucac = None
         self.ra_ucac = None
         self.dec_ucac = None
-        self.id_ucac = None
+        self.raerr_ucac = None
+        self.decerr_ucac = None
+        self.mag_ucac = None
         self.bmag_ucac = None
         self.vmag_ucac = None
-        self.berr_ucac = None
-        self.verr_ucac = None
+        self.magerr_ucac = None
+        self.bmagerr_ucac = None
+        self.vmagerr_ucac = None
         
         self.ra_apass = None
         self.dec_apass = None
@@ -671,6 +675,22 @@ class SolveProcess:
         self.vmag_apass = None
         self.berr_apass = None
         self.verr_apass = None
+
+        self.ucac4_columns = OrderedDict([
+            ('ra_ucac', ('RAJ2000', 'f8')),
+            ('dec_ucac', ('DEJ2000', 'f8')),
+            ('raerr_ucac', ('e_RAJ2000', 'i')),
+            ('decerr_ucac', ('e_DEJ2000', 'i')),
+            ('mag_ucac', ('amag', 'f8')),
+            ('magerr_ucac', ('e_amag', 'f8')),
+            ('pmra_ucac', ('pmRA', 'f8')),
+            ('pmdec_ucac', ('pmDE', 'f8')),
+            ('id_ucac', ('UCAC4', 'a10')),
+            ('bmag_ucac', ('Bmag', 'f8')),
+            ('vmag_ucac', ('Vmag', 'f8')),
+            ('bmagerr_ucac', ('e_Bmag', 'f8')),
+            ('vmagerr_ucac', ('e_Vmag', 'f8'))
+        ])
         
     def assign_conf(self, conf):
         """
@@ -2118,6 +2138,93 @@ class SolveProcess:
         platedb.close_connection()
         self.log.write('Closed database connection')
 
+    def import_reference_catalogs(self):
+        """
+        Import reference catalogs for astrometric and photometric calibration.
+
+        """
+
+        self.log.write('Importing of reference catalogs', level=3, event=49)
+
+        if not self.plate_solved:
+            self.log.write('Missing initial solution, '
+                           'cannot import reference catalogs!', 
+                           level=2, event=49)
+            return
+
+        # Query the UCAC4 catalog
+        if self.use_ucac4_db:
+            # Check UCAC4 database name
+            if self.ucac4_db_name == '':
+                self.log.write('UCAC4 database name missing!', 
+                               level=2, event=49)
+                return
+
+            ucac4_cols = [col.strip() 
+                          for col,typ in self.ucac4_columns.values()]
+            ucac4_types = [typ.strip() 
+                           for col,typ in self.ucac4_columns.values()]
+
+            # Check if all columns are specified
+            if '' in ucac4_cols:
+                self.log.write('One ore more UCAC4 database column '
+                               'names missing!', level=2, event=49)
+                return
+
+            ucac4_ra_col = self.ucac4_columns['ra_ucac'][0]
+            ucac4_dec_col = self.ucac4_columns['dec_ucac'][0]
+
+            # Query MySQL database
+            db = MySQLdb.connect(host=self.ucac4_db_host, 
+                                 user=self.ucac4_db_user, 
+                                 passwd=self.ucac4_db_passwd,
+                                 db=self.ucac4_db_name)
+            cur = db.cursor()
+
+            sql = 'SELECT {} FROM {} '.format(', '.join(ucac4_cols),
+                                              self.ucac4_db_table))
+
+            if self.ncp_close:
+                sql += ' WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
+            elif self.scp_close:
+                sql += ' WHERE {} < {}'.format(ucac4_dec_col, self.max_dec)
+            elif self.max_ra < self.min_ra:
+                sql += (' WHERE ({} < {} OR {} > {})'
+                        ' AND {} BETWEEN {} AND {}'
+                        ''.format(ucac4_ra_col, ucac4_ra_col, ucac4_dec_col,
+                                  self.max_ra, self.min_ra,
+                                  self.min_dec, self.max_dec))
+            else:
+                sql += (' WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                        ''.format(ucac4_ra_col, ucac4_dec_col,
+                                  self.min_ra, self.max_ra, 
+                                  self.min_dec, self.max_dec))
+
+            sql += ';'
+            self.log.write(sql)
+            numrows = cur.execute(sql)
+            self.log.write('Fetched {:d} rows'.format(numrows))
+
+            res = np.fromiter(cur.fetchall(), dtype=','.join(ucac4_types))
+
+            cur.close()
+            db.commit()
+            db.close()
+
+            self.ra_ucac = (res['f0'] + (plate_epoch - 2000.) * res['f6']
+                            / np.cos(res['f1'] * np.pi / 180.) / 3600000.)
+            self.dec_ucac = (res['f1'] + (plate_epoch - 2000.) * res['f7'] 
+                             / 3600000.)
+            self.raerr_ucac = res['f2']
+            self.decerr_ucac = res['f3']
+            self.mag_ucac = res['f4']
+            self.magerr_ucac = res['f5']
+            self.id_ucac = res['f8']
+            self.bmag_ucac = res['f9']
+            self.vmag_ucac = res['f10']
+            self.bmagerr_ucac = res['f11']
+            self.vmagerr_ucac = res['f12']
+
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
         """
@@ -2179,11 +2286,6 @@ class SolveProcess:
             skip_bright = int(skip_bright)
         except ValueError:
             skip_bright = 10
-
-        # Check UCAC4 database name
-        if self.use_ucac4_db and (self.ucac4_db_name == ''):
-            self.use_ucac4_db = False
-            self.log.write('UCAC4 database name missing!', level=2, event=50)
 
         # Read the SCAMP input catalog
         self.scampcat = fits.open(os.path.join(self.scratch_dir,
@@ -2271,65 +2373,9 @@ class SolveProcess:
                 self.scampref.writeto(scampref_file)
                 tycho.close()
             elif (astref_catalog == 'UCAC-4') and self.use_ucac4_db:
-                # Query MySQL database
-                db = MySQLdb.connect(host=self.ucac4_db_host, 
-                                     user=self.ucac4_db_user, 
-                                     passwd=self.ucac4_db_passwd,
-                                     db=self.ucac4_db_name)
-                cur = db.cursor()
+                # Check if we have UCAC4 data
 
-                sql1 = 'SELECT RAJ2000,DEJ2000,e_RAJ2000,e_DEJ2000,amag,e_amag,'
-                sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,Bmag,Vmag,e_Bmag,e_Vmag'
-                #sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,rmag,imag,e_rmag,e_imag'
-                sql2 = ' FROM {}'.format(self.ucac4_db_table)
-                sql2 += ' FORCE INDEX (idx_radecmag)'
-
-                if self.ncp_close:
-                    sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
-                elif self.scp_close:
-                    sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
-                elif self.max_ra < self.min_ra:
-                    sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
-                             ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(self.max_ra, self.min_ra,
-                                       self.min_dec, self.max_dec))
-                else:
-                    sql2 += (' WHERE RAJ2000 BETWEEN {} AND {}'
-                             ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(self.min_ra, self.max_ra, 
-                                       self.min_dec, self.max_dec))
-
-                sql3 = ''
-
-                #if self.stars_sqdeg < 200:
-                #    sql3 += ' AND amag < 13'
-                #elif self.stars_sqdeg < 1000:
-                #    sql3 += ' AND amag < 15'
-
-                sql = sql1 + sql2 + sql3 + ';'
-                self.log.write(sql)
-                numrows = cur.execute(sql)
-                self.log.write('Fetched {:d} rows'.format(numrows))
-
-                res = np.fromiter(cur.fetchall(), 
-                                  dtype='f8,f8,i,i,f8,f8,f8,f8,f8,f8,a10,'
-                                  'f8,f8,f8,f8')
-
-                cur.close()
-                db.commit()
-                db.close()
-
-                self.ra_ucac = (res['f0'] + (plate_epoch - 2000.) * res['f6']
-                                / np.cos(res['f1'] * np.pi / 180.) / 3600000.)
-                self.dec_ucac = (res['f1'] + (plate_epoch - 2000.) * res['f7'] 
-                                 / 3600000.)
-
-                self.id_ucac = res['f10']
-                self.bmag_ucac = res['f11']
-                self.vmag_ucac = res['f12']
-                self.berr_ucac = res['f13']
-                self.verr_ucac = res['f14']
-
+                # Create reference catalog for SCAMP
                 self.scampref = new_scampref()
 
                 try:
@@ -2342,10 +2388,10 @@ class SolveProcess:
 
                 hduref.data.field('X_WORLD')[:] = self.ra_ucac
                 hduref.data.field('Y_WORLD')[:] = self.dec_ucac
-                hduref.data.field('ERRA_WORLD')[:] = res['f2']
-                hduref.data.field('ERRB_WORLD')[:] = res['f3']
-                hduref.data.field('MAG')[:] = res['f4']
-                hduref.data.field('MAGERR')[:] = res['f5']
+                hduref.data.field('ERRA_WORLD')[:] = self.raerr_ucac
+                hduref.data.field('ERRB_WORLD')[:] = self.decerr_ucac
+                hduref.data.field('MAG')[:] = self.mag_ucac
+                hduref.data.field('MAGERR')[:] = self.magerr_ucac
                 hduref.data.field('OBSDATE')[:] = np.zeros(numrows) + 2000.
                 self.scampref[2].data = hduref.data
 
@@ -3059,8 +3105,8 @@ class SolveProcess:
                     self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
-                    self.sources['ucac4_bmagerr'][ind] = self.berr_ucac[ind_ucac]
-                    self.sources['ucac4_vmagerr'][ind] = self.verr_ucac[ind_ucac]
+                    self.sources['ucac4_bmagerr'][ind] = self.bmagerr_ucac[ind_ucac]
+                    self.sources['ucac4_vmagerr'][ind] = self.vmagerr_ucac[ind_ucac]
                     self.sources['ucac4_dist'][ind] = (matchdist
                                                        .astype(np.float32))
                     self.sources['ucac4_dist2'][ind] = (matchdist2
