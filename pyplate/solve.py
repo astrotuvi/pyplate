@@ -2188,17 +2188,16 @@ class SolveProcess:
                                               self.ucac4_db_table)
 
             if self.ncp_close:
-                sql += ' WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
+                sql += 'WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
             elif self.scp_close:
-                sql += ' WHERE {} < {}'.format(ucac4_dec_col, self.max_dec)
+                sql += 'WHERE {} < {}'.format(ucac4_dec_col, self.max_dec)
             elif self.max_ra < self.min_ra:
-                sql += (' WHERE ({} < {} OR {} > {})'
-                        ' AND {} BETWEEN {} AND {}'
+                sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
                         ''.format(ucac4_ra_col, self.max_ra, 
                                   ucac4_ra_col, self.min_ra,
                                   ucac4_dec_col, self.min_dec, self.max_dec))
             else:
-                sql += (' WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
                         ''.format(ucac4_ra_col, self.min_ra, self.max_ra, 
                                   ucac4_dec_col, self.min_dec, self.max_dec))
 
@@ -2396,10 +2395,10 @@ class SolveProcess:
                 try:
                     hduref = fits.BinTableHDU.from_columns(self.scampref[2]
                                                            .columns,
-                                                           nrows=numrows)
+                                                           nrows=self.num_ucac)
                 except AttributeError:
                     hduref = fits.new_table(self.scampref[2].columns, 
-                                            nrows=numrows)
+                                            nrows=self.num_ucac)
 
                 hduref.data.field('X_WORLD')[:] = ra_ucac
                 hduref.data.field('Y_WORLD')[:] = dec_ucac
@@ -2407,7 +2406,8 @@ class SolveProcess:
                 hduref.data.field('ERRB_WORLD')[:] = self.decerr_ucac
                 hduref.data.field('MAG')[:] = self.mag_ucac
                 hduref.data.field('MAGERR')[:] = self.magerr_ucac
-                hduref.data.field('OBSDATE')[:] = np.zeros(numrows) + 2000.
+                hduref.data.field('OBSDATE')[:] = (np.zeros(self.num_ucac) 
+                                                   + 2000.)
                 self.scampref[2].data = hduref.data
 
                 scampref_file = os.path.join(self.scratch_dir, 
