@@ -2184,7 +2184,7 @@ class SolveProcess:
                                  db=self.ucac4_db_name)
             cur = db.cursor()
 
-            sql = 'SELECT {} FROM {} '.format(', '.join(ucac4_cols),
+            sql = 'SELECT {} FROM {} '.format(','.join(ucac4_cols),
                                               self.ucac4_db_table)
 
             if self.ncp_close:
@@ -2194,14 +2194,13 @@ class SolveProcess:
             elif self.max_ra < self.min_ra:
                 sql += (' WHERE ({} < {} OR {} > {})'
                         ' AND {} BETWEEN {} AND {}'
-                        ''.format(ucac4_ra_col, ucac4_ra_col, ucac4_dec_col,
-                                  self.max_ra, self.min_ra,
-                                  self.min_dec, self.max_dec))
+                        ''.format(ucac4_ra_col, self.max_ra, 
+                                  ucac4_ra_col, self.min_ra,
+                                  ucac4_dec_col, self.min_dec, self.max_dec))
             else:
                 sql += (' WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
-                        ''.format(ucac4_ra_col, ucac4_dec_col,
-                                  self.min_ra, self.max_ra, 
-                                  self.min_dec, self.max_dec))
+                        ''.format(ucac4_ra_col, self.min_ra, self.max_ra, 
+                                  ucac4_dec_col, self.min_dec, self.max_dec))
 
             sql += ';'
             self.log.write(sql)
