@@ -668,6 +668,7 @@ class SolveProcess:
         self.magerr_ucac = None
         self.bmagerr_ucac = None
         self.vmagerr_ucac = None
+        self.num_ucac = 0
         
         self.ra_apass = None
         self.dec_apass = None
@@ -2224,6 +2225,7 @@ class SolveProcess:
             self.vmag_ucac = res['f10']
             self.bmagerr_ucac = res['f11']
             self.vmagerr_ucac = res['f12']
+            self.num_ucac = numrows
 
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
@@ -2374,6 +2376,11 @@ class SolveProcess:
                 tycho.close()
             elif (astref_catalog == 'UCAC-4') and self.use_ucac4_db:
                 # Check if we have UCAC4 data
+                if self.num_ucac == 0:
+                    self.log.write('No UCAC4 sources available, '
+                                   'recursive solving not possible!', 
+                                   level=2, event=50)
+                    return
 
                 # Create reference catalog for SCAMP
                 self.scampref = new_scampref()
