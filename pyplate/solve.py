@@ -2139,17 +2139,17 @@ class SolveProcess:
         platedb.close_connection()
         self.log.write('Closed database connection')
 
-    def import_reference_catalogs(self):
+    def get_reference_catalogs(self):
         """
-        Import reference catalogs for astrometric and photometric calibration.
+        Get reference catalogs for astrometric and photometric calibration.
 
         """
 
-        self.log.write('Importing of reference catalogs', level=3, event=49)
+        self.log.write('Getting reference catalogs', level=3, event=49)
 
         if not self.plate_solved:
             self.log.write('Missing initial solution, '
-                           'cannot import reference catalogs!', 
+                           'cannot get reference catalogs!', 
                            level=2, event=49)
             return
 
@@ -2183,7 +2183,7 @@ class SolveProcess:
             cur = db.cursor()
 
             sql = 'SELECT {} FROM {} '.format(', '.join(ucac4_cols),
-                                              self.ucac4_db_table))
+                                              self.ucac4_db_table)
 
             if self.ncp_close:
                 sql += ' WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
