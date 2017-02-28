@@ -3054,10 +3054,27 @@ class SolveProcess:
                                ''.format(float(self.crossmatch_nsigma)), 
                                level=4, event=61)
 
+            ra_ucac = self.ra_ucac
+            dec_ucac = self.dec_ucac
+
+            # Use proper motions to calculate RA/Dec for the plate epoch
+            bpm = ((self.pmra_ucac != 0) & (self.pmdec_ucac != 0))
+            num_pm = bpm.sum()
+
+            if num_pm > 0:
+                ind_pm = np.where(bpm)
+                ra_ucac[ind_pm] = (ra_ucac[ind_pm] + (self.plate_epoch - 2000.)
+                                   * self.pmra_ucac[ind_pm]
+                                   / np.cos(dec_ucac[ind_pm] * np.pi / 180.) 
+                                   / 3600000.)
+                dec_ucac[ind_pm] = (dec_ucac[ind_pm] + 
+                                    (self.plate_epoch - 2000.)
+                                    * self.pmdec_ucac[ind_pm] / 3600000.)
+
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
-                catalog = ICRS(self.ra_ucac, self.dec_ucac, 
+                catalog = ICRS(ra_ucac, dec_ucac, 
                                unit=(units.degree, units.degree))
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
@@ -3097,16 +3114,16 @@ class SolveProcess:
 
                 ind_plate,ind_ucac,ds = \
                         spherematch(ra_finite, dec_finite, 
-                                    self.ra_ucac, self.dec_ucac,
+                                    ra_ucac, dec_ucac,
                                     tol=crossmatch_radius/3600., 
                                     nnearest=1)
                 matchdist = ds * 3600.
 
                 _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
-                                      self.ra_ucac, self.dec_ucac, nnearest=2)
+                                      ra_ucac, dec_ucac, nnearest=2)
                 matchdist2 = ds2[ind_plate] * 3600.
-                _,_,nnds = spherematch(self.ra_ucac, self.dec_ucac,
-                                       self.ra_ucac, self.dec_ucac, nnearest=2)
+                _,_,nnds = spherematch(ra_ucac, dec_ucac,
+                                       ra_ucac, dec_ucac, nnearest=2)
                 nndist = nnds[ind_ucac] * 3600.
 
             if have_match_coord or have_pyspherematch:
