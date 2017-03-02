@@ -680,21 +680,30 @@ class SolveProcess:
         self.verr_apass = None
 
         self.ucac4_columns = OrderedDict([
-            ('ra_ucac', ('RAJ2000', 'f8')),
-            ('dec_ucac', ('DEJ2000', 'f8')),
-            ('raerr_ucac', ('e_RAJ2000', 'i')),
-            ('decerr_ucac', ('e_DEJ2000', 'i')),
-            ('mag_ucac', ('amag', 'f8')),
-            ('magerr_ucac', ('e_amag', 'f8')),
-            ('pmra_ucac', ('pmRA', 'f8')),
-            ('pmdec_ucac', ('pmDE', 'f8')),
-            ('id_ucac', ('UCAC4', 'a10')),
-            ('bmag_ucac', ('Bmag', 'f8')),
-            ('vmag_ucac', ('Vmag', 'f8')),
-            ('bmagerr_ucac', ('e_Bmag', 'f8')),
-            ('vmagerr_ucac', ('e_Vmag', 'f8'))
+            ('ucac4_ra', ('RAJ2000', 'f8')),
+            ('ucac4_dec', ('DEJ2000', 'f8')),
+            ('ucac4_raerr', ('e_RAJ2000', 'i')),
+            ('ucac4_decerr', ('e_DEJ2000', 'i')),
+            ('ucac4_mag', ('amag', 'f8')),
+            ('ucac4_magerr', ('e_amag', 'f8')),
+            ('ucac4_pmra', ('pmRA', 'f8')),
+            ('ucac4_pmdec', ('pmDE', 'f8')),
+            ('ucac4_id', ('UCAC4', 'a10')),
+            ('ucac4_bmag', ('Bmag', 'f8')),
+            ('ucac4_vmag', ('Vmag', 'f8')),
+            ('ucac4_bmagerr', ('e_Bmag', 'f8')),
+            ('ucac4_vmagerr', ('e_Vmag', 'f8'))
         ])
-        
+
+        self.apass_columns = OrderedDict([
+            ('apass_ra', ('RAdeg', 'f8')),
+            ('apass_dec', ('DEdeg', 'f8')),
+            ('apass_bmag', ('B', 'f8')),
+            ('apass_vmag', ('V', 'f8')),
+            ('apass_bmagerr', ('e_B', 'f8')),
+            ('apass_vmagerr', ('e_V', 'f8'))
+        ])
+
     def assign_conf(self, conf):
         """
         Parse configuration and set class attributes.
@@ -777,8 +786,7 @@ class SolveProcess:
 
         for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
                      'force_recursion_depth', 'min_model_sources', 
-                     'max_model_sources', 
-                     'astref_catalog', 'photref_catalog']:
+                     'max_model_sources']:
             try:
                 setattr(self, attr, conf.getint('Solve', attr))
             except ValueError:
@@ -786,6 +794,30 @@ class SolveProcess:
                        '([{}], {})'.format('Solve', attr))
             except ConfigParser.Error:
                 pass
+
+        for attr in ['astref_catalog', 'photref_catalog']:
+            try:
+                setattr(self, attr, conf.get('Solve', attr))
+            except ConfigParser.Error:
+                pass
+
+        # Read UCAC4 and APASS table column names from the dedicated sections,
+        # named after the tables
+        if conf.has_section(self.ucac4_db_table):
+            for attr in self.ucac4_columns.keys():
+                try:
+                    colstr = conf.get(self.ucac4_db_table, attr)
+                    self.ucac4_columns[attr] = colstr
+                except ConfigParser.Error:
+                    pass
+
+        if conf.has_section(self.apass_db_table):
+            for attr in self.apass_columns.keys():
+                try:
+                    colstr = conf.get(self.apass_db_table, attr)
+                    self.apass_columns[attr] = colstr
+                except ConfigParser.Error:
+                    pass
 
     def assign_header(self, header):
         """
@@ -2174,8 +2206,8 @@ class SolveProcess:
                                'names missing!', level=2, event=49)
                 return
 
-            ucac4_ra_col = self.ucac4_columns['ra_ucac'][0]
-            ucac4_dec_col = self.ucac4_columns['dec_ucac'][0]
+            ucac4_ra_col = self.ucac4_columns['ucac4_ra'][0]
+            ucac4_dec_col = self.ucac4_columns['ucac4_dec'][0]
 
             # Query MySQL database
             db = MySQLdb.connect(host=self.ucac4_db_host, 
