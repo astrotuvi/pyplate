@@ -3234,13 +3234,10 @@ class SolveProcess:
                                ''.format(float(self.crossmatch_nsigma)), 
                                level=4, event=61)
 
-            ra_ucac = self.ra_ucac
-            dec_ucac = self.dec_ucac
-
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
-                catalog = ICRS(ra_ucac, dec_ucac, 
+                catalog = ICRS(self.ra_ucac, self.dec_ucac, 
                                unit=(units.degree, units.degree))
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
@@ -3280,16 +3277,16 @@ class SolveProcess:
 
                 ind_plate,ind_ucac,ds = \
                         spherematch(ra_finite, dec_finite, 
-                                    ra_ucac, dec_ucac,
+                                    self.ra_ucac, self.dec_ucac,
                                     tol=crossmatch_radius/3600., 
                                     nnearest=1)
                 matchdist = ds * 3600.
 
-                _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
-                                      ra_ucac, dec_ucac, nnearest=2)
+                _,_,ds2 = spherematch(ra_finite, dec_finite,
+                                      self.ra_ucac, self.dec_ucac, nnearest=2)
                 matchdist2 = ds2[ind_plate] * 3600.
-                _,_,nnds = spherematch(ra_ucac, dec_ucac,
-                                       ra_ucac, dec_ucac, nnearest=2)
+                _,_,nnds = spherematch(self.ra_ucac, self.dec_ucac,
+                                       self.ra_ucac, self.dec_ucac, nnearest=2)
                 nndist = nnds[ind_ucac] * 3600.
 
             if have_match_coord or have_pyspherematch:
@@ -3378,7 +3375,7 @@ class SolveProcess:
                                     nnearest=1)
                     matchdist = ds * 3600.
 
-                    _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
+                    _,_,ds2 = spherematch(ra_finite, dec_finite,
                                           self.ra_tyc, self.dec_tyc, nnearest=2)
                     matchdist2 = ds2[ind_plate] * 3600.
                     _,_,nnds = spherematch(self.ra_tyc, self.dec_tyc,
@@ -3474,7 +3471,7 @@ class SolveProcess:
                                         nnearest=1)
                     matchdist = ds * 3600.
 
-                    _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
+                    _,_,ds2 = spherematch(ra_finite, dec_finite,
                                           self.ra_apass, self.dec_apass, 
                                           nnearest=2)
                     matchdist2 = ds2[ind_plate] * 3600.
