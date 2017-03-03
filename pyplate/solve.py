@@ -584,7 +584,6 @@ class SolveProcess:
         self.ucac4_db_table = 'ucac4'
 
         self.use_apass_db = False
-        self.use_apass_photometry = False
         self.apass_db_host = 'localhost'
         self.apass_db_user = ''
         self.apass_db_name = ''
@@ -750,8 +749,7 @@ class SolveProcess:
         if self.write_log_dir:
             self.enable_log = True
 
-        for attr in ['use_tycho2_fits', 
-                     'use_ucac4_db', 'use_apass_db', 'use_apass_photometry',
+        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'use_apass_db',
                      'enable_db_log']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
@@ -2521,8 +2519,9 @@ class SolveProcess:
                               'SDSS-R8', 'SDSS-R9']
 
             if astref_catalog not in known_catalogs:
-                self.log.write('Unknown astrometric reference catalog, '
-                               'recursive solving not possible!', 
+                self.log.write('Unknown astrometric reference catalogue ({}), '
+                               'recursive solving not possible!'
+                               ''.format(astref_catalog),
                                level=2, event=50)
                 return
 
@@ -3608,6 +3607,36 @@ class SolveProcess:
                 self.db_update_process(calibrated=0)
                 return
 
+        # Default astrometric catalog
+        photref_catalog = 'UCAC4'
+
+        if self.photref_catalog:
+            photref_catalog = self.photref_catalog.upper()
+
+        if photref_catalog == 'UCAC-4':
+            photref_catalog = 'UCAC4'
+
+        known_catalogs = ['APASS', 'UCAC4']
+
+        if photref_catalog not in known_catalogs:
+            self.log.write('Unknown photometric reference catalogue ({}), '
+                           'photometric calibration not possible!'
+                           ''.format(photref_catalog), 
+                           level=2, event=70)
+            return
+
+        if (photref_catalog == 'UCAC4') and (self.num_ucac == 0):
+            self.log.write('Missing UCAC4 data, '
+                           'photometric calibration not possible!',
+                           level=2, event=70)
+            return
+
+        if (photref_catalog == 'APASS') and (self.num_apass == 0):
+            self.log.write('Missing APASS data, '
+                           'photometric calibration not possible!',
+                           level=2, event=70)
+            return
+
         # Create output directory, if missing
         if self.write_phot_dir and not os.path.isdir(self.write_phot_dir):
             self.log.write('Creating output directory {}'
@@ -3651,7 +3680,7 @@ class SolveProcess:
         src_cal = self.sources[ind_cal]
         ind_calibstar = ind_cal
 
-        if self.use_apass_db and self.use_apass_photometry:
+        if photref_catalog == 'APASS':
             # Use APASS magnitudes
             ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
                                    (src_cal['apass_vmag'] > 10) &
@@ -4566,7 +4595,7 @@ class SolveProcess:
                 self.sources['phot_plate_flags'][ind_range] = 2
 
             # Select stars with known UCAC4/APASS/Tycho-2 photometry    
-            if self.use_apass_db and self.use_apass_photometry:
+            if photref_catalog == 'APASS':
                 ind_ucacmag = np.where((src_bin['apass_bmag'] > 10) &
                                        (src_bin['apass_vmag'] > 10))[0]
             else:
@@ -4583,7 +4612,7 @@ class SolveProcess:
             if len(ind_ucacmag) > 0:
                 ind = ind_bin[ind_ucacmag]
 
-                if self.use_apass_db and self.use_apass_photometry:
+                if photref_catalog == 'APASS':
                     b_v = (self.sources[ind]['apass_bmag']
                            - self.sources[ind]['apass_vmag'])
                     b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
