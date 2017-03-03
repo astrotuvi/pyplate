@@ -2271,14 +2271,21 @@ class SolveProcess:
                 self.log.write('Fetched {:d} entries from Tycho-2'
                                ''.format(numtyc))
 
+        query_combined = False
+
         # Query the UCAC4 catalog
         if self.use_ucac4_db:
             self.log.write('Querying the UCAC4 catalogue', level=3, event=49)
             query_ucac4 = True
 
-            # Check UCAC4 database name
+            # Check UCAC4 database name and table name
             if self.ucac4_db_name == '':
                 self.log.write('UCAC4 database name missing!', 
+                               level=2, event=49)
+                query_ucac4 = False
+
+            if self.ucac4_db_table == '':
+                self.log.write('UCAC4 database table name missing!', 
                                level=2, event=49)
                 query_ucac4 = False
 
@@ -2292,6 +2299,25 @@ class SolveProcess:
                 self.log.write('One ore more UCAC4 database column '
                                'names missing!', level=2, event=49)
                 query_ucac4 = False
+
+            # Check if APASS and UCAC4 data are in the same table
+            if (query_ucac4 and self.use_apass_db and 
+                    (self.ucac4_db_name == self.apass_db_name) and 
+                    (self.ucac4_db_table == self.apass_db_table)):
+                apass_cols = [col.strip() 
+                              for col,typ in self.apass_columns.values()]
+                apass_types = [typ.strip() 
+                               for col,typ in self.apass_columns.values()]
+
+                # Check if all columns are specified
+                if '' in apass_cols:
+                    self.log.write('One ore more APASS database column '
+                                   'names missing!', level=2, event=49)
+                    query_combined = False
+                else:
+                    ucac4_cols.extend(apass_cols)
+                    ucac4_types.extend(apass_types)
+                    query_combined = True
 
             if query_ucac4:
                 ucac4_ra_col = self.ucac4_columns['ucac4_ra'][0]
@@ -2365,8 +2391,19 @@ class SolveProcess:
                 self.ra_ucac = ra_ucac
                 self.dec_ucac = dec_ucac
 
+                if query_combined:
+                    #self.ra_apass = res['f13']
+                    #self.dec_apass = res['f14']
+                    self.ra_apass = ra_ucac
+                    self.dec_apass = dec_ucac
+                    self.bmag_apass = res['f15']
+                    self.vmag_apass = res['f16']
+                    self.berr_apass = res['f17']
+                    self.verr_apass = res['f18']
+                    self.num_apass = numrows
+
         # Query the APASS catalog
-        if self.use_apass_db:
+        if self.use_apass_db and not query_combined:
             self.log.write('Querying the APASS catalogue', level=3, event=49)
             query_apass = True
 
