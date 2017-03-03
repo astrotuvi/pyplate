@@ -2420,6 +2420,7 @@ class SolveProcess:
                     if query_healpix:
                         healpix_ucac = res['f19']
                         uhp = np.unique(healpix_ucac)
+                        nfill = 0L
 
                         for hp in uhp:
                             bapass = ((healpix_ucac == hp) &
@@ -2437,6 +2438,11 @@ class SolveProcess:
                                 self.vmag_apass[ind] = self.vmag_ucac[ind]
                                 self.berr_apass[ind] = self.bmagerr_ucac[ind]
                                 self.verr_apass[ind] = self.vmagerr_ucac[ind]
+                                nfill += bucac.sum()
+
+                        self.log.write('Added UCAC4 magnitudes to {:d} stars '
+                                       'to fill gaps in the APASS data'
+                                       ''.format(nfill))
 
         # Query the APASS catalog
         if self.use_apass_db and not query_combined:
