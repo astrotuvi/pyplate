@@ -672,8 +672,6 @@ class SolveProcess:
         self.dec_ucac = None
         self.raerr_ucac = None
         self.decerr_ucac = None
-        self.pmra_ucac = None
-        self.pmdec_ucac = None
         self.mag_ucac = None
         self.bmag_ucac = None
         self.vmag_ucac = None
@@ -2336,20 +2334,38 @@ class SolveProcess:
             db.commit()
             db.close()
 
-            self.ra_ucac = res['f0']
-            self.dec_ucac = res['f1']
+            ra_ucac = res['f0']
+            dec_ucac = res['f1']
+            pmra_ucac = res['f6']
+            pmdec_ucac = res['f7']
+
             self.raerr_ucac = res['f2']
             self.decerr_ucac = res['f3']
             self.mag_ucac = res['f4']
             self.magerr_ucac = res['f5']
-            self.pmra_ucac = res['f6']
-            self.pmdec_ucac = res['f7']
             self.id_ucac = res['f8']
             self.bmag_ucac = res['f9']
             self.vmag_ucac = res['f10']
             self.bmagerr_ucac = res['f11']
             self.vmagerr_ucac = res['f12']
             self.num_ucac = numrows
+
+            # Use proper motions to calculate RA/Dec for the plate epoch
+            bpm = ((pmra_ucac != 0) & (pmdec_ucac != 0))
+            num_pm = bpm.sum()
+
+            if num_pm > 0:
+                ind_pm = np.where(bpm)
+                ra_ucac[ind_pm] = (ra_ucac[ind_pm] + (self.plate_epoch - 2000.)
+                                   * pmra_ucac[ind_pm]
+                                   / np.cos(dec_ucac[ind_pm] * np.pi / 180.) 
+                                   / 3600000.)
+                dec_ucac[ind_pm] = (dec_ucac[ind_pm] + 
+                                    (self.plate_epoch - 2000.)
+                                    * pmdec_ucac[ind_pm] / 3600000.)
+
+            self.ra_ucac = ra_ucac
+            self.dec_ucac = dec_ucac
 
         # Query the APASS catalog
         if self.use_apass_db:
@@ -2571,13 +2587,6 @@ class SolveProcess:
                                    level=2, event=50)
                     return
 
-                # Use proper motions to calculate RA/Dec for the plate epoch
-                ra_ucac = (self.ra_ucac + (plate_epoch - 2000.) 
-                           * self.pmra_ucac
-                           / np.cos(self.dec_ucac * np.pi / 180.) / 3600000.)
-                dec_ucac = (self.dec_ucac + (plate_epoch - 2000.) 
-                            * self.pmdec_ucac / 3600000.)
-
                 # Create reference catalog for SCAMP
                 self.scampref = new_scampref()
 
@@ -2589,8 +2598,8 @@ class SolveProcess:
                     hduref = fits.new_table(self.scampref[2].columns, 
                                             nrows=self.num_ucac)
 
-                hduref.data.field('X_WORLD')[:] = ra_ucac
-                hduref.data.field('Y_WORLD')[:] = dec_ucac
+                hduref.data.field('X_WORLD')[:] = self.ra_ucac
+                hduref.data.field('Y_WORLD')[:] = self.dec_ucac
                 hduref.data.field('ERRA_WORLD')[:] = self.raerr_ucac
                 hduref.data.field('ERRB_WORLD')[:] = self.decerr_ucac
                 hduref.data.field('MAG')[:] = self.mag_ucac
@@ -3245,20 +3254,6 @@ class SolveProcess:
 
             ra_ucac = self.ra_ucac
             dec_ucac = self.dec_ucac
-
-            # Use proper motions to calculate RA/Dec for the plate epoch
-            bpm = ((self.pmra_ucac != 0) & (self.pmdec_ucac != 0))
-            num_pm = bpm.sum()
-
-            if num_pm > 0:
-                ind_pm = np.where(bpm)
-                ra_ucac[ind_pm] = (ra_ucac[ind_pm] + (self.plate_epoch - 2000.)
-                                   * self.pmra_ucac[ind_pm]
-                                   / np.cos(dec_ucac[ind_pm] * np.pi / 180.) 
-                                   / 3600000.)
-                dec_ucac[ind_pm] = (dec_ucac[ind_pm] + 
-                                    (self.plate_epoch - 2000.)
-                                    * self.pmdec_ucac[ind_pm] / 3600000.)
 
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
