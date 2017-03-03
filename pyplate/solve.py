@@ -808,7 +808,8 @@ class SolveProcess:
             for attr in self.ucac4_columns.keys():
                 try:
                     colstr = conf.get(self.ucac4_db_table, attr)
-                    self.ucac4_columns[attr] = colstr
+                    _,typ = self.ucac4_columns[attr]
+                    self.ucac4_columns[attr] = (colstr, typ)
                 except ConfigParser.Error:
                     pass
 
@@ -816,7 +817,8 @@ class SolveProcess:
             for attr in self.apass_columns.keys():
                 try:
                     colstr = conf.get(self.apass_db_table, attr)
-                    self.apass_columns[attr] = colstr
+                    _,typ = self.apass_columns[attr]
+                    self.apass_columns[attr] = (colstr, typ)
                 except ConfigParser.Error:
                     pass
 
