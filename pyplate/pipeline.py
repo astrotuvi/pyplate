@@ -37,6 +37,7 @@ class PlateImagePipeline:
         self.solve_plate = False
         self.output_solution_db = False
         self.output_wcs_file = False
+        self.get_reference_catalogs = False
         self.solve_recursive = False
         self.calibrate_photometry = False
         self.improve_photometry = False
@@ -64,7 +65,8 @@ class PlateImagePipeline:
         for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
                      'output_header_file', 'output_header_fits', 
                      'invert_image', 'extract_sources', 'solve_plate', 
-                     'output_solution_db', 'output_wcs_file', 
+                     'output_solution_db', 'output_wcs_file',
+                     'get_reference_catalogs',
                      'solve_recursive', 'calibrate_photometry', 
                      'improve_photometry',
                      'output_calibration_db', 
@@ -182,6 +184,9 @@ class PlateImagePipeline:
                 proc.log.write('Writing FITS header to the FITS file', 
                                level=3, event=49)
                 h.output_to_fits(fn)
+
+            if self.get_reference_catalogs:
+                proc.get_reference_catalogs()
 
             if self.solve_recursive:
                 proc.solve_recursive()
