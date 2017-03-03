@@ -2527,48 +2527,29 @@ class SolveProcess:
                 return
 
             if (astref_catalog == 'TYCHO-2') and self.use_tycho2_fits:
-                # Build custom SCAMP reference catalog from Tycho-2 FITS file
-                fn_tycho = os.path.join(self.tycho2_dir, 'tycho2_{:d}.fits'
-                                        .format(plate_year))
-                tycho = fits.open(fn_tycho)
-                ra_tyc = tycho[1].data.field(0)
-                dec_tyc = tycho[1].data.field(1)
-                mag_tyc = tycho[1].data.field(2)
+                # Check if we have Tycho-2 data
+                if self.num_tyc == 0:
+                    self.log.write('No Tycho-2 sources available, '
+                                   'recursive solving not possible!', 
+                                   level=2, event=50)
+                    return
 
-                if self.ncp_close:
-                    btyc = (dec_tyc > self.min_dec)
-                elif self.scp_close:
-                    btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra < self.min_ra:
-                    btyc = (((ra_tyc < self.max_ra) |
-                            (ra_tyc > self.min_ra)) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
-                else:
-                    btyc = ((ra_tyc > self.min_ra) & 
-                            (ra_tyc < self.max_ra) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
-
-                indtyc = np.where(btyc)
-                numtyc = btyc.sum()
-
-                self.log.write('Fetched {:d} entries from Tycho-2'
-                               ''.format(numtyc))
-
+                # Build custom SCAMP reference catalog from Tycho-2 data
+                numtyc = self.num_tyc
                 self.scampref = new_scampref()
 
                 try:
-                    hduref = fits.BinTableHDU.from_columns(scampref[2].columns, 
+                    hduref = fits.BinTableHDU.from_columns(self.scampref[2].columns, 
                                                            nrows=numtyc)
                 except AttributeError:
-                    hduref = fits.new_table(scampref[2].columns, nrows=numtyc)
+                    hduref = fits.new_table(self.scampref[2].columns, 
+                                            nrows=numtyc)
 
-                hduref.data.field('X_WORLD')[:] = ra_tyc[indtyc]
-                hduref.data.field('Y_WORLD')[:] = dec_tyc[indtyc]
+                hduref.data.field('X_WORLD')[:] = self.ra_tyc
+                hduref.data.field('Y_WORLD')[:] = self.dec_tyc
                 hduref.data.field('ERRA_WORLD')[:] = np.zeros(numtyc) + 1./3600.
                 hduref.data.field('ERRB_WORLD')[:] = np.zeros(numtyc) + 1./3600.
-                hduref.data.field('MAG')[:] = mag_tyc[indtyc]
+                hduref.data.field('MAG')[:] = self.btmag_tyc
                 hduref.data.field('MAGERR')[:] = np.zeros(numtyc) + 0.1
                 hduref.data.field('OBSDATE')[:] = np.zeros(numtyc) + 2000.
                 self.scampref[2].data = hduref.data
@@ -2580,7 +2561,6 @@ class SolveProcess:
                     os.remove(scampref_file)
 
                 self.scampref.writeto(scampref_file)
-                tycho.close()
             elif (astref_catalog == 'UCAC-4') and self.use_ucac4_db:
                 # Check if we have UCAC4 data
                 if self.num_ucac == 0:
