@@ -2209,81 +2209,80 @@ class SolveProcess:
             except IOError:
                 self.log.write('Missing Tycho-2 data', level=2, event=49)
                 tycho2_available = False
-        else:
-            tycho2_available = False
 
-        if tycho2_available:
-            ra_tyc = tycho2[1].data.field(0)
-            dec_tyc = tycho2[1].data.field(1)
-            pmra_tyc = tycho2[1].data.field(2)
-            pmdec_tyc = tycho2[1].data.field(3)
-            btmag_tyc = tycho2[1].data.field(4)
-            vtmag_tyc = tycho2[1].data.field(5)
-            ebtmag_tyc = tycho2[1].data.field(6)
-            evtmag_tyc = tycho2[1].data.field(7)
-            tyc1 = tycho2[1].data.field(8)
-            tyc2 = tycho2[1].data.field(9)
-            tyc3 = tycho2[1].data.field(10)
-            hip_tyc = tycho2[1].data.field(11)
-            ind_nullhip = np.where(hip_tyc == -2147483648)[0]
+            if tycho2_available:
+                ra_tyc = tycho2[1].data.field(0)
+                dec_tyc = tycho2[1].data.field(1)
+                pmra_tyc = tycho2[1].data.field(2)
+                pmdec_tyc = tycho2[1].data.field(3)
+                btmag_tyc = tycho2[1].data.field(4)
+                vtmag_tyc = tycho2[1].data.field(5)
+                ebtmag_tyc = tycho2[1].data.field(6)
+                evtmag_tyc = tycho2[1].data.field(7)
+                tyc1 = tycho2[1].data.field(8)
+                tyc2 = tycho2[1].data.field(9)
+                tyc3 = tycho2[1].data.field(10)
+                hip_tyc = tycho2[1].data.field(11)
+                ind_nullhip = np.where(hip_tyc == -2147483648)[0]
 
-            if len(ind_nullhip) > 0:
-                hip_tyc[ind_nullhip] = 0
+                if len(ind_nullhip) > 0:
+                    hip_tyc[ind_nullhip] = 0
 
-            # For stars that have proper motion data, calculate RA, Dec
-            # for the plate epoch
-            indpm = np.where(np.isfinite(pmra_tyc) & 
-                              np.isfinite(pmdec_tyc))[0]
-            ra_tyc[indpm] = (ra_tyc[indpm] 
-                             + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
-                             / np.cos(dec_tyc[indpm] * np.pi / 180.) 
-                             / 3600000.)
-            dec_tyc[indpm] = (dec_tyc[indpm] 
-                              + (self.plate_epoch - 2000.) 
-                              * pmdec_tyc[indpm] / 3600000.)
+                # For stars that have proper motion data, calculate RA, Dec
+                # for the plate epoch
+                indpm = np.where(np.isfinite(pmra_tyc) & 
+                                  np.isfinite(pmdec_tyc))[0]
+                ra_tyc[indpm] = (ra_tyc[indpm] 
+                                 + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
+                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
+                                 / 3600000.)
+                dec_tyc[indpm] = (dec_tyc[indpm] 
+                                  + (self.plate_epoch - 2000.) 
+                                  * pmdec_tyc[indpm] / 3600000.)
 
-            if self.ncp_close:
-                btyc = (dec_tyc > self.min_dec)
-            elif self.scp_close:
-                btyc = (dec_tyc < self.max_dec)
-            elif self.max_ra < self.min_ra:
-                btyc = (((ra_tyc < self.max_ra) |
-                        (ra_tyc > self.min_ra)) &
-                        (dec_tyc > self.min_dec) & 
-                        (dec_tyc < self.max_dec))
-            else:
-                btyc = ((ra_tyc > self.min_ra) & 
-                        (ra_tyc < self.max_ra) &
-                        (dec_tyc > self.min_dec) & 
-                        (dec_tyc < self.max_dec))
+                if self.ncp_close:
+                    btyc = (dec_tyc > self.min_dec)
+                elif self.scp_close:
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+                else:
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
 
-            indtyc = np.where(btyc)[0]
-            numtyc = btyc.sum()
+                indtyc = np.where(btyc)[0]
+                numtyc = btyc.sum()
 
-            self.ra_tyc = ra_tyc[indtyc] 
-            self.dec_tyc = dec_tyc[indtyc] 
-            self.btmag_tyc = btmag_tyc[indtyc]
-            self.vtmag_tyc = vtmag_tyc[indtyc]
-            self.btmagerr_tyc = ebtmag_tyc[indtyc]
-            self.vtmagerr_tyc = evtmag_tyc[indtyc]
-            self.id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
-                               .format(tyc1[i], tyc2[i], tyc3[i]) 
-                               for i in indtyc])
-            self.hip_tyc = hip_tyc[indtyc]
-            self.num_tyc = numtyc
+                self.ra_tyc = ra_tyc[indtyc] 
+                self.dec_tyc = dec_tyc[indtyc] 
+                self.btmag_tyc = btmag_tyc[indtyc]
+                self.vtmag_tyc = vtmag_tyc[indtyc]
+                self.btmagerr_tyc = ebtmag_tyc[indtyc]
+                self.vtmagerr_tyc = evtmag_tyc[indtyc]
+                self.id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
+                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
+                                   for i in indtyc])
+                self.hip_tyc = hip_tyc[indtyc]
+                self.num_tyc = numtyc
 
-            self.log.write('Fetched {:d} entries from Tycho-2'
-                           ''.format(numtyc))
+                self.log.write('Fetched {:d} entries from Tycho-2'
+                               ''.format(numtyc))
 
         # Query the UCAC4 catalog
         if self.use_ucac4_db:
             self.log.write('Querying the UCAC4 catalogue', level=3, event=49)
+            query_ucac4 = True
 
             # Check UCAC4 database name
             if self.ucac4_db_name == '':
                 self.log.write('UCAC4 database name missing!', 
                                level=2, event=49)
-                return
+                query_ucac4 = False
 
             ucac4_cols = [col.strip() 
                           for col,typ in self.ucac4_columns.values()]
@@ -2294,88 +2293,90 @@ class SolveProcess:
             if '' in ucac4_cols:
                 self.log.write('One ore more UCAC4 database column '
                                'names missing!', level=2, event=49)
-                return
+                query_ucac4 = False
 
-            ucac4_ra_col = self.ucac4_columns['ucac4_ra'][0]
-            ucac4_dec_col = self.ucac4_columns['ucac4_dec'][0]
+            if query_ucac4:
+                ucac4_ra_col = self.ucac4_columns['ucac4_ra'][0]
+                ucac4_dec_col = self.ucac4_columns['ucac4_dec'][0]
 
-            # Query MySQL database
-            db = MySQLdb.connect(host=self.ucac4_db_host, 
-                                 user=self.ucac4_db_user, 
-                                 passwd=self.ucac4_db_passwd,
-                                 db=self.ucac4_db_name)
-            cur = db.cursor()
+                # Query MySQL database
+                db = MySQLdb.connect(host=self.ucac4_db_host, 
+                                     user=self.ucac4_db_user, 
+                                     passwd=self.ucac4_db_passwd,
+                                     db=self.ucac4_db_name)
+                cur = db.cursor()
 
-            sql = 'SELECT {} FROM {} '.format(','.join(ucac4_cols),
-                                              self.ucac4_db_table)
+                sql = 'SELECT {} FROM {} '.format(','.join(ucac4_cols),
+                                                  self.ucac4_db_table)
 
-            if self.ncp_close:
-                sql += 'WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
-            elif self.scp_close:
-                sql += 'WHERE {} < {}'.format(ucac4_dec_col, self.max_dec)
-            elif self.max_ra < self.min_ra:
-                sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
-                        ''.format(ucac4_ra_col, self.max_ra, 
-                                  ucac4_ra_col, self.min_ra,
-                                  ucac4_dec_col, self.min_dec, self.max_dec))
-            else:
-                sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
-                        ''.format(ucac4_ra_col, self.min_ra, self.max_ra, 
-                                  ucac4_dec_col, self.min_dec, self.max_dec))
+                if self.ncp_close:
+                    sql += 'WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
+                elif self.scp_close:
+                    sql += 'WHERE {} < {}'.format(ucac4_dec_col, self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
+                            ''.format(ucac4_ra_col, self.max_ra, 
+                                      ucac4_ra_col, self.min_ra,
+                                      ucac4_dec_col, self.min_dec, self.max_dec))
+                else:
+                    sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                            ''.format(ucac4_ra_col, self.min_ra, self.max_ra, 
+                                      ucac4_dec_col, self.min_dec, self.max_dec))
 
-            sql += ';'
-            self.log.write(sql)
-            numrows = cur.execute(sql)
-            self.log.write('Fetched {:d} rows'.format(numrows))
+                sql += ';'
+                self.log.write(sql)
+                numrows = cur.execute(sql)
+                self.log.write('Fetched {:d} rows'.format(numrows))
 
-            res = np.fromiter(cur.fetchall(), dtype=','.join(ucac4_types))
+                res = np.fromiter(cur.fetchall(), dtype=','.join(ucac4_types))
 
-            cur.close()
-            db.commit()
-            db.close()
+                cur.close()
+                db.commit()
+                db.close()
 
-            ra_ucac = res['f0']
-            dec_ucac = res['f1']
-            pmra_ucac = res['f6']
-            pmdec_ucac = res['f7']
+                ra_ucac = res['f0']
+                dec_ucac = res['f1']
+                pmra_ucac = res['f6']
+                pmdec_ucac = res['f7']
 
-            self.raerr_ucac = res['f2']
-            self.decerr_ucac = res['f3']
-            self.mag_ucac = res['f4']
-            self.magerr_ucac = res['f5']
-            self.id_ucac = res['f8']
-            self.bmag_ucac = res['f9']
-            self.vmag_ucac = res['f10']
-            self.bmagerr_ucac = res['f11']
-            self.vmagerr_ucac = res['f12']
-            self.num_ucac = numrows
+                self.raerr_ucac = res['f2']
+                self.decerr_ucac = res['f3']
+                self.mag_ucac = res['f4']
+                self.magerr_ucac = res['f5']
+                self.id_ucac = res['f8']
+                self.bmag_ucac = res['f9']
+                self.vmag_ucac = res['f10']
+                self.bmagerr_ucac = res['f11']
+                self.vmagerr_ucac = res['f12']
+                self.num_ucac = numrows
 
-            # Use proper motions to calculate RA/Dec for the plate epoch
-            bpm = ((pmra_ucac != 0) & (pmdec_ucac != 0))
-            num_pm = bpm.sum()
+                # Use proper motions to calculate RA/Dec for the plate epoch
+                bpm = ((pmra_ucac != 0) & (pmdec_ucac != 0))
+                num_pm = bpm.sum()
 
-            if num_pm > 0:
-                ind_pm = np.where(bpm)
-                ra_ucac[ind_pm] = (ra_ucac[ind_pm] + (self.plate_epoch - 2000.)
-                                   * pmra_ucac[ind_pm]
-                                   / np.cos(dec_ucac[ind_pm] * np.pi / 180.) 
-                                   / 3600000.)
-                dec_ucac[ind_pm] = (dec_ucac[ind_pm] + 
-                                    (self.plate_epoch - 2000.)
-                                    * pmdec_ucac[ind_pm] / 3600000.)
+                if num_pm > 0:
+                    ind_pm = np.where(bpm)
+                    ra_ucac[ind_pm] = (ra_ucac[ind_pm] + (self.plate_epoch - 2000.)
+                                       * pmra_ucac[ind_pm]
+                                       / np.cos(dec_ucac[ind_pm] * np.pi / 180.) 
+                                       / 3600000.)
+                    dec_ucac[ind_pm] = (dec_ucac[ind_pm] + 
+                                        (self.plate_epoch - 2000.)
+                                        * pmdec_ucac[ind_pm] / 3600000.)
 
-            self.ra_ucac = ra_ucac
-            self.dec_ucac = dec_ucac
+                self.ra_ucac = ra_ucac
+                self.dec_ucac = dec_ucac
 
         # Query the APASS catalog
         if self.use_apass_db:
             self.log.write('Querying the APASS catalogue', level=3, event=49)
+            query_apass = True
 
             # Check UCAC4 database name
             if self.apass_db_name == '':
                 self.log.write('APASS database name missing!', 
                                level=2, event=49)
-                return
+                query_apass = False
 
             apass_cols = [col.strip() 
                           for col,typ in self.apass_columns.values()]
@@ -2386,51 +2387,52 @@ class SolveProcess:
             if '' in apass_cols:
                 self.log.write('One ore more APASS database column '
                                'names missing!', level=2, event=49)
-                return
+                query_apass = False
 
-            apass_ra_col = self.apass_columns['apass_ra'][0]
-            apass_dec_col = self.apass_columns['apass_dec'][0]
+            if query_apass:
+                apass_ra_col = self.apass_columns['apass_ra'][0]
+                apass_dec_col = self.apass_columns['apass_dec'][0]
 
-            # Query MySQL database
-            db = MySQLdb.connect(host=self.apass_db_host, 
-                                 user=self.apass_db_user, 
-                                 passwd=self.apass_db_passwd,
-                                 db=self.apass_db_name)
-            cur = db.cursor()
+                # Query MySQL database
+                db = MySQLdb.connect(host=self.apass_db_host, 
+                                     user=self.apass_db_user, 
+                                     passwd=self.apass_db_passwd,
+                                     db=self.apass_db_name)
+                cur = db.cursor()
 
-            sql = 'SELECT {} FROM {} '.format(','.join(apass_cols),
-                                              self.apass_db_table)
+                sql = 'SELECT {} FROM {} '.format(','.join(apass_cols),
+                                                  self.apass_db_table)
 
-            if self.ncp_close:
-                sql += 'WHERE {} > {}'.format(apass_dec_col, self.min_dec)
-            elif self.scp_close:
-                sql += 'WHERE {} < {}'.format(apass_dec_col, self.max_dec)
-            elif self.max_ra < self.min_ra:
-                sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
-                        ''.format(apass_ra_col, self.max_ra, 
-                                  apass_ra_col, self.min_ra,
-                                  apass_dec_col, self.min_dec, self.max_dec))
-            else:
-                sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
-                        ''.format(apass_ra_col, self.min_ra, self.max_ra, 
-                                  apass_dec_col, self.min_dec, self.max_dec))
+                if self.ncp_close:
+                    sql += 'WHERE {} > {}'.format(apass_dec_col, self.min_dec)
+                elif self.scp_close:
+                    sql += 'WHERE {} < {}'.format(apass_dec_col, self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
+                            ''.format(apass_ra_col, self.max_ra, 
+                                      apass_ra_col, self.min_ra,
+                                      apass_dec_col, self.min_dec, self.max_dec))
+                else:
+                    sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                            ''.format(apass_ra_col, self.min_ra, self.max_ra, 
+                                      apass_dec_col, self.min_dec, self.max_dec))
 
-            sql += ';'
-            self.log.write(sql)
-            num_apass = cur.execute(sql)
-            self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
-            res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
-            cur.close()
-            db.commit()
-            db.close()
+                sql += ';'
+                self.log.write(sql)
+                num_apass = cur.execute(sql)
+                self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
+                res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
+                cur.close()
+                db.commit()
+                db.close()
 
-            self.ra_apass = res['f0']
-            self.dec_apass = res['f1']
-            self.bmag_apass = res['f2']
-            self.vmag_apass = res['f3']
-            self.berr_apass = res['f4']
-            self.verr_apass = res['f5']
-            self.num_apass = num_apass
+                self.ra_apass = res['f0']
+                self.dec_apass = res['f1']
+                self.bmag_apass = res['f2']
+                self.vmag_apass = res['f3']
+                self.berr_apass = res['f4']
+                self.verr_apass = res['f5']
+                self.num_apass = num_apass
 
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
