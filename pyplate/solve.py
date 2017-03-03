@@ -2274,6 +2274,7 @@ class SolveProcess:
                                ''.format(numtyc))
 
         query_combined = False
+        query_healpix = False
 
         # Query the UCAC4 catalog
         if self.use_ucac4_db:
@@ -2320,6 +2321,18 @@ class SolveProcess:
                     ucac4_cols.extend(apass_cols)
                     ucac4_types.extend(apass_types)
                     query_combined = True
+
+                    if self.conf.has_section(self.ucac4_db_table):
+                        try:
+                            colstr = self.conf.get(self.ucac4_db_table, 
+                                                   'healpix')
+
+                            if colstr != '':
+                                ucac4_cols.append(colstr)
+                                ucac4_types.append('i')
+                                query_healpix = True
+                        except ConfigParser.Error:
+                            pass
 
             if query_ucac4:
                 ucac4_ra_col = self.ucac4_columns['ucac4_ra'][0]
@@ -2402,6 +2415,28 @@ class SolveProcess:
                     self.verr_apass = res['f18']
                     self.num_apass = numrows
                     self.combined_ucac_apass = True
+
+                    # Use UCAC4 magnitudes to fill gaps in APASS
+                    if query_healpix:
+                        healpix_ucac = res['f19']
+                        uhp = np.unique(healpix_ucac)
+
+                        for hp in uhp:
+                            bapass = ((healpix_ucac == hp) &
+                                      (self.bmag_apass > 10) &
+                                      (self.vmag_apass > 10))
+                            bucac = ((healpix_ucac == hp) &
+                                     (self.bmag_ucac > 10) &
+                                     (self.vmag_ucac > 10))
+
+                            # There is a healpix with no valid APASS magnitudes,
+                            # but available magnitudes in UCAC4
+                            if (bapass.sum() == 0) and (bucac.sum() > 0):
+                                ind = np.where(bucac)
+                                self.bmag_apass[ind] = self.bmag_ucac[ind]
+                                self.vmag_apass[ind] = self.vmag_ucac[ind]
+                                self.berr_apass[ind] = self.bmagerr_ucac[ind]
+                                self.verr_apass[ind] = self.vmagerr_ucac[ind]
 
         # Query the APASS catalog
         if self.use_apass_db and not query_combined:
