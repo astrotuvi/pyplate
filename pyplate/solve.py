@@ -687,6 +687,8 @@ class SolveProcess:
         self.verr_apass = None
         self.num_apass = 0
 
+        self.combined_ucac_apass = None
+
         self.ucac4_columns = OrderedDict([
             ('ucac4_ra', ('RAJ2000', 'f8')),
             ('ucac4_dec', ('DEJ2000', 'f8')),
@@ -2392,15 +2394,14 @@ class SolveProcess:
                 self.dec_ucac = dec_ucac
 
                 if query_combined:
-                    #self.ra_apass = res['f13']
-                    #self.dec_apass = res['f14']
-                    self.ra_apass = ra_ucac
-                    self.dec_apass = dec_ucac
+                    self.ra_apass = res['f13']
+                    self.dec_apass = res['f14']
                     self.bmag_apass = res['f15']
                     self.vmag_apass = res['f16']
                     self.berr_apass = res['f17']
                     self.verr_apass = res['f18']
                     self.num_apass = numrows
+                    self.combined_ucac_apass = True
 
         # Query the APASS catalog
         if self.use_apass_db and not query_combined:
@@ -3345,6 +3346,14 @@ class SolveProcess:
                     self.sources['ucac4_nn_dist'][ind] = (nndist
                                                           .astype(np.float32))
 
+                    if self.combined_ucac_apass:
+                        self.sources['apass_ra'][ind] = self.ra_apass[ind_ucac]
+                        self.sources['apass_dec'][ind] = self.dec_apass[ind_ucac]
+                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_ucac]
+                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_ucac]
+                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_ucac]
+                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_ucac]
+
         # Match sources with the Tycho-2 catalogue
         if self.use_tycho2_fits:
             self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
@@ -3452,17 +3461,35 @@ class SolveProcess:
                     self.log.write('Using fixed cross-match radius of '
                                    '{:.2f} arcsec'
                                    ''.format(float(self.crossmatch_radius)), 
-                                   level=4, event=61)
+                                   level=4, event=63)
                 else:
                     self.log.write('Using scaled cross-match radius of '
                                    '{:.2f} astrometric sigmas'
                                    ''.format(float(self.crossmatch_nsigma)), 
-                                   level=4, event=61)
+                                   level=4, event=63)
+
+                if self.combined_ucac_apass:
+                    bool_finite_apass = (np.isfinite(self.ra_apass) &
+                                         np.isfinite(self.dec_apass))
+                    num_finite_apass = bool_finite_apass.sum()
+
+                    if num_finite_apass == 0:
+                        self.log.write('No APASS sources with usable '
+                                       'coordinates for cross-matching', 
+                                       level=2, event=63)
+                        return
+
+                    ind_finite_apass = np.where(bool_finite_apass)[0]
+                    ra_apass = self.ra_apass[ind_finite_apass]
+                    dec_apass = self.dec_apass[ind_finite_apass]
+                else:
+                    ra_apass = self.ra_apass
+                    dec_apass = self.dec_apass
 
                 if have_match_coord:
                     coords = ICRS(ra_finite, dec_finite, 
                                   unit=(units.degree, units.degree))
-                    catalog = ICRS(self.ra_apass, self.dec_apass, 
+                    catalog = ICRS(ra_apass, dec_apass, 
                                    unit=(units.degree, units.degree))
                     ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                                   nthneighbor=1)
@@ -3502,17 +3529,17 @@ class SolveProcess:
 
                     ind_plate,ind_apass,ds = \
                             spherematch(ra_finite, dec_finite, 
-                                        self.ra_apass, self.dec_apass,
+                                        ra_apass, dec_apass,
                                         tol=crossmatch_radius/3600., 
                                         nnearest=1)
                     matchdist = ds * 3600.
 
                     _,_,ds2 = spherematch(ra_finite, dec_finite,
-                                          self.ra_apass, self.dec_apass, 
+                                          ra_apass, dec_apass, 
                                           nnearest=2)
                     matchdist2 = ds2[ind_plate] * 3600.
-                    _,_,nnds = spherematch(self.ra_apass, self.dec_apass,
-                                           self.ra_apass, self.dec_apass, 
+                    _,_,nnds = spherematch(ra_apass, dec_apass,
+                                           ra_apass, dec_apass, 
                                            nnearest=2)
                     nndist = nnds[ind_apass] * 3600.
 
@@ -3523,12 +3550,15 @@ class SolveProcess:
 
                     if num_match > 0:
                         ind = ind_finite[ind_plate]
-                        self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
-                        self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
-                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
-                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
-                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
-                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
+
+                        if not self.combined_ucac_apass:
+                            self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
+                            self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
+                            self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
+                            self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
+                            self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
+                            self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
+
                         self.sources['apass_dist'][ind] = (matchdist
                                                            .astype(np.float32))
                         self.sources['apass_dist2'][ind] = (matchdist2
@@ -3719,15 +3749,19 @@ class SolveProcess:
 
         if photref_catalog == 'APASS':
             # Use APASS magnitudes
-            ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
-                                   (src_cal['apass_vmag'] > 10) &
-                                   #(src_cal['apass_bmagerr'] > 0) &
-                                   #(src_cal['apass_bmagerr'] < 0.1) &
-                                   #(src_cal['apass_verr'] > 0) &
-                                   #(src_cal['apass_verr'] < 0.1) &
-                                   (src_cal['apass_nn_dist'] > 10) &
-                                   (src_cal['apass_dist2'] >
-                                    2. * src_cal['apass_dist']))[0]
+            if self.combined_ucac_apass:
+                ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
+                                       (src_cal['apass_vmag'] > 10) &
+                                       (src_cal['ucac4_nn_dist'] > 10) &
+                                       (src_cal['ucac4_dist2'] >
+                                        2. * src_cal['ucac4_dist']))[0]
+            else:
+                ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
+                                       (src_cal['apass_vmag'] > 10) &
+                                       (src_cal['apass_nn_dist'] > 10) &
+                                       (src_cal['apass_dist2'] >
+                                        2. * src_cal['apass_dist']))[0]
+
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable APASS stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3750,10 +3784,6 @@ class SolveProcess:
             # Use UCAC4 magnitudes
             ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
                                    (src_cal['ucac4_vmag'] > 10) &
-                                   #(src_cal['ucac4_bmagerr'] > 0) &
-                                   #(src_cal['ucac4_bmagerr'] < 0.09) &
-                                   #(src_cal['ucac4_vmagerr'] > 0) &
-                                   #(src_cal['ucac4_vmagerr'] < 0.09) & 
                                    (src_cal['ucac4_nn_dist'] > 10) &
                                    (src_cal['ucac4_dist2'] >
                                     src_cal['ucac4_dist']+10.))[0]
