@@ -678,6 +678,7 @@ class SolveProcess:
         self.vmag_apass = None
         self.berr_apass = None
         self.verr_apass = None
+        self.num_apass = 0
 
         self.ucac4_columns = OrderedDict([
             ('ucac4_ra', ('RAJ2000', 'f8')),
@@ -2189,6 +2190,8 @@ class SolveProcess:
 
         # Query the UCAC4 catalog
         if self.use_ucac4_db:
+            self.log.write('Querying the UCAC4 catalogue', level=3, event=49)
+
             # Check UCAC4 database name
             if self.ucac4_db_name == '':
                 self.log.write('UCAC4 database name missing!', 
@@ -2258,6 +2261,71 @@ class SolveProcess:
             self.bmagerr_ucac = res['f11']
             self.vmagerr_ucac = res['f12']
             self.num_ucac = numrows
+
+        # Query the APASS catalog
+        if self.use_apass_db:
+            self.log.write('Querying the APASS catalogue', level=3, event=49)
+
+            # Check UCAC4 database name
+            if self.apass_db_name == '':
+                self.log.write('APASS database name missing!', 
+                               level=2, event=49)
+                return
+
+            apass_cols = [col.strip() 
+                          for col,typ in self.apass_columns.values()]
+            apass_types = [typ.strip() 
+                           for col,typ in self.apass_columns.values()]
+
+            # Check if all columns are specified
+            if '' in apass_cols:
+                self.log.write('One ore more APASS database column '
+                               'names missing!', level=2, event=49)
+                return
+
+            apass_ra_col = self.apass_columns['apass_ra'][0]
+            apass_dec_col = self.apass_columns['apass_dec'][0]
+
+            # Query MySQL database
+            db = MySQLdb.connect(host=self.apass_db_host, 
+                                 user=self.apass_db_user, 
+                                 passwd=self.apass_db_passwd,
+                                 db=self.apass_db_name)
+            cur = db.cursor()
+
+            sql = 'SELECT {} FROM {} '.format(','.join(apass_cols),
+                                              self.apass_db_table)
+
+            if self.ncp_close:
+                sql += 'WHERE {} > {}'.format(apass_dec_col, self.min_dec)
+            elif self.scp_close:
+                sql += 'WHERE {} < {}'.format(apass_dec_col, self.max_dec)
+            elif self.max_ra < self.min_ra:
+                sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
+                        ''.format(apass_ra_col, self.max_ra, 
+                                  apass_ra_col, self.min_ra,
+                                  apass_dec_col, self.min_dec, self.max_dec))
+            else:
+                sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                        ''.format(apass_ra_col, self.min_ra, self.max_ra, 
+                                  apass_dec_col, self.min_dec, self.max_dec))
+
+            sql += ';'
+            self.log.write(sql)
+            num_apass = cur.execute(sql)
+            self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
+            res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
+            cur.close()
+            db.commit()
+            db.close()
+
+            self.ra_apass = res['f0']
+            self.dec_apass = res['f1']
+            self.bmag_apass = res['f2']
+            self.vmag_apass = res['f3']
+            self.berr_apass = res['f4']
+            self.verr_apass = res['f5']
+            self.num_apass = num_apass
 
     def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
@@ -3345,57 +3413,8 @@ class SolveProcess:
             self.log.write('Cross-matching sources with the APASS catalogue', 
                            level=3, event=63)
 
-            # Query MySQL database
-            db = MySQLdb.connect(host=self.apass_db_host, 
-                                 user=self.apass_db_user, 
-                                 passwd=self.apass_db_passwd,
-                                 db=self.apass_db_name)
-            cur = db.cursor()
-
-            sql1 = 'SELECT RAdeg,DEdeg,B,V,e_B,e_V'
-            sql2 = ' FROM {}'.format(self.apass_db_table)
-            #sql2 += ' FORCE INDEX (idx_radecmag)'
-
-            if self.ncp_close:
-                sql2 += ' WHERE DEdeg > {}'.format(self.min_dec)
-            elif self.scp_close:
-                sql2 += ' WHERE DEdeg < {}'.format(self.max_dec)
-            elif self.max_ra < self.min_ra:
-                sql2 += (' WHERE (RAdeg < {} OR RAdeg > {})'
-                         ' AND DEdeg BETWEEN {} AND {}'
-                         ''.format(self.max_ra, self.min_ra,
-                                   self.min_dec, self.max_dec))
-            else:
-                sql2 += (' WHERE RAdeg BETWEEN {} AND {}'
-                         ' AND DEdeg BETWEEN {} AND {}'
-                         ''.format(self.min_ra, self.max_ra, 
-                                   self.min_dec, self.max_dec))
-
-            sql3 = ''
-
-            #if self.stars_sqdeg < 200:
-            #    sql3 += ' AND V < 13'
-            #elif self.stars_sqdeg < 1000:
-            #    sql3 += ' AND V < 15'
-
-            sql = sql1 + sql2 + sql3 + ';'
-            self.log.write(sql)
-            num_apass = cur.execute(sql)
-            self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
-            res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
-            cur.close()
-            db.commit()
-            db.close()
-
-            self.ra_apass = res['f0']
-            self.dec_apass = res['f1']
-            self.bmag_apass = res['f2']
-            self.vmag_apass = res['f3']
-            self.berr_apass = res['f4']
-            self.verr_apass = res['f5']
-
             # Begin cross-match
-            if num_apass == 0:
+            if self.num_apass == 0:
                 self.log.write('Missing APASS data', level=2, event=63)
             else:
                 if self.crossmatch_radius is not None:
