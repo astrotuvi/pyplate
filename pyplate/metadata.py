@@ -45,6 +45,8 @@ except ImportError:
 
 _keyword_meta = OrderedDict([
     ('plate_id', (int, False, None, None, None)),
+    ('db_plate_id', (int, False, None, None, None)),
+    ('scan_id', (int, False, None, None, None)),
     ('archive_id', (int, False, None, None, None)),
     ('fits_simple', (bool, False, True, 'SIMPLE', None)),
     ('fits_bitpix', (int, False, None, 'BITPIX', None)),

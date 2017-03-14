@@ -77,7 +77,7 @@ _schema['plate'] = OrderedDict([
 
 _schema['exposure'] = OrderedDict([
     ('exposure_id',      ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', None)),
-    ('plate_id',         ('INT UNSIGNED NOT NULL', 'plate_id')),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', 'db_plate_id')),
     ('archive_id',       ('INT UNSIGNED NOT NULL', 'archive_id')),
     ('exposure_num',     ('TINYINT UNSIGNED NOT NULL', None)),
     ('object_name',      ('VARCHAR(80)', 'object_name')),
@@ -781,7 +781,12 @@ class PlateDB:
 
         # The plate table
         col_list = ['plate_id']
-        val_tuple = (None,)
+
+        if (isinstance(platemeta['db_plate_id'], int) and 
+            (platemeta['db_plate_id'] > 0)):
+            val_tuple = (platemeta['db_plate_id'],)
+        else:
+            val_tuple = (None,)
 
         for k,v in _schema['plate'].items():
             if v[1]:
@@ -796,7 +801,7 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
         plate_id = self.cursor.lastrowid
-        platemeta['plate_id'] = plate_id
+        platemeta['db_plate_id'] = plate_id
 
         # The exposure table
         for exp in np.arange(platemeta['numexp']):
@@ -861,11 +866,16 @@ class PlateDB:
         for order,filename in enumerate(fn_list):
             if filename:
                 col_list = ['plate_id', 'logpage_id', 'logpage_order']
-                plate_id = self.get_plate_id(platemeta['plate_num'],
-                                             platemeta['archive_id'])
 
-                if plate_id is None:
-                    plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
+                if (isinstance(platemeta['db_plate_id'], int) and 
+                    (platemeta['db_plate_id'] > 0)):
+                    plate_id = platemeta['db_plate_id']
+                else:
+                    plate_id = self.get_plate_id(platemeta['plate_num'],
+                                                 platemeta['archive_id'])
+
+                    if plate_id is None:
+                        plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
 
                 logpage_id = self.get_logpage_id(filename, 
                                                  platemeta['archive_id'])
@@ -894,14 +904,23 @@ class PlateDB:
 
         """
 
-        plate_id = self.get_plate_id(platemeta['plate_num'],
-                                     platemeta['archive_id'])
+        if (isinstance(platemeta['db_plate_id'], int) and 
+            (platemeta['db_plate_id'] > 0)):
+            plate_id = platemeta['db_plate_id']
+        else:
+            plate_id = self.get_plate_id(platemeta['plate_num'],
+                                         platemeta['archive_id'])
 
-        if plate_id is None:
-            plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
+            if plate_id is None:
+                plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
 
         col_list = ['scan_id', 'plate_id']
-        val_tuple = (None, plate_id)
+
+        if (isinstance(platemeta['scan_id'], int) and 
+            (platemeta['scan_id'] > 0)):
+            val_tuple = (platemeta['scan_id'], plate_id)
+        else:
+            val_tuple = (None, plate_id)
 
         for k,v in _schema['scan'].items():
             if v[1]:
