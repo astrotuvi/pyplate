@@ -45,6 +45,8 @@ except ImportError:
 
 _keyword_meta = OrderedDict([
     ('plate_id', (int, False, None, None, None)),
+    ('db_plate_id', (int, False, None, None, None)),
+    ('scan_id', (int, False, None, None, None)),
     ('archive_id', (int, False, None, None, None)),
     ('fits_simple', (bool, False, True, 'SIMPLE', None)),
     ('fits_bitpix', (int, False, None, 'BITPIX', None)),
@@ -158,8 +160,18 @@ _keyword_meta = OrderedDict([
     ('fits_history', (str, True, [], 'HISTORY', None))
     ])
 
+_logbook_meta = OrderedDict([
+    ('logbook_id', (int, None)),
+    ('archive_id', (int, None)),
+    ('logbook_num', (str, None)),
+    ('logbook_title', (str, None)),
+    ('logbook_type', (int, None)),
+    ('logbook_notes', (str, None))
+    ])
+
 _logpage_meta = OrderedDict([
     ('filename', (str, None)),
+    ('logpage_id', (int, None)),
     ('archive_id', (int, None)),
     ('logbook_num', (str, None)),
     ('logbook_id', (int, None)),
@@ -266,6 +278,7 @@ class ArchiveMeta:
         self.quality_dict = OrderedDict()
         self.plate_csv_dict = [CSV_Dict()]
         self.scan_csv_dict = CSV_Dict()
+        self.logbook_csv_dict = CSV_Dict()
         self.logpage_csv_dict = CSV_Dict()
         self.fits_dir = ''
 
@@ -285,7 +298,16 @@ class ArchiveMeta:
 
         self.conf = conf
 
-        for attr in ['archive_id', 'archive_name', 'logbooks']:
+        for attr in ['archive_id']:
+            try:
+                setattr(self, attr, conf.getint('Archive', attr))
+            except ValueError:
+                print ('Error: Value in configuration file must be '
+                       'integer ([{}], {})'.format('Archive', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['archive_name', 'logbooks']:
             try:
                 setattr(self, attr, conf.get('Archive', attr))
             except ConfigParser.Error:
@@ -310,12 +332,27 @@ class ArchiveMeta:
             for lb in self.logbooks:
                 lbmeta = {'archive_id': self.archive_id}
 
-                for k in ['logbook_num', 'logbook_title', 'logbook_type',
-                          'logbook_notes']:
+                # Assign integer values
+                for k in ['logbook_id', 'logbook_type']:
+                    try:
+                        lbmeta[k] = conf.getint(lb, k)
+                    except ValueError:
+                        print ('Error: Value in configuration file must be '
+                               'integer ([{}], {})'.format(lb, k))
+                        lbmeta[k] = None
+                    except ConfigParser.Error:
+                        lbmeta[k] = None
+
+                # Assign string values
+                for k in ['logbook_num', 'logbook_title', 'logbook_notes']:
                     try:
                         lbmeta[k] = conf.get(lb, k)
                     except ConfigParser.Error:
                         lbmeta[k] = None
+
+                # Require non-zero logbook_id
+                if lbmeta['logbook_id'] == 0:
+                    lbmeta['logbook_id'] = None
 
                 self.logbookmeta[lb] = lbmeta
 
@@ -443,6 +480,12 @@ class ArchiveMeta:
                 if fn_str:
                     fn_scan_csv = os.path.join(csv_dir, fn_str)
 
+            if self.conf.has_option('Files', 'logbook_csv'):
+                fn_str = self.conf.get('Files', 'logbook_csv')
+
+                if fn_str:
+                    fn_logbook_csv = os.path.join(csv_dir, fn_str)
+
             if self.conf.has_option('Files', 'logpage_csv'):
                 fn_str = self.conf.get('Files', 'logpage_csv')
 
@@ -496,6 +539,25 @@ class ArchiveMeta:
                                                for row in reader))
                 self.scan_csv_dict.filename = fn_base
 
+        if fn_logbook_csv:
+            fn_base = os.path.basename(fn_logbook_csv)
+            csv_delimiter = ','
+            csv_quotechar = '"'
+
+            if self.conf.has_section(fn_base):
+                if self.conf.has_option(fn_base, 'csv_delimiter'):
+                    csv_delimiter = self.conf.get(fn_base, 'csv_delimiter')
+
+                if self.conf.has_option(fn_base, 'csv_quotechar'):
+                    csv_quotechar = self.conf.get(fn_base, 'csv_quotechar')
+
+            with open(fn_logbook_csv, 'rb') as f:
+                reader = csv.reader(f, delimiter=csv_delimiter,
+                                    quotechar=csv_quotechar)
+                self.logbook_csv_dict = CSV_Dict(((row[0],row)
+                                                  for row in reader))
+                self.logbook_csv_dict.filename = fn_base
+
         if fn_logpage_csv:
             fn_base = os.path.basename(fn_logpage_csv)
             csv_delimiter = ','
@@ -526,7 +588,7 @@ class ArchiveMeta:
         elif self.plate_csv_dict[0]:
             return self.plate_csv_dict[0].keys()
         else:
-            return None
+            return []
 
     def get_scanlist(self):
         """
@@ -537,7 +599,20 @@ class ArchiveMeta:
         if self.scan_csv_dict:
             return self.scan_csv_dict.keys()
         else:
-            return None
+            return []
+
+    def get_logbooklist(self):
+        """
+        Get list of logbook identifications
+
+        """
+
+        if self.logbooks:
+            return self.logbooks
+        if self.logbook_csv_dict:
+            return self.logbook_csv_dict.keys()
+        else:
+            return []
 
     def get_logpagelist(self):
         """
@@ -548,8 +623,30 @@ class ArchiveMeta:
         if self.logpage_csv_dict:
             return self.logpage_csv_dict.keys()
         else:
-            return None
+            return []
 
+    def get_logbookmeta(self, num=None):
+        """
+        Get metadata for the specific logbook.
+
+        """
+
+        logbookmeta = LogbookMeta(num=num)
+        logbookmeta['archive_id'] = self.archive_id
+
+        if self.conf is not None:
+            logbookmeta.assign_conf(self.conf)
+
+        if num:
+            if self.logbooks and (num in self.logbooks):
+                logbookmeta = self.logbookmeta[num]
+            elif num in self.logbook_csv_dict:
+                logbookmeta.parse_csv(self.logbook_csv_dict[num], 
+                                      csv_filename=self.logbook_csv_dict
+                                      .filename)
+
+        return logbookmeta
+        
     def get_logpagemeta(self, filename=None):
         """
         Get metadata for the specific logpage.
@@ -613,15 +710,15 @@ class ArchiveMeta:
 
         """
 
-        #if self.logbooks or self.logpage_csv_dict:
         platedb = PlateDB()
         platedb.assign_conf(self.conf)
         platedb.open_connection()
 
-        for k,v in self.logbookmeta.items():
-            platedb.write_logbook(v)
+        for num in self.get_logbooklist():
+            logbookmeta = self.get_logbookmeta(num=num)
+            platedb.write_logbook(logbookmeta)
 
-        for filename in self.logpage_csv_dict.keys():
+        for filename in self.get_logpagelist():
             logpagemeta = self.get_logpagemeta(filename=filename)
             platedb.write_logpage(logpagemeta)
 
@@ -759,6 +856,63 @@ class ArchiveMeta:
         return platemeta
 
 
+class LogbookMeta(OrderedDict):
+    """
+    Logbook metadata class.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        num = kwargs.pop('num', None)
+        super(LogbookMeta, self).__init__(*args, **kwargs)
+
+        for k,v in _logbook_meta.items():
+            self[k] = copy.deepcopy(v[1])
+
+        self['logbook_num'] = num
+
+    def assign_conf(self, conf):
+        """
+        Assign configuration.
+
+        """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
+        self.conf = conf
+
+    def parse_csv(self, val_list, csv_filename=None):
+        """
+        Extract data from a CSV row.
+
+        """
+
+        if self.conf.has_section(csv_filename):
+            for (key, pos) in self.conf.items(csv_filename):
+                if key in self:
+                    try:
+                        pos = int(pos)
+                    except ValueError:
+                        pos = 0
+
+                    if (pos > 0 and pos <= len(val_list)):
+                        if (_logbook_meta[key][0] is int or 
+                            _logbook_meta[key][0] is float):
+                            val = str_to_num(val_list[pos-1])
+                        else:
+                            val = val_list[pos-1]
+
+                        try:
+                            self[key].append(val)
+                        except AttributeError:
+                            self[key] = val
+
+            # Require non-zero logbook_id
+            if self['logbook_id'] == 0:
+                self['logbook_id'] = None
+
+
 class LogpageMeta(OrderedDict):
     """
     Logpage metadata class.
@@ -817,17 +971,15 @@ class LogpageMeta(OrderedDict):
 
         if self.conf.has_section(csv_filename):
             for (key, pos) in self.conf.items(csv_filename):
-                if key in self:
+                if (key in self) and (key != 'filename'):
                     try:
                         pos = int(pos)
                     except ValueError:
                         pos = 0
 
                     if (pos > 0 and pos <= len(val_list)):
-                        if key == 'filename':
-                            pass
-                        elif (_logpage_meta[key][0] is int or 
-                              _logpage_meta[key][0] is float):
+                        if (_logpage_meta[key][0] is int or 
+                            _logpage_meta[key][0] is float):
                             val = str_to_num(val_list[pos-1])
                         else:
                             val = val_list[pos-1]
@@ -836,6 +988,10 @@ class LogpageMeta(OrderedDict):
                             self[key].append(val)
                         except AttributeError:
                             self[key] = val
+
+            # Require non-zero logpage_id
+            if self['logpage_id'] == 0:
+                self['logpage_id'] = None
 
     def parse_exif(self):
         """
