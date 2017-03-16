@@ -177,7 +177,7 @@ _schema['scan'] = OrderedDict([
 
 _schema['logbook'] = OrderedDict([
     ('logbook_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
-                          False)),
+                          True)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', True)),
     ('logbook_num',      ('CHAR(10)', True)),
     ('logbook_title',    ('VARCHAR(80)', True)),
@@ -191,7 +191,7 @@ _schema['logbook'] = OrderedDict([
 
 _schema['logpage'] = OrderedDict([
     ('logpage_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY',
-                          False)),
+                          True)),
     ('logbook_id',       ('INT UNSIGNED', True)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', True)),
     ('logpage_type',     ('TINYINT', True)),
@@ -944,8 +944,8 @@ class PlateDB:
 
         """
 
-        col_list = ['logbook_id']
-        val_tuple = (None, )
+        col_list = []
+        val_tuple = ()
 
         for k,v in _schema['logbook'].items():
             if v[1]:
@@ -971,8 +971,8 @@ class PlateDB:
                                              logpagemeta['archive_id'])
             logpagemeta['logbook_id'] = logbook_id
             
-        col_list = ['logpage_id']
-        val_tuple = (None, )
+        col_list = []
+        val_tuple = ()
 
         for k,v in _schema['logpage'].items():
             if v[1]:

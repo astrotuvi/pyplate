@@ -162,6 +162,7 @@ _keyword_meta = OrderedDict([
 
 _logpage_meta = OrderedDict([
     ('filename', (str, None)),
+    ('logpage_id', (int, None)),
     ('archive_id', (int, None)),
     ('logbook_num', (str, None)),
     ('logbook_id', (int, None)),
@@ -287,7 +288,16 @@ class ArchiveMeta:
 
         self.conf = conf
 
-        for attr in ['archive_id', 'archive_name', 'logbooks']:
+        for attr in ['archive_id']:
+            try:
+                setattr(self, attr, conf.getint('Archive', attr))
+            except ValueError:
+                print ('Error: Value in configuration file must be '
+                       'integer ([{}], {})'.format('Archive', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['archive_name', 'logbooks']:
             try:
                 setattr(self, attr, conf.get('Archive', attr))
             except ConfigParser.Error:
@@ -312,12 +322,27 @@ class ArchiveMeta:
             for lb in self.logbooks:
                 lbmeta = {'archive_id': self.archive_id}
 
-                for k in ['logbook_num', 'logbook_title', 'logbook_type',
-                          'logbook_notes']:
+                # Assign integer values
+                for k in ['logbook_id', 'logbook_type']:
+                    try:
+                        lbmeta[k] = conf.getint(lb, k)
+                    except ValueError:
+                        print ('Error: Value in configuration file must be '
+                               'integer ([{}], {})'.format(lb, k))
+                        lbmeta[k] = None
+                    except ConfigParser.Error:
+                        lbmeta[k] = None
+
+                # Assign string values
+                for k in ['logbook_num', 'logbook_title', 'logbook_notes']:
                     try:
                         lbmeta[k] = conf.get(lb, k)
                     except ConfigParser.Error:
                         lbmeta[k] = None
+
+                # Require non-zero logbook_id
+                if lbmeta['logbook_id'] == 0:
+                    lbmeta['logbook_id'] = None
 
                 self.logbookmeta[lb] = lbmeta
 
@@ -528,7 +553,7 @@ class ArchiveMeta:
         elif self.plate_csv_dict[0]:
             return self.plate_csv_dict[0].keys()
         else:
-            return None
+            return []
 
     def get_scanlist(self):
         """
@@ -615,7 +640,6 @@ class ArchiveMeta:
 
         """
 
-        #if self.logbooks or self.logpage_csv_dict:
         platedb = PlateDB()
         platedb.assign_conf(self.conf)
         platedb.open_connection()
@@ -819,17 +843,15 @@ class LogpageMeta(OrderedDict):
 
         if self.conf.has_section(csv_filename):
             for (key, pos) in self.conf.items(csv_filename):
-                if key in self:
+                if (key in self) and (key != 'filename'):
                     try:
                         pos = int(pos)
                     except ValueError:
                         pos = 0
 
                     if (pos > 0 and pos <= len(val_list)):
-                        if key == 'filename':
-                            pass
-                        elif (_logpage_meta[key][0] is int or 
-                              _logpage_meta[key][0] is float):
+                        if (_logpage_meta[key][0] is int or 
+                            _logpage_meta[key][0] is float):
                             val = str_to_num(val_list[pos-1])
                         else:
                             val = val_list[pos-1]
@@ -838,6 +860,10 @@ class LogpageMeta(OrderedDict):
                             self[key].append(val)
                         except AttributeError:
                             self[key] = val
+
+            # Require non-zero logpage_id
+            if self['logpage_id'] == 0:
+                self['logpage_id'] = None
 
     def parse_exif(self):
         """
