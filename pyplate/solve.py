@@ -3715,7 +3715,7 @@ class SolveProcess:
                 self.db_update_process(calibrated=0)
                 return
 
-        # Default astrometric catalog
+        # Default photometric catalog
         photref_catalog = 'UCAC4'
 
         if self.photref_catalog:

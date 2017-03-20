@@ -443,7 +443,7 @@ class ArchiveMeta:
                 print 'Could not read the WFPDB observer file!'
 
     def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
-                 fn_logpage_csv=None):
+                 fn_logbook_csv=None, fn_logpage_csv=None):
         """
         Read CSV files.
 
@@ -455,6 +455,8 @@ class ArchiveMeta:
             Name of the plate metadata CSV file.
         fn_scan_csv : str
             Name of the scan metadata CSV file.
+        fn_logbook_csv : str
+            Name of the logbook CSV file.
         fn_logpage_csv : str
             Name of the logpage CSV file.
 
