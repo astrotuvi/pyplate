@@ -1464,6 +1464,8 @@ class SolveProcess:
                 cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
                 cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
 
+            cnf += 'DEBLEND_NTHRESH  64\n'
+            cnf += 'DEBLEND_MINCONT  0.0005\n'
             cnf += 'FILTER           N\n'
             cnf += 'SATUR_LEVEL      65000.0\n'
             cnf += 'BACKPHOTO_TYPE   LOCAL\n'
