@@ -612,6 +612,8 @@ class SolveProcess:
         self.plate_epoch = 1950
         self.plate_year = int(self.plate_epoch)
         self.threshold_sigma = 4.
+        self.use_filter = False
+        self.filter_path = None
         self.use_psf = False
         self.psf_threshold_sigma = 20.
         self.psf_model_sigma = 20.
@@ -772,7 +774,7 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['use_psf', 'circular_film']:
+        for attr in ['use_filter', 'use_psf', 'circular_film']:
             try:
                 setattr(self, attr, conf.getboolean('Solve', attr))
             except ValueError:
@@ -804,7 +806,7 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['astref_catalog', 'photref_catalog']:
+        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
             try:
                 setattr(self, attr, conf.get('Solve', attr))
             except ConfigParser.Error:
@@ -1093,7 +1095,8 @@ class SolveProcess:
             self.log.write('Inverted file exists: {}'.format(fn_inverted), 
                            level=4, event=20)
 
-    def extract_sources(self, threshold_sigma=None, use_psf=None, 
+    def extract_sources(self, threshold_sigma=None, use_filter=None,
+                        filter_path=None, use_psf=None, 
                         psf_threshold_sigma=None, psf_model_sigma=None, 
                         circular_film=None):
         """
@@ -1103,6 +1106,10 @@ class SolveProcess:
         ----------
         threshold_sigma : float
             SExtractor threshold in sigmas (default 4.0)
+        use_filter : bool
+            Use SExtractor filter for source detection (default False)
+        filter_path : string
+            Path to SExtractor filter file
         use_psf : bool
             Use PSF for bright stars (default False)
         psf_threshold_sigma : float
@@ -1115,6 +1122,12 @@ class SolveProcess:
 
         if threshold_sigma is None:
             threshold_sigma = self.threshold_sigma
+
+        if use_filter is None:
+            use_filter = self.use_filter
+
+        if filter_path is None:
+            filter_path = self.filter_path
 
         if use_psf is None:
             use_psf = self.use_psf
@@ -1416,6 +1429,21 @@ class SolveProcess:
             self.log.write('Running SExtractor without PSF model',
                            level=3, event=35)
 
+            if use_filter and filter_path:
+                filter_exists = os.path.exists(filter_path)
+            else:
+                filter_exists = False
+
+            if use_filter and not filter_exists:
+                use_filter = False
+                self.log.write('Filter file does not exist: {}'
+                               ''.format(filter_path), 
+                               level=2, event=35)
+
+            if use_filter:
+                self.log.write('Using filter {}'.format(filter_path), 
+                               level=4, event=35)
+
             if use_fix_threshold:
                 self.log.write('Using threshold {:f} ADU'.format(threshold_adu), 
                                level=4, event=35)
@@ -1464,9 +1492,14 @@ class SolveProcess:
                 cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
                 cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
 
+            if use_filter:
+                cnf += 'FILTER           Y\n'
+                cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+            else:
+                cnf += 'FILTER           N\n'
+
             cnf += 'DEBLEND_NTHRESH  64\n'
             cnf += 'DEBLEND_MINCONT  0.0005\n'
-            cnf += 'FILTER           N\n'
             cnf += 'SATUR_LEVEL      65000.0\n'
             cnf += 'BACKPHOTO_TYPE   LOCAL\n'
             cnf += 'CLEAN            N\n'
