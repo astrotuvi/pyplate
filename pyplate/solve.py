@@ -626,7 +626,8 @@ class SolveProcess:
         self.circular_film = False
         self.crossmatch_radius = None
         self.crossmatch_nsigma = 10.
-        self.crossmatch_maxradius = 10.
+        self.crossmatch_nlogarea = 2.
+        self.crossmatch_maxradius = 20.
 
         self.plate_header = None
         self.imwidth = None
@@ -786,7 +787,7 @@ class SolveProcess:
         for attr in ['plate_epoch', 'threshold_sigma', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
                      'crossmatch_radius', 'crossmatch_nsigma', 
-                     'crossmatch_maxradius']:
+                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
             try:
                 setattr(self, attr, conf.getfloat('Solve', attr))
             except ValueError:
@@ -3296,7 +3297,7 @@ class SolveProcess:
                 hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
                 self.sources['healpix256'][ind] = hp256.astype(np.int32)
 
-        # Cross-match source coordinates with the UCAC4 and Tycho-2 catalogues
+        # Prepare for cross-match with the UCAC4, Tycho-2 and APASS catalogues
 
         bool_finite = (np.isfinite(self.sources['raj2000']) &
                        np.isfinite(self.sources['dej2000']))
@@ -3313,6 +3314,38 @@ class SolveProcess:
         dec_finite = self.sources['dej2000'][ind_finite]
         coorderr_finite = np.sqrt(self.sources['raerr_sub'][ind_finite]**2 +
                                   self.sources['decerr_sub'][ind_finite]**2)
+        logarea_finite = np.log10(self.sources['isoarea'][ind_finite])
+
+        # Combine cross-match criteria
+        if self.crossmatch_radius is not None:
+            self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
+                           ''.format(float(self.crossmatch_radius)), 
+                           level=4, event=61)
+            matchrad_arcsec = float(self.crossmatch_radius)*units.arcsec
+        else:
+            self.log.write('Using scaled cross-match radius of '
+                           '{:.2f} astrometric sigmas'
+                           ''.format(float(self.crossmatch_nsigma)), 
+                           level=4, event=61)
+            matchrad_arcsec = (coorderr_finite * float(self.crossmatch_nsigma)
+                               * units.arcsec)
+
+        if self.crossmatch_nlogarea is not None:
+            self.log.write('Using scaled cross-match radius of '
+                           '{:.2f} times log10(isoarea)'
+                           ''.format(float(self.crossmatch_nlogarea)), 
+                           level=4, event=61)
+            logarea_arcsec = (logarea_finite * self.mean_pixscale
+                              * float(self.crossmatch_nlogarea) * units.arcsec)
+            matchrad_arcsec = np.maximum(matchrad_arcsec, logarea_arcsec)
+
+        if self.crossmatch_maxradius is not None:
+            self.log.write('Using maximum cross-match radius of {:.2f} arcsec'
+                           ''.format(float(self.crossmatch_maxradius)), 
+                           level=4, event=61)
+            maxradius_arcsec = (float(self.crossmatch_maxradius) 
+                                * units.arcsec)
+            matchrad_arcsec = np.minimum(matchrad_arcsec, maxradius_arcsec)
 
         # Find nearest neighbours
         if have_match_coord:
@@ -3355,17 +3388,7 @@ class SolveProcess:
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
                 ind_plate = np.arange(ind_ucac.size)
-
-                if self.crossmatch_radius is not None:
-                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                else:
-                    indmask = (ds2d/coorderr_finite 
-                               < float(self.crossmatch_nsigma)*units.arcsec)
-
-                    if self.crossmatch_maxradius is not None:
-                        maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                            * units.arcsec)
-                        indmask = indmask & (ds2d < maxradius_arcsec)
+                indmask = ds2d < matchrad_arcsec
 
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
@@ -3456,17 +3479,7 @@ class SolveProcess:
                     ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
                                                                 nthneighbor=1)
                     ind_plate = np.arange(ind_tyc.size)
-
-                    if self.crossmatch_radius is not None:
-                        indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                    else:
-                        indmask = (ds2d/coorderr_finite 
-                                   < float(self.crossmatch_nsigma)*units.arcsec)
-
-                        if self.crossmatch_maxradius is not None:
-                            maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                                * units.arcsec)
-                            indmask = indmask & (ds2d < maxradius_arcsec)
+                    indmask = ds2d < matchrad_arcsec
 
                     ind_plate = ind_plate[indmask]
                     ind_tyc = ind_tyc[indmask]
@@ -3570,17 +3583,7 @@ class SolveProcess:
                     ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                                   nthneighbor=1)
                     ind_plate = np.arange(ind_apass.size)
-
-                    if self.crossmatch_radius is not None:
-                        indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                    else:
-                        indmask = (ds2d/coorderr_finite 
-                                   < float(self.crossmatch_nsigma)*units.arcsec)
-
-                        if self.crossmatch_maxradius is not None:
-                            maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                                * units.arcsec)
-                            indmask = indmask & (ds2d < maxradius_arcsec)
+                    indmask = ds2d < matchrad_arcsec
 
                     ind_plate = ind_plate[indmask]
                     ind_apass = ind_apass[indmask]
