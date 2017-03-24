@@ -621,6 +621,7 @@ class SolveProcess:
         self.max_model_sources = 10000
         self.sip = 3
         self.skip_bright = 10
+        self.distort = 1
         self.max_recursion_depth = 5
         self.force_recursion_depth = 0
         self.circular_film = False
@@ -796,7 +797,7 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
+        for attr in ['sip', 'skip_bright', 'distort', 'max_recursion_depth', 
                      'force_recursion_depth', 'min_model_sources', 
                      'max_model_sources']:
             try:
@@ -2547,7 +2548,7 @@ class SolveProcess:
                 self.verr_apass = res['f5']
                 self.num_apass = num_apass
 
-    def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
+    def solve_recursive(self, plate_epoch=None, distort=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
         """
         Solve astrometry in a FITS file.
@@ -2556,8 +2557,8 @@ class SolveProcess:
         ----------
         plate_epoch : float
             Epoch of plate in decimal years (default 1950.0)
-        sip : int
-            SIP distortion order (default 3)
+        distort : int
+            SCAMP distortion order (default 1)
         skip_bright : int
             Number of brightest stars to skip when solving with Astrometry.net
             (default 10).
@@ -2592,8 +2593,8 @@ class SolveProcess:
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
                        level=4, event=50)
 
-        if sip is None:
-            sip = self.sip
+        if distort is None:
+            distort = self.distort
 
         if skip_bright is None:
             skip_bright = self.skip_bright
@@ -2747,7 +2748,8 @@ class SolveProcess:
         self.wcshead.set('YMAX', self.imheight)
 
         radec,gridsize,subid = \
-                self._solverec(self.wcshead, np.array([99.,99.]), distort=3,
+                self._solverec(self.wcshead, np.array([99.,99.]), 
+                               distort=distort,
                                max_recursion_depth=max_recursion_depth,
                                force_recursion_depth=force_recursion_depth)
         self.sources['raj2000_sub'] = radec[:,0]
@@ -2757,7 +2759,7 @@ class SolveProcess:
         self.sources['astrom_sub_grid'] = gridsize
         self.sources['astrom_sub_id'] = subid
 
-    def _solverec(self, in_head, in_astromsigma, distort=3, 
+    def _solverec(self, in_head, in_astromsigma, distort=1, 
                   max_recursion_depth=None, force_recursion_depth=None):
         """
         Improve astrometry of a FITS file recursively in sub-fields.
