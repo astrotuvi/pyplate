@@ -3816,7 +3816,8 @@ class SolveProcess:
                        level=3, event=71)
         ind_cal = np.where((self.sources['mag_auto'] > 0) & 
                            (self.sources['mag_auto'] < 90) &
-                           (self.sources['sextractor_flags'] == 0) &
+                           ((self.sources['sextractor_flags'] == 0) |
+                           (self.sources['sextractor_flags'] == 2)) &
                            (self.sources['flag_clean'] == 1))[0]
 
         if len(ind_cal) == 0:
