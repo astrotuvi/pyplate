@@ -1122,6 +1122,10 @@ class SolveProcess:
             Assume circular film (default False)
         """
 
+        self.log.write('Extracting sources from image', level=3, event=30)
+        sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
+        self.log.write('Using {}'.format(sex_ver), level=4, event=30)
+
         if threshold_sigma is None:
             threshold_sigma = self.threshold_sigma
 
@@ -1130,6 +1134,17 @@ class SolveProcess:
 
         if filter_path is None:
             filter_path = self.filter_path
+
+        if use_filter and filter_path:
+            filter_exists = os.path.exists(filter_path)
+        else:
+            filter_exists = False
+
+        if use_filter and not filter_exists:
+            use_filter = False
+            self.log.write('Filter file does not exist: {}'
+                           ''.format(filter_path), 
+                           level=2, event=30)
 
         if use_psf is None:
             use_psf = self.use_psf
@@ -1142,10 +1157,6 @@ class SolveProcess:
 
         if circular_film is None:
             circular_film = self.circular_film
-
-        self.log.write('Extracting sources from image', level=3, event=30)
-        sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
-        self.log.write('Using {}'.format(sex_ver), level=4, event=30)
 
         self.log.write('Running SExtractor to get sky value', level=3, 
                        event=31)
@@ -1219,6 +1230,10 @@ class SolveProcess:
                                level=3, event=32)
 
                 while True:
+                    if use_filter:
+                        self.log.write('Using filter {}'.format(filter_path), 
+                                       level=4, event=32)
+
                     if use_fix_threshold:
                         self.log.write('Using threshold {:f} ADU'
                                        .format(psf_model_threshold), 
@@ -1253,7 +1268,12 @@ class SolveProcess:
                         cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
                         cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
 
-                    cnf += 'FILTER           N\n'
+                    if use_filter:
+                        cnf += 'FILTER           Y\n'
+                        cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+                    else:
+                        cnf += 'FILTER           N\n'
+
                     cnf += 'SATUR_LEVEL      65000.0\n'
                     cnf += 'BACKPHOTO_TYPE   LOCAL\n'
                     cnf += 'MAG_ZEROPOINT    25.0\n'
@@ -1369,6 +1389,10 @@ class SolveProcess:
                 self.log.write('Running SExtractor with PSF model',
                                level=3, event=34)
 
+                if use_filter:
+                    self.log.write('Using filter {}'.format(filter_path), 
+                                   level=4, event=34)
+
                 if use_fix_threshold:
                     self.log.write('Using threshold {:f} ADU'
                                    .format(psf_threshold_adu), 
@@ -1397,7 +1421,12 @@ class SolveProcess:
                     cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
                     cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
 
-                cnf += 'FILTER           N\n'
+                if use_filter:
+                    cnf += 'FILTER           Y\n'
+                    cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+                else:
+                    cnf += 'FILTER           N\n'
+
                 cnf += 'SATUR_LEVEL      65000.0\n'
                 cnf += 'BACKPHOTO_TYPE   LOCAL\n'
                 #cnf += 'BACKPHOTO_THICK  96\n'
@@ -1430,17 +1459,6 @@ class SolveProcess:
                                            self.basefn + '.cat')):
             self.log.write('Running SExtractor without PSF model',
                            level=3, event=35)
-
-            if use_filter and filter_path:
-                filter_exists = os.path.exists(filter_path)
-            else:
-                filter_exists = False
-
-            if use_filter and not filter_exists:
-                use_filter = False
-                self.log.write('Filter file does not exist: {}'
-                               ''.format(filter_path), 
-                               level=2, event=35)
 
             if use_filter:
                 self.log.write('Using filter {}'.format(filter_path), 
@@ -1544,6 +1562,7 @@ class SolveProcess:
                                 dtype=[(k,_source_meta[k][0]) 
                                        for k in _source_meta])
 
+        self.sources['flag_usepsf'] = 0
         self.sources['raj2000'] = np.nan
         self.sources['dej2000'] = np.nan
         self.sources['raj2000_wcs'] = np.nan
@@ -1786,26 +1805,27 @@ class SolveProcess:
                     self.log.write('Replacing x,y values from PSF photometry '
                                    'for {:d} sources'.format(len(ind1)), 
                                    level=3, event=37)
-                    self.sources[ind1]['x_psf'] = \
+                    self.sources['x_psf'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                    self.sources[ind1]['y_psf'] = \
+                    self.sources['y_psf'][ind1] = \
                             psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                    self.sources[ind1]['erra_psf'] = \
+                    self.sources['erra_psf'][ind1] = \
                             psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errb_psf'] = \
+                    self.sources['errb_psf'][ind1] = \
                             psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errtheta_psf'] = \
+                    self.sources['errtheta_psf'][ind1] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                    self.sources[ind1]['x_source'] = \
+                    self.sources['x_source'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                    self.sources[ind1]['y_source'] = \
+                    self.sources['y_source'][ind1] = \
                             psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                    self.sources[ind1]['erra_source'] = \
+                    self.sources['erra_source'][ind1] = \
                             psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errb_source'] = \
+                    self.sources['errb_source'][ind1] = \
                             psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errtheta_source'] = \
+                    self.sources['errtheta_source'][ind1] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                    self.sources['flag_usepsf'][ind1] = 1
                 elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
                     self.log.write('There are no sources with PSF coordinates!',
                                    level=2, event=37)
@@ -3672,6 +3692,11 @@ class SolveProcess:
                      'erra_source', 'errb_source', 'errtheta_source',
                      'a_source', 'b_source', 'theta_source',
                      'elongation',
+                     'x_peak', 'y_peak', 'flag_usepsf',
+                     'x_image', 'y_image', 
+                     'erra_image', 'errb_image', 'errtheta_image',
+                     'x_psf', 'y_psf', 
+                     'erra_psf', 'errb_psf', 'errtheta_psf',
                      'raj2000_wcs', 'dej2000_wcs',
                      'raj2000_sub', 'dej2000_sub', 
                      'raerr_sub', 'decerr_sub',
