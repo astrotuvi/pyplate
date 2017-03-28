@@ -2475,22 +2475,44 @@ class SolveProcess:
 
                     # Use UCAC4 magnitudes to fill gaps in APASS
                     if query_healpix:
+                        self.log.write('Filling gaps in the APASS data', 
+                                       level=3, event=49)
                         healpix_ucac = res['f19']
                         uhp = np.unique(healpix_ucac)
+                        indsort = np.argsort(healpix_ucac)
+                        healpix_ucac_sort = healpix_ucac[indsort]
+                        bmag_ucac_sort = self.bmag_ucac[indsort]
+                        vmag_ucac_sort = self.vmag_ucac[indsort]
+                        bmag_apass_sort = self.bmag_apass[indsort]
+                        vmag_apass_sort = self.vmag_apass[indsort]
+
+                        bgoodapass = (np.isfinite(bmag_apass_sort) &
+                                      np.isfinite(vmag_apass_sort))
+
+                        if bgoodapass.sum() > 0:
+                            indgood = np.where(bgoodapass)[0]
+                            bbright = ((bmag_apass_sort[indgood] <= 10) &
+                                       (vmag_apass_sort[indgood] <= 10))
+
+                            if bbright.sum() > 0:
+                                bgoodapass[indgood[np.where(bbright)]] = False
+                            
                         nfill = 0L
 
                         for hp in uhp:
-                            bapass = ((healpix_ucac == hp) &
-                                      (self.bmag_apass > 10) &
-                                      (self.vmag_apass > 10))
-                            bucac = ((healpix_ucac == hp) &
-                                     (self.bmag_ucac > 10) &
-                                     (self.vmag_ucac > 10))
+                            bapass = ((healpix_ucac_sort == hp) & bgoodapass)
+
+                            if bapass.sum() > 0:
+                                continue
+
+                            bucac = ((healpix_ucac_sort == hp) &
+                                     (bmag_ucac_sort > 10) &
+                                     (vmag_ucac_sort > 10))
 
                             # There is a healpix with no valid APASS magnitudes,
                             # but available magnitudes in UCAC4
-                            if (bapass.sum() == 0) and (bucac.sum() > 0):
-                                ind = np.where(bucac)
+                            if (bucac.sum() > 0):
+                                ind = indsort[np.where(bucac)]
                                 self.bmag_apass[ind] = self.bmag_ucac[ind]
                                 self.vmag_apass[ind] = self.vmag_ucac[ind]
                                 self.berr_apass[ind] = self.bmagerr_ucac[ind]
