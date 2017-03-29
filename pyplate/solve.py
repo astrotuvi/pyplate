@@ -2829,24 +2829,11 @@ class SolveProcess:
             parent_sub_id = 0
 
         # Read SCAMP reference catalog for this plate
-        #ref = fits.open(os.path.join(self.scratch_dir, 
-        #                             self.basefn + '_scampref.cat'))
         ra_ref = self.scampref[2].data.field(0)
         dec_ref = self.scampref[2].data.field(1)
         mag_ref = self.scampref[2].data.field(4)
-        reftmp = fits.HDUList()
-        reftmp.append(self.scampref[0].copy())
-        reftmp.append(self.scampref[1].copy())
-        reftmp.append(self.scampref[2].copy())
-        #reftmp = fits.open(os.path.join(self.scratch_dir, 
-        #                                self.basefn + '_scampref.cat'))
 
         # Get the list of stars in the scan
-        #xyfits = fits.open(os.path.join(self.scratch_dir,
-        #                                self.basefn + '.xy'))
-        #x = xyfits[1].data.field(0)
-        #y = xyfits[1].data.field(1)
-        #erra_arcsec = xyfits[1].data.field('ERRA_IMAGE') * self.mean_pixscale
         x = self.sources['x_source']
         y = self.sources['y_source']
         erra_arcsec = (self.sources['erra_source'] * self.mean_pixscale)
@@ -2975,29 +2962,26 @@ class SolveProcess:
             self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
-            reftmp[2].data = self.scampref[2].data[indref]
+            reftmp = fits.HDUList()
+            reftmp.append(self.scampref[0].copy())
+            reftmp.append(self.scampref[1].copy())
+            hdu = fits.BinTableHDU(data=self.scampref[2].data[indref],
+                                   header=self.scampref[2].header)
+            reftmp.append(hdu)
             scampref_file = os.path.join(self.scratch_dir, 
                                          fnsub + '_scampref.cat')
 
             if os.path.exists(scampref_file):
                 os.remove(scampref_file)
 
-            #reftmp[1].header.set('NAXIS1', 2880)
-            #reftmp[1].header.set('TFORM1', '2880A')
-            #reftmp[1].data.field(0)[0] = reftmp[1].data.field(0)[0].ljust(2880)
             reftmp[1].header.set('TDIM1', '(80, 21)')
             reftmp.writeto(scampref_file, output_verify='ignore')
+            reftmp.close()
+            del reftmp
 
             # Find a TAN solution for the sub-scan
             cmd = self.wcs_to_tan_path
             cmd += ' -w %s.wcs' % self.basefn
-
-            # If .wcs file does not exist for the sub-scan, use global .wcs
-            #if os.path.exists(os.path.join(self.scratch_dir, fnsub + '.wcs')):
-            #    cmd += ' -w %s.wcs' % fnsub
-            #else:
-            #    cmd += ' -w %s.wcs' % self.basefn
-
             cmd += ' -x %f' % xmin_ext
             cmd += ' -y %f' % ymin_ext
             cmd += ' -W %f' % xmax_ext
@@ -3297,9 +3281,6 @@ class SolveProcess:
                     sigma_dec[indnew] = new_radec[indnew,3]
                     gridsize[indnew] = new_gridsize[indnew]
                     subid[indnew] = new_subid[indnew]
-
-        #ref.close()
-        #reftmp.close()
 
         return (np.column_stack((ra, dec, sigma_ra, sigma_dec)), 
                 gridsize, subid)
