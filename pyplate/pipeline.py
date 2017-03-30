@@ -146,6 +146,7 @@ class PlateImagePipeline:
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)
         proc.assign_header(h)
+        proc.assign_metadata(pmeta)
 
         if self.plate_epoch is not None:
             proc.plate_epoch = self.plate_epoch

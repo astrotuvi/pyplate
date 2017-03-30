@@ -10,10 +10,10 @@ import ConfigParser
 import warnings
 import xml.etree.ElementTree as ET
 from astropy import wcs
-from astropy.io import fits
-from astropy.io import votable
-from astropy.coordinates import Angle
+from astropy.io import fits, votable
+from astropy.coordinates import Angle, EarthLocation, AltAz
 from astropy import units
+from astropy.time import Time
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.ndimage.filters import generic_filter
@@ -631,6 +631,7 @@ class SolveProcess:
         self.crossmatch_maxradius = 20.
 
         self.plate_header = None
+        self.platemeta = None
         self.imwidth = None
         self.imheight = None
         self.plate_solved = False
@@ -841,6 +842,14 @@ class SolveProcess:
         """
 
         self.plate_header = header
+
+    def assign_metadata(self, platemeta):
+        """
+        Assign plate metadata.
+
+        """
+
+        self.platemeta = platemeta
 
     def setup(self):
         """
@@ -1576,6 +1585,8 @@ class SolveProcess:
         self.sources['z_sphere'] = np.nan
         self.sources['healpix256'] = -1
         self.sources['nn_dist'] = np.nan
+        self.sources['zenith_angle'] = np.nan
+        self.sources['airmass'] = np.nan
         self.sources['ucac4_ra'] = np.nan
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
@@ -3385,8 +3396,32 @@ class SolveProcess:
             matchdist = ds * 3600.
             self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
-        # Calculate air mass for each source
+        # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
+        if (have_match_coord and self.platemeta and 
+            self.platemeta['site_latitude'] and 
+            self.platemeta['site_longitude'] and 
+            (self.platemeta['numexp'] == 1) and
+            self.platemeta['date_avg']):
+            self.log.write('Calculating zenith angle and air mass for sources', 
+                           level=3, event=61)
+            lon = self.platemeta['site_longitude']
+            lat = self.platemeta['site_latitude']
+            height = 0.
+
+            if self.platemeta['site_elevation']:
+                height = self.platemeta['site_elevation']
+
+            loc = EarthLocation.from_geodetic(lon, lat, height)
+            date_avg = Time(self.platemeta['date_avg'][0], 
+                            format='isot', scale='ut1')
+            c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
+            self.sources['zenith_angle'] = c_altaz.zen.deg
+            coszt = np.cos(c_altaz.zen)
+            airmass = ((1.002432 * coszt**2 + 0.148386 * coszt + 0.0096467) 
+                       / (coszt**3 + 0.149864 * coszt**2 + 0.0102963 * coszt 
+                          + 0.000303978))
+            self.sources['airmass'] = airmass
 
         # Match sources with the UCAC4 catalogue
         self.log.write('Cross-matching sources with the UCAC4 catalogue', 
@@ -3713,6 +3748,7 @@ class SolveProcess:
                      'sextractor_flags', 
                      'dist_center', 'dist_edge', 'annular_bin',
                      'flag_rim', 'flag_negradius', 'flag_clean',
+                     'zenith_angle', 'airmass',
                      'natmag', 'natmagerr', 
                      'bmag', 'bmagerr', 'vmag', 'vmagerr',
                      'natmag_plate', 'natmagerr_plate', 'phot_plate_flags',
