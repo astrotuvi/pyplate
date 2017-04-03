@@ -7,7 +7,7 @@ import ConfigParser
 from math import factorial
 from astropy.io import fits
 from math import atan, sin, cos, degrees
-from .conf import read_conf
+
 
 try:
     import matplotlib.pyplot as plt
@@ -16,53 +16,36 @@ except ImportError:
     print "matplotlib not installed, not using"
 
 
-
-def savitzky(y, window_size, order, deriv=0, rate=1):
-    try:
-        window_size = np.abs(np.int(window_size))
-        order = np.abs(np.int(order))
-    except ValueError, msg:
-        raise ValueError("window_size and order have to be of type int")
-    if window_size % 2 != 1 or window_size < 1:
-        raise TypeError("window_size size must be a positive odd number")
-    if window_size < order + 2:
-        raise TypeError("window_size is too small for the polynomials order")
-    order_range = range(order+1)
-    half_window = (window_size -1) // 2
-    # precompute coefficients
-    b = np.mat([[k**i for i in order_range] \
-                            for k in range(-half_window, half_window+1)])
-    m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
-    # pad the signal at the extremes with
-    # values taken from the signal itself
-    firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0] )
-    lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
-    y = np.concatenate((firstvals, y, lastvals))
-    return np.convolve( m[::-1], y, mode='valid')
-
-
-
-
-
+    
 class Spectrum:
-
+    """
+    class for one Spectrum
+    variables:
+        spectrum_points (list) : all spectrum points
+        spectrum_points_all (list) : spectrum points with added surrounding
+                                     points for getting more precise
+                                     starting point
+        area_value (float) : local background average pixel value
+        starting point (tuple) : x,y coordinates for starting point of this
+                                 spectrum
+    """
 
     def __init__(self):
 
-        self.spectra_points = []
-        self.spectra_points_all = []
+        self.spectrum_points = []
+        self.spectrum_points_all = []
         self.area_value = False
+        self.average_value = False # average pixel value for this spectrum
         self.start = (0, 0)
-        self.s = False
 
     def starting_point(self):
-
-        data = [elem[1] for elem in self.spectra_points_all]
+        
+        data = [elem[1] for elem in self.spectrum_points_all]
 
         if(self.orientation == "hor"):
-            pixel = [elem[0][0] for elem in self.spectra_points_all]
+            pixel = [elem[0][0] for elem in self.spectrum_points_all]
         else:
-            pixel = [elem[0][1] for elem in self.spectra_points_all]
+            pixel = [elem[0][1] for elem in self.spectrum_points_all]
 
         dox = sorted(zip(pixel,data), key=lambda x : x[0])
 
@@ -70,7 +53,7 @@ class Spectrum:
         sorted_data = [n[1] for n in dox]
         smooth_len = len(sorted_pix) + 1 if len(sorted_pix) % 2 == 0 \
                     else len(sorted_pix)
-        smoothed_data = savitzky(sorted_data, smooth_len, 6)
+        smoothed_data = self.savitzky(sorted_data, smooth_len, 6)
         gradient = np.gradient(smoothed_data)
         val_gr = max(zip(sorted_pix, gradient), key = lambda t: t[1])[0]
 
@@ -88,16 +71,42 @@ class Spectrum:
             start_x = self.crd_1[0] if abs(start_y - self.crd_1[1]) < \
                         abs(start_y - self.crd_2[1]) else self.crd_2[0]
 
-        #print "starting_point: (%s,%s)" % (start_x, start_y)
         self.start = (start_x, start_y)
 
         #self.plot_spec(sorted_pix, sorted_data, smoothed_data, gradient)
 
-
-    def set_s(self):
-        if(np.std([elem[1] for elem in self.spectra_points]) < 2000):
-            self.s = True
-
+    def savitzky(self, y, window_size, order, deriv=0, rate=1):
+        """
+        algorithm for data smoothing
+        """
+        
+        try:
+            window_size = np.abs(np.int(window_size))
+            order = np.abs(np.int(order))
+        except ValueError, msg:
+            raise ValueError("window_size and order have to be of type int")
+        if window_size % 2 != 1 or window_size < 1:
+            raise TypeError("window_size size must be a positive odd number")
+        if window_size < order + 2:
+            raise TypeError("window_size is too small for the polynomials order")
+            
+        order_range = range(order + 1)
+        half_window = (window_size -1) // 2
+        
+        # precompute coefficients
+        b = np.mat([[k**i for i in order_range] \
+                                for k in range(-half_window, half_window + 1)])
+        m = np.linalg.pinv(b).A[deriv] * rate**deriv * factorial(deriv)
+        
+        # pad the signal at the extremes with
+        # values taken from the signal itself
+        firstvals = y[0] - np.abs( y[1:half_window+1][::-1] - y[0])
+        lastvals = y[-1] + np.abs(y[-half_window-1:-1][::-1] - y[-1])
+        y = np.concatenate((firstvals, y, lastvals))
+        
+        return np.convolve( m[::-1], y, mode='valid')   
+        
+        
     def plot_spec(self, sorted_pix, sorted_data,
                         smoothed_data=[], gradient=[]):
         if(use_matplotlib):
@@ -122,20 +131,26 @@ class SpectraExtractor:
 
     image_data = fits.getdata(sys.argv[1])
     proc = SpectraExtractor(image_data, conf)
-    proc.run_main()
-    proc.spectra now contains all spectra which were extracted
-    proc.loginfo()
+
+    proc.run_main() : main function which fills self.spectra with Spectrum
+                      class objects
+    proc.spectra : contains all spectra (Spectrum class objects)
+                 which were extracted after self.run_main is called
+    proc.loginfo() : basic logging
     """
 
 
     def __init__(self, image_data, conf=None):
-
+        """
+        in:
+            image_data (NxM array) : fits pixel values matrix  
+        """
+        
         self.image_data = image_data
         self.shape = self.image_data.shape
         self.spectra = [] # list filled with Spectrum class objects
         self.corners = []
         self.area_values = []
-
 
         # ver - vertical image, hor - horizontal image. / set in get_ori()
         self.orientation = False # set at run_main()
@@ -157,10 +172,10 @@ class SpectraExtractor:
 
         # searching for object:
         self.searchStep = 20 # skipping every _value_ while searching for ..
-            # spectras align pendicular
+            # spectra align pendicular
 
         self.jumpStep = 100 # skipping every _value_ pixels while searching for
-            # spectras along their axis
+            # spectra along their axis
 
         self.sur_percent = 0.3 # size percent of spectra length for adding
                 # surrounding pixels
@@ -179,49 +194,12 @@ class SpectraExtractor:
         self.parses = 0
         self.successful_parses = 0
         self.aborted_parses = 0
-        if(conf):
-            self.assign_conf(conf)
-
-
-
-    def assign_conf(self, conf):
-        """
-        Parse configuration and set class attributes
-
-        """
-
-        if(isinstance(conf, str)):
-            conf = read_conf(conf)
-
-        self.conf = conf
-
-        for attr in ['slices','searchStep' ,'jumpStep'
-                     'in_searchStep', 'in_jumpStep'
-                     'min_spectra_width', 'max_spectra_width'
-                     'min_spectra_height', 'max_spectra_height']:
-            try:
-                setattr(self, attr, conf.getint('SpectraExtractor', attr))
-            except ValueError:
-                print ('Error in configuration file '
-                        '([{}], {}'.format('SpectraExtractor',attr))
-            except ConfigParser.Error:
-                print "confparser error.."
-                pass
-
-        for attr in ['sc', 'sur_percent']:
-            try:
-                setattr(self, attr, conf.getfloat('SpectraExtractor', attr))
-            except ValueError:
-                print ('Error in configuration file '
-                        '([{}], {}'.format('SpectraExtractor',attr))
-            except ConfigParser.Error:
-                print "confparser error.."
-                pass
 
     def img_divide(self):
         """
         divide image equally into self.slices^2 frames, because different
-        parts of image usually have different average pixel values(fauna?)
+        parts of image usually have different average background pixels
+        values
         """
         ylen, xlen = self.shape
         row_vals = [ylen / self.slices * i for i in range(int(self.slices) \
@@ -244,12 +222,12 @@ class SpectraExtractor:
         for area in self.area_values:
             """
             area_values consists of five values, of which first four
-                are the corners:
+                are the corners (which were set in self.img_divide()):
                 rowVal,
                 nextRowVal,
                 colVal,
                 nextColVal,
-                val (actual fauna value)
+                val (actual local background value)
             """
 
             if(y >= area[0] and y < area[1] and
@@ -257,94 +235,38 @@ class SpectraExtractor:
                 return area[4]
         return False
 
-    def val_in_range(self, x, y, minval = True):
-
-        val = self.image_data[y][x]
-
-        if(minval == True):
-            # minval set, so we accept only pixels whose value match the area's
-            # value
-            min_val = self.get_area_value((x, y)) # get our area value
-            if not min_val:
-                return False
-            return (True if val < min_val else False)
-
-        else:
-            # no minval set, we just take 20 pixels to get a better look at
-            # spectrum surroundings
-            if(minval < 20):
-                return True
-            return False
-
     def check_size(self, x, y, dx, dy):
         """
         optional addition:
             while analyzing possible spectrums lengths get too big, we could
             mark it as an error or something non related, save time and skip
         """
-        # todo o-p
-        #if(abs(dx-x) > self.max_spectra_width or
-        # (abs(dy-y) > 250 and abs(dx-x) < 150)):
-        #    self.aborted_parses += 1
-        #    return True
-        return False
-
-    def validate(self, x, y):
-        """
-        Check if coordinate (x,y) doesn't overlap with any other spectrum
-        and is within our value range.
-        """
-        if (self.free((x, y)) and self.val_in_range(x, y)):
-            return True
+        # todo
         return False
 
     def run_main(self):
         """
         main function
-        in: image_data NxM dim. pixel matrix
+        uses: image_data NxM dim. pixel matrix (read in at class initialization)
 
-        out: #result (1D arr)
+        out: self.spectra array filled with Spectrum objects
         """
         # main loop
 
         print "start main loop"
 
-        self.orientation = "hor"
-
-        self.search_horizontally() # searching horizontally
-
-        if(len(self.spectra) < 15): # if we found under 15 spectra,
-                                    # also search vertically
-            horspectra = copy.deepcopy(self.spectra) # save horizontally found
-                                                     # spectra data
-            horpoints = copy.deepcopy(self.corners)
-            self.spectra = []
-            self.corners = []
-            self.orientation = "ver"
-            self.search_vertically() # now searching vertically
-
-        if(len(self.spectra) < 5): # if found under 5 spectra searching
-                                   # vertically, stick to spectra found
-                                   # horizontally
-            self.spectra = horspectra
-            self.corners = horpoints
-
-    """def set_orientation(self):
+        """
+        todo implement orientation setting
+        """
 
         self.orientation = "hor"
-        self.search_horizontally(True)
 
-        if(len(self.spectra) >= 3):
-            self.spectra = []
-            self.corners = []
-            print "horizontal"
-            return
+        if(self.orientation == "ver"):
+            self.search_vertically() # searching vertically
+        elif(self.orientation == "hor"):
+            self.search_horizontally() # searching horizontally
 
-        self.orientation = "ver"
-        print "vertical"
-    """
-
-    def search_horizontally(self,test = False):
+    def search_horizontally(self):
 
         y = self.y_start
         while y < self.y_end:
@@ -353,9 +275,6 @@ class SpectraExtractor:
                 found_x = self.find(x, y)
                 if found_x:
                     x = found_x
-                    if(len(self.spectra) >= 10 and test):
-                        print "3 spec found"
-                        return
                 else:
                     x += self.jumpStep #
             y += self.searchStep # move to next row
@@ -373,16 +292,34 @@ class SpectraExtractor:
                     y += self.jumpStep #
             x += self.searchStep # move to next col
 
-
     def find(self, x, y):
 
         if(self.val_in_range(x, y)): # found pixel in color range
-            arr = self.parse_linear((x, y)) # find all similar pixels
+            arr = self.parse_coordinate((x, y)) # find all similar pixels
             if arr:
                 return self.analyze(arr)
         return False
 
-    def parse_linear(self, (x, y)):
+    def val_in_range(self, x, y, minval = True):
+
+        val = self.image_data[y][x]
+
+        if(minval == True):
+            # minval set, so we accept only pixels whose value are below background area's
+            # value
+            min_val = self.get_area_value((x, y)) # get our area value
+            if not min_val:
+                return False
+            return (True if val < min_val else False)
+
+        else:
+            # no minval set, we just take 20 pixels to get a better look at
+            # spectrum surroundings
+            if(minval < 20):
+                return True
+            return False
+            
+    def parse_coordinate(self, (x, y)):
         """
             | <- pix
             | <- pix        |
@@ -392,15 +329,11 @@ class SpectraExtractor:
             | <- pix
             ..<- pix with too low value
 
-        upper pixels are saved in res_up
-        lower ...          res_down
-
         avg_dy =
         avg_pixval = pixel_value for each crd / no. of pixels
         so for each (dx,dy) we have
         corresponding up/down pixels and avg_pixval
         """
-
         self.parses += 1
         jump_step = self.in_jumpStep
         obj = []
@@ -412,7 +345,7 @@ class SpectraExtractor:
 
             while True:
 
-                temp_ob = self._get_surr((dx, dy))
+                temp_ob = self.add_pixels_to_spine_coordinate((dx, dy))
                 # add point (dx,dy) with its average pixel value
                 # and its sub-crds
                 obj.append(temp_ob)
@@ -424,8 +357,8 @@ class SpectraExtractor:
                     dy += jump_step
                     dx = np.median(temp_ob[2], axis = 0)[0]
 
-                if(self.check_size(x, y, dx, dy)): # too wide or smtin. abort.
-                    return []
+                #if(self.check_size(x, y, dx, dy)): # too wide or smtin. abort.
+                #    return []
 
                 if not (self.validate(dx, dy)):
                     if(direction == 1):
@@ -438,18 +371,35 @@ class SpectraExtractor:
                         # we're done here.
                         break
 
-        except IndexError as e:
-            # out of bounds?
+        except IndexError:
+            # out of bounds
             pass
 
         return obj
 
-    def _get_surr(self, (x, y), minval = True):
+    def add_pixels_to_spine_coordinate(self, (x, y), minval = True):
+        """
+        adds pixels to spine coordinate point (x,y) (horizontally or vertically)
+
+        in:
+            (x, y) (tuple) : spine coordinate
+            minval (boolean) : true if only adding points
+            below local background value
+
+        """
+        # check that we're still in range
+
+        if(0 > x > self.shape[0] or 0 > y > self.shape[1]):
+            raise IndexError
+
+
         search_step = self.in_searchStep
-        pixels_up = self.add_pixels_to_spine_coordinate((x, y), \
+
+        pixels_up = self._add_pixels_to_spine_coordinate((x, y), \
                                                         search_step, minval)
-        pixels_down = self.add_pixels_to_spine_coordinate((x, y), \
+        pixels_down = self._add_pixels_to_spine_coordinate((x, y), \
                                                           -search_step, minval)
+
 
         if(pixels_up[1] and pixels_down[1]):
             avg_pixval = (pixels_up[1] + pixels_down[1]) / 2
@@ -463,14 +413,15 @@ class SpectraExtractor:
         # return point (dx,dy) with its average pixel value and its sub-crds
         return ((x, y), avg_pixval, pixels_up[0]+pixels_down[0])
 
-    def add_pixels_to_spine_coordinate(self, (x, y), step, minval = True):
+    def _add_pixels_to_spine_coordinate(self, (x, y), step, minval = True):
         """
         in:
         1) starting point pixel coordinates. Checks for pixels matching
         value either up and down or left and right (depending on orientation)
         2) step: how many pixels are skipped after each round
-        3) minval (basically value of surrounding fauna): if set to true,
-        keeps searching until a pixel not in our search range is found.
+        3) minval (value of surrounding local background value): if set to true,
+        keeps searching until a pixel not below our local background value
+        is found.
 
         if set to false, then it does the same process but only 20 times*
         *atm hardcoded in function val_in_range
@@ -506,6 +457,15 @@ class SpectraExtractor:
 
         return (obj, avgValSum)
 
+    def validate(self, x, y):
+        """
+        Check if coordinate (x,y) doesn't overlap with any other spectrum
+        and is within our value range.
+        """
+        if (self.free((x, y)) and self.val_in_range(x, y)):
+            return True
+        return False    
+        
     def free(self, (x, y)):
         """
             check whether crd (x,y) overlaps with an existing spectrum area
@@ -517,7 +477,6 @@ class SpectraExtractor:
                 return False
         return True
 
-
     def analyze(self, obj):
         """
         in: list of tuples
@@ -528,7 +487,7 @@ class SpectraExtractor:
         obj structure: object of Spectrum class
         """
 
-        # all coordinates
+        # all coordinates (spectrum spine crds with their local crds)
         res = [elem for sublist in obj for elem in sublist[2]]
         if(len(res) < 3):
             return False
@@ -537,13 +496,12 @@ class SpectraExtractor:
         x2_crd = max(res,key = lambda t: t[0])
         y1_crd = min(res, key = lambda t: t[1])
         y2_crd = max(res, key = lambda t: t[1])
+        x1 = x1_crd[0] # min x crd of spectrum
+        x2 = x2_crd[0] # max x crd of spectrum
+        y1 = y1_crd[1] # min y crd of spectrum
+        y2 = y2_crd[1] # max y crd of spectrum
 
-        x1 = x1_crd[0]
-        x2 = x2_crd[0]
-        y1 = y1_crd[1]
-        y2 = y2_crd[1]
-
-        len_x = x2-x1 # length of spectra on x axis
+        len_x = x2-x1 # length of spectrum on x axis
         len_y = y2-y1 # .... on y axis
 
         # right now we assume we found a spectra if
@@ -557,25 +515,33 @@ class SpectraExtractor:
                 len_x > 30)):
 
             result = Spectrum()
-            result.crd_1 = x1_crd
-            result.crd_2 = x2_crd
+
+            # vaata yle!
+            if(self.orientation == "hor"):
+                result.crd_1 = x1_crd
+                result.crd_2 = x2_crd
+            elif(self.orientation == "ver"):
+                result.crd_1 = y1_crd
+                result.crd_2 = y2_crd
+
             result.orientation = self.orientation
+
             result.average_value = np.average([elem[1] for elem in obj])
-            result.spectra_points = copy.deepcopy(obj)
-            result.set_s()
+
+            result.spectrum_points = copy.deepcopy(obj)
             result.area_value = self.get_area_value((int((x1 + x2) / 2)
                                                     ,int((y1 + y2) / 2)))
 
             if(self.orientation == "hor"):
                 t = int((len_x * self.sur_percent) / self.in_jumpStep)
-                obj.extend(self.get_surr(x1_crd, x2_crd, t))
+                obj.extend(self.get_spectrum_surrounding_pixels(x1_crd, x2_crd, t))
 
             else:
                 t = int((len_y * self.sur_percent) / self.in_jumpStep)
-                obj.extend(self.get_surr(y1_crd, y2_crd, t))
+                obj.extend(self.get_spectrum_surrounding_pixels(y1_crd, y2_crd, t))
 
 
-            result.spectra_points_all = obj
+            result.spectrum_points_all = obj
 
             result.starting_point()
 
@@ -583,14 +549,21 @@ class SpectraExtractor:
             self.corners.append((x1, x2, y1, y2))
             self.spectra.append(result)
 
+            # continue searching at the end of spectrum
             return x2_crd[0] + 5 if self.orientation == "hor" \
                                     else y2_crd[1] + 5
 
         return False
 
-    def get_surr(self, p1, p2, t = 5):
+    def get_spectrum_surrounding_pixels(self, p1, p2, t = 5):
         """
-        get surrounding pixel values up to t times
+        get surrounding pixel values up to t times on both sides of spectrum
+        in:
+            p1 (tuple) : (x,y) last coordinate of one side of spectrum
+            p2 (tuple) : -""- other side
+            t (int)    : by how many points we extend the spectrum spine
+                         one side
+
         """
 
         obj = []
@@ -627,17 +600,31 @@ class SpectraExtractor:
                 xn = x1 + dx
                 yn = y1 + dy
 
-            obj.append(self._get_surr((xn, yn), minval = False))
+            try:
+                obj.append(self.add_pixels_to_spine_coordinate((xn, yn), minval = False))
+            except IndexError:
+                pass
 
         return obj
-
 
     def loginfo(self):
 
         print ("-------")
         print ("Parsed total  of %s " % self.parses)
-        print ("Of which actually met spectra criteria: %s "
+        print ("Of which actually met spectrum criteria: %s "
                     % self.successful_parses)
         print ("Of which were too big, out of bounds: %s "
                     % self.aborted_parses)
         print ("-------")
+    
+    def write_starting_points_to_file(self, filename):
+        try:
+            print "writing spectrum points to %s" % filename
+            f = open(filename,"w")
+            for spec in self.spectra:
+                f.write("%s %s \n" % (spec.start[0],spec.start[1]))
+            f.close()
+        except Exception as e:
+            print "writing to %s was unsuccessful: " % filename
+            print(e)
+            
