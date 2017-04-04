@@ -14,9 +14,8 @@ try:
     use_matplotlib = True
 except ImportError:
     print "matplotlib not installed, not using"
-
-
     
+
 class Spectrum:
     """
     class for one Spectrum
@@ -130,8 +129,8 @@ class SpectraExtractor:
     Example of usage:
 
     image_data = fits.getdata(sys.argv[1])
-    proc = SpectraExtractor(image_data, conf)
-
+    proc = SpectraExtractor()
+    proc.set_image(fits_image_data_matrix)
     proc.run_main() : main function which fills self.spectra with Spectrum
                       class objects
     proc.spectra : contains all spectra (Spectrum class objects)
@@ -140,34 +139,21 @@ class SpectraExtractor:
     """
 
 
-    def __init__(self, image_data, conf=None):
-        """
-        in:
-            image_data (NxM array) : fits pixel values matrix  
-        """
+    def __init__(self, conf=None):
         
-        self.image_data = image_data
-        self.shape = self.image_data.shape
         self.spectra = [] # list filled with Spectrum class objects
-        self.corners = []
-        self.area_values = []
+        self.corners = [] # Spectrum corners, to avoid overlapping
+        self.area_values = [] # background area values
 
-        # ver - vertical image, hor - horizontal image. / set in get_ori()
-        self.orientation = False # set at run_main()
-
-        # user defined values --------------------------------
+        # ver - vertical image, hor - horizontal image. /
+        self.orientation = None # set at run_main()
+        self.image_set = False
+        
+        # user/conf defined values --------------------------------
 
         self.sc = 1 / 20.0 # remove len*sc edge pixels
-
-        y_height = len(self.image_data)
-        self.y_start = int(y_height * self.sc)    # y_start
-        self.y_end =  y_height - self.y_start
-
-        x_width = len(self.image_data[0])
-        self.x_start = int(x_width * self.sc)
-        self.x_end = x_width - self.x_start
-
-
+        
+        # image division because of different background value regions
         self.slices = 4 # total slices^2 frames
 
         # searching for object:
@@ -184,17 +170,38 @@ class SpectraExtractor:
         self.in_searchStep = 3
         self.in_jumpStep = 10
 
-        self.min_spectra_width = 300 # px
+        self.min_spectra_width = 300
         self.min_spectra_height = 300
         self.max_spectra_width = 1300
-        self.max_spectra_height = 150 # px????????????????????
-        self.img_divide()
+        self.max_spectra_height = 150 
 
 
         self.parses = 0
         self.successful_parses = 0
         self.aborted_parses = 0
 
+        
+        
+    def set_image(self, image_data):
+        """
+        in:
+            image_matrix (NxM array) : fits pixel values matrix  
+        """
+        
+        self.image_data = image_data
+        self.shape = self.image_data.shape
+
+        y_height = len(self.image_data)
+        self.y_start = int(y_height * self.sc) 
+        self.y_end =  y_height - self.y_start
+
+        x_width = len(self.image_data[0])
+        self.x_start = int(x_width * self.sc)
+        self.x_end = x_width - self.x_start    
+        
+        self.img_divide()
+        self.image_set = True
+        
     def img_divide(self):
         """
         divide image equally into self.slices^2 frames, because different
@@ -254,6 +261,9 @@ class SpectraExtractor:
         # main loop
 
         print "start main loop"
+        if not self.image_set:
+            print "image data not set. Use set_image(fits_data)"
+            return
 
         """
         todo implement orientation setting
@@ -302,7 +312,7 @@ class SpectraExtractor:
 
     def val_in_range(self, x, y, minval = True):
 
-        val = self.image_data[y][x]
+        val = self.image_data[int(y)][int(x)]
 
         if(minval == True):
             # minval set, so we accept only pixels whose value are below background area's
@@ -371,7 +381,7 @@ class SpectraExtractor:
                         # we're done here.
                         break
 
-        except IndexError:
+        except IndexError: 
             # out of bounds
             pass
 
@@ -408,7 +418,7 @@ class SpectraExtractor:
         elif(pixels_down[1]):
             avg_pixval = pixels_down[1]
         else:
-            avg_pixval = self.image_data[y][x]
+            avg_pixval = self.image_data[int(y)][int(x)]
 
         # return point (dx,dy) with its average pixel value and its sub-crds
         return ((x, y), avg_pixval, pixels_up[0]+pixels_down[0])
@@ -441,7 +451,7 @@ class SpectraExtractor:
             while self.val_in_range(dx, dy, minval if minval == True \
                                                     else count):
                 obj.append((dx, dy))
-                temp.append(self.image_data[dy][dx])
+                temp.append(self.image_data[int(dy)][int(dx)])
                 count += 1
                 if(self.orientation == "hor"):
                     dy += step
