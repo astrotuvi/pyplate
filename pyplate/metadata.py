@@ -17,7 +17,7 @@ from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
 from astropy.time import Time, TimeDelta
-from astropy.coordinates import Angle
+from astropy.coordinates import Angle, SkyCoord, EarthLocation
 from astropy import units
 from collections import OrderedDict
 from .database import PlateDB
@@ -1680,9 +1680,11 @@ class PlateMeta(OrderedDict):
             self['year'] = []
             self['date_avg'] = []
             self['jd_avg'] = []
+            self['hjd_avg'] = []
             self['year_avg'] = []
             self['date_weighted'] = []
             self['jd_weighted'] = []
+            self['hjd_weighted'] = []
             self['year_weighted'] = []
             self['date_end'] = []
             self['jd_end'] = []
@@ -2060,6 +2062,39 @@ class PlateMeta(OrderedDict):
                 self['dec'].append(dec_str)
                 self['ra_deg'].append(ra_deg)
                 self['dec_deg'].append(dec_deg)
+
+                # Calculate heliocentric correction for the plate center
+                if (self['site_latitude'] and self['site_longitude']):
+                    lon = self['site_longitude']
+                    lat = self['site_latitude']
+                    elev = 0.
+
+                    if self['site_elevation']:
+                        elev = self['site_elevation']
+
+                    loc = EarthLocation.from_geodetic(lon, lat, elev)
+                    coord = SkyCoord(ra_deg, dec_deg, unit='deg')
+
+                    if self['jd_avg'][iexp]:
+                        tavg = Time(self['jd_avg'][iexp], format='jd', 
+                                    scale='ut1')
+                        tavg_ltt = tavg.light_travel_time(coord, 
+                                                          'heliocentric',
+                                                          location=loc)
+                        hjd_avg = float('{:.5f}'.format((tavg + tavg_ltt).jd))
+                        self['hjd_avg'].append(hjd_avg)
+                    else:
+                        self['hjd_avg'].append(None)
+
+                    if self['jd_weighted'][iexp]:
+                        tw = Time(self['jd_weighted'][iexp], format='jd', 
+                                  scale='ut1')
+                        tw_ltt = tw.light_travel_time(coord, 'heliocentric',
+                                                      location=loc)
+                        hjd_weighted = float('{:.5f}'.format((tw + tw_ltt).jd))
+                        self['hjd_weighted'].append(hjd_weighted)
+                    else:
+                        self['hjd_weighted'].append(None)
 
         self['date'] = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
