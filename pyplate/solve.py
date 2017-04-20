@@ -3739,6 +3739,7 @@ class SolveProcess:
                      'raj2000_sub', 'dej2000_sub', 
                      'raerr_sub', 'decerr_sub',
                      'astrom_sub_grid', 'astrom_sub_id',
+                     'healpix256',
                      'mag_auto', 'magerr_auto', 
                      'flux_auto', 'fluxerr_auto',
                      'mag_iso', 'magerr_iso', 
