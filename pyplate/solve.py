@@ -2510,25 +2510,31 @@ class SolveProcess:
                             
                         nfill = 0L
 
+                        # Go through all unique HEALPix in the plate area
                         for hp in uhp:
                             bapass = ((healpix_ucac_sort == hp) & bgoodapass)
 
-                            if bapass.sum() > 0:
+                            # If there are more than 10 APASS stars in HEALPix,
+                            # then do not do anything
+                            if bapass.sum() > 10:
                                 continue
 
                             bucac = ((healpix_ucac_sort == hp) &
                                      (bmag_ucac_sort > 10) &
                                      (vmag_ucac_sort > 10))
 
-                            # There is a healpix with no valid APASS magnitudes,
-                            # but available magnitudes in UCAC4
-                            if (bucac.sum() > 0):
-                                ind = indsort[np.where(bucac)]
+                            # There is a HEALPix with 10 or less valid 
+                            # APASS magnitudes, but available magnitudes 
+                            # in UCAC4
+                            if (bucac.sum() - bapass.sum() > 0):
+                                ind1 = indsort[np.where(bucac)]
+                                ind2 = indsort[np.where(bapass)]
+                                ind = np.setdiff1d(ind1, ind2)
                                 self.bmag_apass[ind] = self.bmag_ucac[ind]
                                 self.vmag_apass[ind] = self.vmag_ucac[ind]
                                 self.berr_apass[ind] = self.bmagerr_ucac[ind]
                                 self.verr_apass[ind] = self.vmagerr_ucac[ind]
-                                nfill += bucac.sum()
+                                nfill += ind.size
 
                         self.log.write('Added UCAC4 magnitudes to {:d} stars '
                                        'to fill gaps in the APASS data'
