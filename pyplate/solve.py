@@ -515,6 +515,7 @@ _source_meta = OrderedDict([
     ('color_bv',            ('f4', '%7.4f', '')),
     ('color_bv_err',        ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
+    ('match_radius',        ('f4', '%7.3f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
@@ -523,8 +524,8 @@ _source_meta = OrderedDict([
     ('ucac4_bmagerr',       ('f4', '%6.4f', '')),
     ('ucac4_vmagerr',       ('f4', '%6.4f', '')),
     ('ucac4_dist',          ('f4', '%6.3f', '')),
-    ('ucac4_dist2',         ('f4', '%6.3f', '')),
-    ('ucac4_nn_dist',       ('f4', '%6.3f', '')),
+    ('ucac4_dist2',         ('f4', '%7.3f', '')),
+    ('ucac4_nn_dist',       ('f4', '%7.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
@@ -534,8 +535,8 @@ _source_meta = OrderedDict([
     ('tycho2_vtmagerr',     ('f4', '%6.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', '')),
     ('tycho2_dist',         ('f4', '%6.3f', '')),
-    ('tycho2_dist2',        ('f4', '%6.3f', '')),
-    ('tycho2_nn_dist',      ('f4', '%6.3f', '')),
+    ('tycho2_dist2',        ('f4', '%7.3f', '')),
+    ('tycho2_nn_dist',      ('f4', '%7.3f', '')),
     ('apass_ra',            ('f8', '%11.7f', '')),
     ('apass_dec',           ('f8', '%11.7f', '')),
     ('apass_bmag',          ('f4', '%7.4f', '')),
@@ -543,8 +544,8 @@ _source_meta = OrderedDict([
     ('apass_bmagerr',       ('f4', '%6.4f', '')),
     ('apass_vmagerr',       ('f4', '%6.4f', '')),
     ('apass_dist',          ('f4', '%6.3f', '')),
-    ('apass_dist2',         ('f4', '%6.3f', '')),
-    ('apass_nn_dist',       ('f4', '%6.3f', ''))
+    ('apass_dist2',         ('f4', '%7.3f', '')),
+    ('apass_nn_dist',       ('f4', '%7.3f', ''))
 ])
 
 
@@ -3389,6 +3390,8 @@ class SolveProcess:
                                 * units.arcsec)
             matchrad_arcsec = np.minimum(matchrad_arcsec, maxradius_arcsec)
 
+        self.sources['match_radius'][ind_finite] = matchrad_arcsec
+
         # Find nearest neighbours
         if have_match_coord:
             coords = ICRS(ra_finite, dec_finite, 
@@ -3763,6 +3766,7 @@ class SolveProcess:
                      'natmag_sub', 'natmagerr_sub', 'natmag_residual',
                      'phot_sub_grid', 'phot_sub_id', 'phot_sub_flags',
                      'phot_calib_flags', 'color_term', 'color_bv', 'cat_natmag',
+                     'match_radius',
                      'ucac4_id', 'ucac4_ra', 'ucac4_dec',
                      'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
                      'ucac4_dist2', 'ucac4_nn_dist',

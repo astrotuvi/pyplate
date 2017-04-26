@@ -326,6 +326,7 @@ _schema['source_calib'] = OrderedDict([
     ('color_term',       ('FLOAT', True)),
     ('color_bv',         ('FLOAT', True)),
     ('cat_natmag',       ('FLOAT', True)),
+    ('match_radius',     ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
     ('tycho2_ra',        ('DOUBLE', True)),
     ('tycho2_dec',       ('DOUBLE', True)),
