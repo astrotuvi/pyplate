@@ -3716,7 +3716,7 @@ class SolveProcess:
 
     def output_sources_csv(self, filename=None):
         """
-        Write source list with calibrated RA and Dec to an ASCII file.
+        Write extracted sources to a CSV file.
 
         """
 
@@ -3735,51 +3735,12 @@ class SolveProcess:
             fn_world = os.path.join(self.write_source_dir, 
                                     '{}_sources.csv'.format(self.basefn))
 
-        outfields = ['source_num', 'x_source', 'y_source', 
-                     'erra_source', 'errb_source', 'errtheta_source',
-                     'a_source', 'b_source', 'theta_source',
-                     'elongation',
-                     'x_peak', 'y_peak', 'flag_usepsf',
-                     'x_image', 'y_image', 
-                     'erra_image', 'errb_image', 'errtheta_image',
-                     'x_psf', 'y_psf', 
-                     'erra_psf', 'errb_psf', 'errtheta_psf',
-                     'raj2000_wcs', 'dej2000_wcs',
-                     'raj2000_sub', 'dej2000_sub', 
-                     'raerr_sub', 'decerr_sub',
-                     'astrom_sub_grid', 'astrom_sub_id',
-                     'healpix256',
-                     'mag_auto', 'magerr_auto', 
-                     'flux_auto', 'fluxerr_auto',
-                     'mag_iso', 'magerr_iso', 
-                     'flux_iso', 'fluxerr_iso',
-                     'flux_max', 'flux_radius',
-                     'isoarea', 'sqrt_isoarea', 'background',
-                     'sextractor_flags', 
-                     'dist_center', 'dist_edge', 'annular_bin',
-                     'flag_rim', 'flag_negradius', 'flag_clean',
-                     'zenith_angle', 'airmass',
-                     'natmag', 'natmagerr', 
-                     'bmag', 'bmagerr', 'vmag', 'vmagerr',
-                     'natmag_plate', 'natmagerr_plate', 'phot_plate_flags',
-                     'natmag_correction',
-                     'natmag_sub', 'natmagerr_sub', 'natmag_residual',
-                     'phot_sub_grid', 'phot_sub_id', 'phot_sub_flags',
-                     'phot_calib_flags', 'color_term', 'color_bv', 'cat_natmag',
-                     'match_radius',
-                     'ucac4_id', 'ucac4_ra', 'ucac4_dec',
-                     'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
-                     'ucac4_dist2', 'ucac4_nn_dist',
-                     'tycho2_id', 'tycho2_ra', 'tycho2_dec',
-                     'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist',
-                     'apass_ra', 'apass_dec', 'apass_bmag', 'apass_vmag', 
-                     'apass_dist']
+        outfields = _source_meta.keys()
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
-        #outhdr = ','.join(['"{}"'.format(f) for f in outfields])
         delimiter = ','
 
-        # Output ascii file with refined coordinates
+        # Output CSV file with extracted sources
         self.log.write('Writing output file {}'.format(fn_world), level=4, 
                        event=81)
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
@@ -3787,7 +3748,7 @@ class SolveProcess:
 
     def output_sources_db(self):
         """
-        Write source list with calibrated RA and Dec to the database.
+        Write extracted sources to the database.
 
         """
 
