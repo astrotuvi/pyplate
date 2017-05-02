@@ -306,6 +306,8 @@ _schema['source_calib'] = OrderedDict([
     ('astrom_sub_grid',  ('SMALLINT', True)),
     ('astrom_sub_id',    ('INT', True)),
     ('nn_dist',          ('FLOAT', True)),
+    ('zenith_angle',     ('FLOAT', True)),
+    ('airmass',          ('FLOAT', True)),
     ('natmag',           ('FLOAT', True)),
     ('natmagerr',        ('FLOAT', True)),
     ('bmag',             ('FLOAT', True)),
