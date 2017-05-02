@@ -568,6 +568,8 @@ class SolveProcess:
         self.tycho2_dir = ''
         self.work_dir = ''
         self.write_source_dir = ''
+        self.write_db_source_dir = ''
+        self.write_db_source_calib_dir = ''
         self.write_phot_dir = ''
         self.write_wcs_dir = ''
         self.write_log_dir = ''
@@ -748,7 +750,8 @@ class SolveProcess:
 
         for attr in ['fits_dir', 'tycho2_dir', 
                      'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir']:
+                     'write_source_dir', 'write_wcs_dir',
+                     'write_db_source_dir', 'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except ConfigParser.Error:
@@ -3746,29 +3749,49 @@ class SolveProcess:
         np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
                    delimiter=delimiter, header=outhdr, comments='')
 
-    def output_sources_db(self):
+    def output_sources_db(self, write_csv=None):
         """
         Write extracted sources to the database.
 
         """
 
         self.log.to_db(3, 'Writing sources to the database', event=80)
-        self.log.write('Open database connection for writing to the '
-                       'source and source_calib tables.')
         platedb = PlateDB()
-        platedb.open_connection(host=self.output_db_host,
-                                user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
+        platedb.assign_conf(self.conf)
+
+        if write_csv:
+            # Create output directory, if missing
+            if (self.write_db_source_dir and 
+                not os.path.isdir(self.write_db_source_dir)):
+                self.log.write('Creating output directory {}'
+                               .format(self.write_db_source_dir), 
+                               level=4, event=80)
+                os.makedirs(self.write_db_source_dir)
+
+            if (self.write_db_source_calib_dir and 
+                not os.path.isdir(self.write_db_source_calib_dir)):
+                self.log.write('Creating output directory {}'
+                               .format(self.write_db_source_calib_dir), 
+                               level=4, event=80)
+                os.makedirs(self.write_db_source_calib_dir)
+        else:
+            self.log.write('Open database connection for writing to the '
+                           'source and source_calib tables.')
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
             platedb.write_sources(self.sources, process_id=self.process_id,
                                   scan_id=self.scan_id, plate_id=self.plate_id,
-                                  archive_id=self.archive_id)
-            
-        platedb.close_connection()
-        self.log.write('Closed database connection.')
+                                  archive_id=self.archive_id, 
+                                  write_csv=write_csv)
+
+        if not write_csv:
+            platedb.close_connection()
+            self.log.write('Closed database connection.')
 
     def calibrate_photometry(self):
         """

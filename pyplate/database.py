@@ -2,6 +2,8 @@ import numpy as np
 import time
 import ConfigParser
 import socket
+import os
+import csv
 from collections import OrderedDict
 from .conf import read_conf
 from ._version import __version__
@@ -630,6 +632,9 @@ class PlateDB:
         self.db = None
         self.cursor = None
 
+        self.write_db_source_dir = ''
+        self.write_db_source_calib_dir = ''
+
     def assign_conf(self, conf):
         """
         Assign and parse configuration.
@@ -641,7 +646,8 @@ class PlateDB:
 
         self.conf = conf
 
-        for attr in ['write_log_dir']:
+        for attr in ['write_log_dir', 'write_db_source_dir', 
+                     'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except ConfigParser.Error:
@@ -1101,11 +1107,28 @@ class PlateDB:
         self.execute_query(sql, val_tuple)
 
     def write_sources(self, sources, process_id=None, scan_id=None, 
-                      plate_id=None, archive_id=None):
+                      plate_id=None, archive_id=None, write_csv=None):
         """
-        Write source list with calibrated RA and Dec to the database.
+        Write source data to the database.
 
         """
+
+        # Open CSV files for writing
+        if write_csv:
+            fn_source_csv = '{:05d}_source.csv'.format(process_id)
+            fn_source_csv = os.path.join(self.write_db_source_dir, 
+                                         fn_source_csv)
+            source_csv = open(fn_source_csv, 'wb')
+            source_writer = csv.writer(source_csv, delimiter=',',
+                                       quotechar='"', 
+                                       quoting=csv.QUOTE_MINIMAL)
+            fn_source_calib_csv = '{:05d}_source_calib.csv'.format(process_id)
+            fn_source_calib_csv = os.path.join(self.write_db_source_calib_dir, 
+                                               fn_source_calib_csv)
+            source_calib_csv = open(fn_source_calib_csv, 'wb')
+            source_calib_writer = csv.writer(source_calib_csv, delimiter=',',
+                                             quotechar='"', 
+                                             quoting=csv.QUOTE_MINIMAL)
 
         # Prepare query for the source table
         col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
@@ -1114,6 +1137,7 @@ class PlateDB:
             if v[1]:
                 col_list.append(k)
 
+        source_columns = col_list
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql_source = ('INSERT INTO source ({}) VALUES ({})'
@@ -1127,6 +1151,7 @@ class PlateDB:
             if v[1]:
                 col_list.append(k)
 
+        source_calib_columns = col_list
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql_source_calib = ('INSERT INTO source_calib ({}) VALUES ({})'
@@ -1138,7 +1163,7 @@ class PlateDB:
 
         for i, source in enumerate(sources):
             # Insert 1000 rows simultaneously
-            if i > 0 and i%1000 == 0:
+            if not write_csv and i > 0 and i%1000 == 0:
                 self.executemany_query(sql_source, source_data)
                 source_data = []
                 self.executemany_query(sql_source_calib, source_calib_data)
@@ -1155,7 +1180,10 @@ class PlateDB:
                                   else None)
                     val_tuple = val_tuple + (source_val, )
 
-            source_data.append(val_tuple)
+            if write_csv:
+                source_writer.writerow(val_tuple)
+            else:
+                source_data.append(val_tuple)
 
             # Prepare source_calib data
             val_tuple = (source_id, process_id, scan_id, None, plate_id, 
@@ -1183,11 +1211,19 @@ class PlateDB:
                         
                     val_tuple = val_tuple + (source_val, )
 
-            source_calib_data.append(val_tuple)
+            if write_csv:
+                source_calib_writer.writerow(val_tuple)
+            else:
+                source_calib_data.append(val_tuple)
 
-        # Insert remaining rows
-        self.executemany_query(sql_source, source_data)
-        self.executemany_query(sql_source_calib, source_calib_data)
+        if write_csv:
+            # Close CSV files
+            source_csv.close()
+            source_calib_csv.close()
+        else:
+            # Insert remaining rows
+            self.executemany_query(sql_source, source_data)
+            self.executemany_query(sql_source_calib, source_calib_data)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):
