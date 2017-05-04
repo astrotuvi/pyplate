@@ -597,6 +597,7 @@ class SolveProcess:
         self.output_db_user = ''
         self.output_db_name = ''
         self.output_db_passwd = ''
+        self.write_sources_csv = False
 
         self.sextractor_path = 'sex'
         self.scamp_path = 'scamp'
@@ -761,7 +762,7 @@ class SolveProcess:
             self.enable_log = True
 
         for attr in ['use_tycho2_fits', 'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log']:
+                     'enable_db_log', 'write_sources_csv']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
             except ValueError:
@@ -3755,12 +3756,19 @@ class SolveProcess:
 
         """
 
-        self.log.to_db(3, 'Writing sources to the database', event=80)
+        if write_csv is None:
+            write_csv = self.write_sources_csv
+
+        if write_csv:
+            self.log.to_db(3, 'Writing sources to the database files', event=80)
+        else:
+            self.log.to_db(3, 'Writing sources to the database', event=80)
+
         platedb = PlateDB()
         platedb.assign_conf(self.conf)
 
         if write_csv:
-            # Create output directory, if missing
+            # Create output directories, if missing
             if (self.write_db_source_dir and 
                 not os.path.isdir(self.write_db_source_dir)):
                 self.log.write('Creating output directory {}'
@@ -3775,6 +3783,7 @@ class SolveProcess:
                                level=4, event=80)
                 os.makedirs(self.write_db_source_calib_dir)
         else:
+            # Open database connection
             self.log.write('Open database connection for writing to the '
                            'source and source_calib tables.')
             platedb.open_connection(host=self.output_db_host,
@@ -3782,13 +3791,19 @@ class SolveProcess:
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
 
+        # Check for identification numbers and write data
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
             platedb.write_sources(self.sources, process_id=self.process_id,
                                   scan_id=self.scan_id, plate_id=self.plate_id,
                                   archive_id=self.archive_id, 
                                   write_csv=write_csv)
+        else:
+            self.log.write('Cannot write source data due to missing '
+                           'plate identification number(s).', 
+                           level=2, event=80)
 
+        # Close database connection
         if not write_csv:
             platedb.close_connection()
             self.log.write('Closed database connection.')

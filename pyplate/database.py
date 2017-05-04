@@ -13,6 +13,21 @@ try:
 except ImportError:
     pass
 
+
+# Special class for handling None (NULL) values when writing data to
+# CSV files for later ingestion into the database
+# http://stackoverflow.com/questions/11379300/csv-reader-behavior-with-none-and-empty-string
+class csvWriter(object):
+    def __init__(self, csvfile, *args, **kwrags):
+        self.writer = csv.writer(csvfile, *args, **kwrags)
+
+    def writerow(self, row):
+        self.writer.writerow(['\N' if val is None else val for val in row])
+
+    def writerows(self, rows):
+        map(self.writerow, rows)
+
+
 _schema = OrderedDict()
 
 _schema['archive'] = OrderedDict([
@@ -1119,16 +1134,16 @@ class PlateDB:
             fn_source_csv = os.path.join(self.write_db_source_dir, 
                                          fn_source_csv)
             source_csv = open(fn_source_csv, 'wb')
-            source_writer = csv.writer(source_csv, delimiter=',',
-                                       quotechar='"', 
-                                       quoting=csv.QUOTE_MINIMAL)
+            source_writer = csvWriter(source_csv, delimiter=',',
+                                      quotechar='"', 
+                                      quoting=csv.QUOTE_MINIMAL)
             fn_source_calib_csv = '{:05d}_source_calib.csv'.format(process_id)
             fn_source_calib_csv = os.path.join(self.write_db_source_calib_dir, 
                                                fn_source_calib_csv)
             source_calib_csv = open(fn_source_calib_csv, 'wb')
-            source_calib_writer = csv.writer(source_calib_csv, delimiter=',',
-                                             quotechar='"', 
-                                             quoting=csv.QUOTE_MINIMAL)
+            source_calib_writer = csvWriter(source_calib_csv, delimiter=',',
+                                            quotechar='"', 
+                                            quoting=csv.QUOTE_MINIMAL)
 
         # Prepare query for the source table
         col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
@@ -1156,6 +1171,11 @@ class PlateDB:
         val_str = ','.join(['%s'] * len(col_list))
         sql_source_calib = ('INSERT INTO source_calib ({}) VALUES ({})'
                             .format(col_str, val_str))
+
+        # Write header rows to CSV files
+        if write_csv:
+            source_writer.writerow(source_columns)
+            source_calib_writer.writerow(source_calib_columns)
 
         # Prepare data and execute queries
         source_data = []
