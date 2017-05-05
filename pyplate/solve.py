@@ -626,7 +626,6 @@ class SolveProcess:
         self.phot_cterm = []
         self.phot_color = None
         self.phot_calib = []
-        self.phot_rmse = []
         self.phot_calibrated = False
 
         self.id_tyc = None
@@ -3755,9 +3754,6 @@ class SolveProcess:
             #fn_cutcurve = os.path.join(self.write_phot_dir, 
             #                           '{}_cutcurve.txt'.format(self.basefn))
             #fcutcurve = open(fn_cutcurve, 'wb')
-            fn_rmse = os.path.join(self.write_phot_dir, 
-                                      '{}_rmse.txt'.format(self.basefn))
-            frmse = open(fn_rmse, 'wb')
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
@@ -4577,54 +4573,14 @@ class SolveProcess:
 
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
+                # Calculate residuals
                 residuals = cat_natmag-s(plate_mag_u)
+
+                # Evaluate RMS errors from the calibration residuals
                 rmse_list = generic_filter(residuals, _rmse, size=10)
                 rmse_lowess = sm.nonparametric.lowess(rmse_list, plate_mag_u, 
                                                       frac=0.5, it=3, delta=0.1)
-
-                # Evaluate RMS error from the spread around the calibration curve
-                #svar = sm.nonparametric.lowess(residuals**2, plate_mag_u, 
-                #                               frac=0.5, it=3, delta=0.1)
-                #pmag = np.array([])
-                #rmse = np.array([])
-
-                #for mag_loc in np.linspace(plate_mag_brightest, plate_mag_lim, 100):
-                #    wnd = 0.5
-                #    ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                #                       (plate_mag_u < mag_loc+wnd))[0]
-
-                #    if len(ind_loc) < 5:
-                #        wnd = 1.0
-                #        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                #                           (plate_mag_u < mag_loc+wnd))[0]
-
-                #    if len(ind_loc) < 5:
-                #        wnd = 2.0
-                #        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                #                           (plate_mag_u < mag_loc+wnd))[0]
-
-                #    if len(ind_loc) >= 5:
-                #        pmag = np.append(pmag, mag_loc)
-                #        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
-                #        rmse = np.append(rmse, rmse_loc)
-
-                        # Store RMSE data
-                #        self.phot_rmse.append(OrderedDict([
-                #            ('annular_bin', b),
-                #            ('plate_mag', mag_loc),
-                #            ('rmse', rmse_loc),
-                #            ('mag_window', wnd),
-                #            ('num_stars', len(ind_loc))
-                #        ]))
-
-                #if self.write_phot_dir:
-                #    np.savetxt(frmse, np.column_stack((pmag, rmse)))
-                #    frmse.write('\n\n')
-
-                # Interpolate rms error values
-                #s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
-                #s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
-                #                                      np.sqrt(svar[:,1]), k=1)
                 s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
                                                       rmse_lowess[:,1], k=1)
                 rmse = s_rmse(plate_mag_u)
@@ -4776,7 +4732,6 @@ class SolveProcess:
             #fcalcurve.close()
             #fcutdata.close()
             #fcutcurve.close()
-            frmse.close()
 
     def improve_photometry_recursive(self, max_recursion_depth=None):
         """
@@ -4940,40 +4895,12 @@ class SolveProcess:
                 fsub.write('\n\n')
                 fsub.close
 
-            # Evaluate RMS error from the spread around the calibration curve
+            # Evaluate RMS error from the calibration residuals
             residuals = self.sources['natmag_residual'][indsub]
             indsort = np.argsort(platemag)
             rmse_list = generic_filter(residuals[indsort], _rmse, size=10)
             rmse_lowess = sm.nonparametric.lowess(rmse_list, platemag[indsort], 
                                                   frac=0.5, it=3, delta=0.1)
-            #pmag = np.array([])
-            #rmse = np.array([])
-            #residuals = self.sources['natmag_residual'][indsub]
-
-            #for mag_loc in np.linspace(np.min(platemag), np.max(platemag), 100):
-            #    wnd = 0.5
-            #    ind_loc = np.where((platemag > mag_loc-wnd) &
-            #                       (platemag < mag_loc+wnd))[0]
-
-            #    if len(ind_loc) < 5:
-            #        wnd = 1.0
-            #        ind_loc = np.where((platemag > mag_loc-wnd) &
-            #                           (platemag < mag_loc+wnd))[0]
-
-            #    if len(ind_loc) < 5:
-            #        wnd = 2.0
-            #        ind_loc = np.where((platemag > mag_loc-wnd) &
-            #                           (platemag < mag_loc+wnd))[0]
-
-            #    if len(ind_loc) >= 5:
-            #        pmag = np.append(pmag, mag_loc)
-            #        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
-            #        rmse = np.append(rmse, rmse_loc)
-
-            # Interpolate rms error values
-            #s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
-            #s_rmse = InterpolatedUnivariateSpline(svar[:,0], 
-            #                                      np.sqrt(svar[:,1]), k=1)
             s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
                                                   rmse_lowess[:,1], k=1)
 
@@ -5151,39 +5078,6 @@ class SolveProcess:
                                          scan_id=self.scan_id,
                                          plate_id=self.plate_id,
                                          archive_id=self.archive_id)
-            
-        platedb.close_connection()
-        self.log.write('Closed database connection')
-
-    def output_rmse_db(self):
-        """
-        Write photometric calibration errors to the database.
-
-        """
-
-        self.log.to_db(3, 'Writing photometric calibration errors to the '
-                       'database', event=77)
-
-        if self.phot_rmse == []:
-            self.log.write('No photometric calibration errors to write '
-                           'to the database', level=2, event=77)
-            return
-
-        self.log.write('Open database connection for writing to the '
-                       'phot_rmse table')
-        platedb = PlateDB()
-        platedb.open_connection(host=self.output_db_host,
-                                user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
-
-        if (self.scan_id is not None and self.plate_id is not None and 
-            self.archive_id is not None and self.process_id is not None):
-            for rmse in self.phot_rmse:
-                platedb.write_phot_rmse(rmse, process_id=self.process_id,
-                                        scan_id=self.scan_id,
-                                        plate_id=self.plate_id,
-                                        archive_id=self.archive_id)
             
         platedb.close_connection()
         self.log.write('Closed database connection')

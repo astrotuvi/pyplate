@@ -472,30 +472,6 @@ _schema['phot_calib'] = OrderedDict([
     ('INDEX annularbin_ind', ('(annular_bin)', None))
     ])
     
-_schema['phot_rmse'] = OrderedDict([
-    ('rmse_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
-                          False)),
-    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
-    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
-    ('exposure_id',      ('INT UNSIGNED', False)),
-    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
-    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
-    ('annular_bin',      ('TINYINT', True)),
-    ('plate_mag',        ('FLOAT', True)),
-    ('rmse',             ('FLOAT', True)),
-    ('mag_window',       ('FLOAT', True)),
-    ('num_stars',        ('INT UNSIGNED', True)),
-    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
-    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
-                          'ON UPDATE CURRENT_TIMESTAMP', None)),
-    ('INDEX process_ind',  ('(process_id)', None)),
-    ('INDEX scan_ind',     ('(scan_id)', None)),
-    ('INDEX exposure_ind', ('(exposure_id)', None)),
-    ('INDEX plate_ind',    ('(plate_id)', None)),
-    ('INDEX archive_ind',  ('(archive_id)', None)),
-    ('INDEX annularbin_ind', ('(annular_bin)', None))
-    ])
-    
 _schema['phot_color'] = OrderedDict([
     ('color_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           False)),
@@ -1096,28 +1072,6 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO phot_calib ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-
-    def write_phot_rmse(self, phot_rmse, process_id=None, scan_id=None, 
-                        plate_id=None, archive_id=None):
-        """
-        Write photometric calibration errors to the database.
-
-        """
-
-        col_list = ['rmse_id', 'process_id', 'scan_id', 'exposure_id', 
-                    'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
-
-        for k,v in _schema['phot_rmse'].items():
-            if v[1]:
-                col_list.append(k)
-                val_tuple = val_tuple + (phot_rmse[k], )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO phot_rmse ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
