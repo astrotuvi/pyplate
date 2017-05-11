@@ -184,6 +184,22 @@ _logpage_meta = OrderedDict([
     ('image_datetime', (str, None))
     ])
 
+_preview_meta = OrderedDict([
+    ('filename', (str, None)),
+    ('preview_id', (int, None)),
+    ('plate_id', (int, None)),
+    ('db_plate_id', (int, None)),
+    ('archive_id', (int, None)),
+    ('plate_num', (str, None)),
+    ('wfpdb_id', (str, None)),
+    ('preview_type', (int, None)),
+    ('file_format', (str, None)),
+    ('image_width', (int, None)),
+    ('image_height', (int, None)),
+    ('image_datetime', (str, None)),
+    ('file_datetime', (str, None))
+    ])
+
 def str_to_num(s):
     """
     Convert string to int or float, if possible. Otherwise return 
@@ -278,6 +294,7 @@ class ArchiveMeta:
         self.quality_dict = OrderedDict()
         self.plate_csv_dict = [CSV_Dict()]
         self.scan_csv_dict = CSV_Dict()
+        self.preview_csv_dict = CSV_Dict()
         self.logbook_csv_dict = CSV_Dict()
         self.logpage_csv_dict = CSV_Dict()
         self.fits_dir = ''
@@ -443,7 +460,7 @@ class ArchiveMeta:
                 print 'Could not read the WFPDB observer file!'
 
     def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
-                 fn_logbook_csv=None, fn_logpage_csv=None):
+                 fn_preview_csv=None, fn_logbook_csv=None, fn_logpage_csv=None):
         """
         Read CSV files.
 
@@ -455,6 +472,8 @@ class ArchiveMeta:
             Name of the plate metadata CSV file.
         fn_scan_csv : str
             Name of the scan metadata CSV file.
+        fn_preview_csv : str
+            Name of the preview metadata CSV file.
         fn_logbook_csv : str
             Name of the logbook CSV file.
         fn_logpage_csv : str
@@ -481,6 +500,12 @@ class ArchiveMeta:
 
                 if fn_str:
                     fn_scan_csv = os.path.join(csv_dir, fn_str)
+
+            if self.conf.has_option('Files', 'preview_csv'):
+                fn_str = self.conf.get('Files', 'preview_csv')
+
+                if fn_str:
+                    fn_preview_csv = os.path.join(csv_dir, fn_str)
 
             if self.conf.has_option('Files', 'logbook_csv'):
                 fn_str = self.conf.get('Files', 'logbook_csv')
@@ -541,6 +566,25 @@ class ArchiveMeta:
                                                for row in reader))
                 self.scan_csv_dict.filename = fn_base
 
+        if fn_preview_csv:
+            fn_base = os.path.basename(fn_preview_csv)
+            csv_delimiter = ','
+            csv_quotechar = '"'
+
+            if self.conf.has_section(fn_base):
+                if self.conf.has_option(fn_base, 'csv_delimiter'):
+                    csv_delimiter = self.conf.get(fn_base, 'csv_delimiter')
+
+                if self.conf.has_option(fn_base, 'csv_quotechar'):
+                    csv_quotechar = self.conf.get(fn_base, 'csv_quotechar')
+
+            with open(fn_preview_csv, 'rb') as f:
+                reader = csv.reader(f, delimiter=csv_delimiter,
+                                    quotechar=csv_quotechar)
+                self.preview_csv_dict = CSV_Dict(((row[0],row)
+                                                   for row in reader))
+                self.preview_csv_dict.filename = fn_base
+
         if fn_logbook_csv:
             fn_base = os.path.basename(fn_logbook_csv)
             csv_delimiter = ','
@@ -600,6 +644,17 @@ class ArchiveMeta:
 
         if self.scan_csv_dict:
             return self.scan_csv_dict.keys()
+        else:
+            return []
+
+    def get_previewlist(self):
+        """
+        Get list of preview files
+
+        """
+
+        if self.preview_csv_dict:
+            return self.preview_csv_dict.keys()
         else:
             return []
 
@@ -671,6 +726,43 @@ class ArchiveMeta:
 
         return logpagemeta
         
+    def get_previewmeta(self, filename=None):
+        """
+        Get metadata for the specific preview image.
+
+        """
+
+        previewmeta = PreviewMeta(filename=filename)
+        previewmeta['archive_id'] = self.archive_id
+
+        if self.conf is not None:
+            previewmeta.assign_conf(self.conf)
+
+        if filename:
+            if filename in self.preview_csv_dict:
+                previewmeta.parse_csv(self.preview_csv_dict[filename], 
+                                      csv_filename=self.preview_csv_dict
+                                      .filename)
+
+            previewmeta.parse_exif()
+
+        if previewmeta['plate_id']:
+            platemeta = self.get_platemeta(previewmeta['plate_id'])
+
+            if not previewmeta['db_plate_id'] and platemeta['db_plate_id']:
+                previewmeta['db_plate_id'] = platemeta['db_plate_id']
+
+            if not previewmeta['plate_num'] and platemeta['plate_num']:
+                previewmeta['plate_num'] = platemeta['plate_num']
+
+            if not previewmeta['wfpdb_id'] and platemeta['wfpdb_id']:
+                previewmeta['wfpdb_id'] = platemeta['wfpdb_id']
+
+            if not previewmeta['archive_id'] and platemeta['archive_id']:
+                previewmeta['archive_id'] = platemeta['archive_id']
+
+        return previewmeta
+        
     def output_plates_db(self):
         """
         Write plates to the database.
@@ -703,6 +795,23 @@ class ArchiveMeta:
                 platemeta = self.get_platemeta(filename=filename)
                 platemeta.compute_values()
                 platedb.write_scan(platemeta)
+
+            platedb.close_connection()
+
+    def output_previews_db(self):
+        """
+        Write previews to the database.
+
+        """
+
+        if self.preview_csv_dict:
+            platedb = PlateDB()
+            platedb.assign_conf(self.conf)
+            platedb.open_connection()
+
+            for filename in self.get_previewlist():
+                previewmeta = self.get_previewmeta(filename=filename)
+                platedb.write_preview(previewmeta)
 
             platedb.close_connection()
 
@@ -1011,7 +1120,8 @@ class LogpageMeta(OrderedDict):
 
         if gexiv_available:
             try:
-                exif = GExiv2.Metadata(fn_path)
+                exif = GExiv2.Metadata()
+                exif.open_path(fn_path)
             except Exception:
                 return
 
@@ -1020,9 +1130,11 @@ class LogpageMeta(OrderedDict):
 
             try:
                 self['image_datetime'] = exif.get_date_time().isoformat()
-            except (KeyError, TypeError):
+            except (KeyError, TypeError, AttributeError):
                 pass
-        else:
+
+        if (not self['image_width'] or not self['image_height'] 
+            or not self['image_datetime']):
             try:
                 im_pil = Image.open(fn_path)
             except Exception:
@@ -1057,6 +1169,159 @@ class LogpageMeta(OrderedDict):
 
                     try:
                         dt_local = (pytz.timezone(self.logpage_exif_timezone)
+                                    .localize(dt_exif))
+                        exif_datetime = (dt_local.astimezone(pytz.utc)
+                                         .strftime('%Y-%m-%dT%H:%M:%S'))
+                    except pytz.exceptions.UnknownTimeZoneError:
+                        pass
+
+                self['image_datetime'] = exif_datetime
+
+
+class PreviewMeta(OrderedDict):
+    """
+    Preview image metadata class.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        filename = kwargs.pop('filename', None)
+        super(PreviewMeta, self).__init__(*args, **kwargs)
+
+        for k,v in _preview_meta.items():
+            self[k] = copy.deepcopy(v[1])
+
+        self.preview_dir = ''
+        self.preview_exif_timezone = None
+        self['filename'] = filename
+        fmt = filename.split('.')[-1].upper()
+
+        if fmt == 'JPG':
+            fmt = 'JPEG'
+        elif fmt == 'TIF':
+            fmt = 'TIFF'
+
+        if fmt in ['JPEG', 'PNG', 'TIFF']:
+            self['file_format'] = fmt
+        
+    def assign_conf(self, conf):
+        """
+        Assign configuration.
+
+        """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
+        self.conf = conf
+
+        for attr in ['preview_dir']:
+            try:
+                setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['preview_exif_timezone']:
+            try:
+                setattr(self, attr, conf.get('Image', attr))
+            except ConfigParser.Error:
+                pass
+
+    def parse_csv(self, val_list, csv_filename=None):
+        """
+        Extract data from a CSV row.
+
+        """
+
+        if self.conf.has_section(csv_filename):
+            for (key, pos) in self.conf.items(csv_filename):
+                if (key in self) and (key != 'filename'):
+                    try:
+                        pos = int(pos)
+                    except ValueError:
+                        pos = 0
+
+                    if (pos > 0 and pos <= len(val_list)):
+                        if (_preview_meta[key][0] is int or 
+                            _preview_meta[key][0] is float):
+                            val = str_to_num(val_list[pos-1])
+                        else:
+                            val = val_list[pos-1]
+
+                        try:
+                            self[key].append(val)
+                        except AttributeError:
+                            self[key] = val
+
+            # Require non-zero preview_id
+            if self['preview_id'] == 0:
+                self['preview_id'] = None
+
+    def parse_exif(self):
+        """
+        Extract data from image EXIF.
+
+        """
+
+        fn_path = os.path.join(self.preview_dir, self['filename'])
+
+        if not os.path.exists(fn_path):
+            return
+
+        mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_path))
+        self['file_datetime'] = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+
+        if gexiv_available:
+            try:
+                exif = GExiv2.Metadata()
+                exif.open_path(fn_path)
+            except Exception:
+                return
+
+            self['image_width'] = exif.get_pixel_width()
+            self['image_height'] = exif.get_pixel_height()
+
+            try:
+                self['image_datetime'] = exif.get_date_time().isoformat()
+            except (KeyError, TypeError, AttributeError):
+                pass
+
+        if (not self['image_width'] or not self['image_height'] 
+            or not self['image_datetime']):
+            try:
+                im_pil = Image.open(fn_path)
+            except Exception:
+                return
+            
+            self['image_width'], self['image_height'] = im_pil.size
+            self['file_format'] = im_pil.format
+            exif_datetime = None
+
+            if self['file_format'] == 'JPEG':
+                exif = im_pil._getexif()
+
+                try:
+                    exif_datetime = exif[306]
+                except (KeyError, TypeError):
+                    pass
+            elif self['file_format'] == 'TIFF':
+                try:
+                    exif_datetime = im_pil.tag[306]
+                except (KeyError, TypeError):
+                    pass
+
+            if exif_datetime:
+                if exif_datetime[4] == ':':
+                    exif_datetime = '{} {}'.format(exif_datetime[:10]
+                                                   .replace(':', '-'),
+                                                   exif_datetime[11:])
+
+                if pytz_available and self.preview_exif_timezone:
+                    dt_exif = dt.datetime.strptime(exif_datetime, 
+                                                   '%Y-%m-%d %H:%M:%S')
+
+                    try:
+                        dt_local = (pytz.timezone(self.preview_exif_timezone)
                                     .localize(dt_exif))
                         exif_datetime = (dt_local.astimezone(pytz.utc)
                                          .strftime('%Y-%m-%dT%H:%M:%S'))

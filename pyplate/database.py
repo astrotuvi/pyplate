@@ -81,9 +81,6 @@ _schema['plate'] = OrderedDict([
     ('obs_notes',        ('VARCHAR(255)', 'obsnotes')),
     ('notes',            ('VARCHAR(255)', 'notes')),
     ('bibcode',          ('VARCHAR(80)', 'bibcode')),
-    ('filename_preview', ('VARCHAR(80)', 'fn_pre')),
-    ('filename_thumbnail', ('VARCHAR(80)', None)),
-    ('filename_cover',   ('VARCHAR(80)', 'fn_cover')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -123,8 +120,8 @@ _schema['exposure'] = OrderedDict([
     ('jd_mid',           ('DOUBLE', 'jd_avg')),
     ('jd_weighted',      ('DOUBLE', 'jd_weighted')),
     ('jd_end',           ('DOUBLE', 'jd_end')),
-    ('hjd_mid',          ('DOUBLE', None)),
-    ('hjd_weighted',     ('DOUBLE', None)),
+    ('hjd_mid',          ('DOUBLE', 'hjd_avg')),
+    ('hjd_weighted',     ('DOUBLE', 'hjd_weighted')),
     ('exptime',          ('FLOAT', 'exptime')),
     ('num_sub',          ('TINYINT UNSIGNED', 'numsub')),
     ('method',           ('TINYINT UNSIGNED', None)),
@@ -189,6 +186,24 @@ _schema['scan'] = OrderedDict([
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX plate_ind',   ('(plate_id)', None)),
+    ('INDEX archive_ind', ('(archive_id)', None))
+    ])
+
+_schema['preview'] = OrderedDict([
+    ('preview_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY',
+                          False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', True)),
+    ('preview_type',     ('TINYINT', True)),
+    ('filename',         ('VARCHAR(80)', True)),
+    ('file_format',      ('VARCHAR(80)', True)),
+    ('image_width',      ('SMALLINT UNSIGNED', True)),
+    ('image_height',     ('SMALLINT UNSIGNED', True)),
+    ('image_datetime',   ('DATETIME', True)),
+    ('file_datetime',    ('DATETIME', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
 
@@ -937,6 +952,55 @@ class PlateDB:
         scan_id = self.cursor.lastrowid
 
         return scan_id
+
+    def write_preview(self, previewmeta):
+        """
+        Write preview image entry to the database.
+
+        Parameters
+        ----------
+        previewmeta : PreviewMeta
+            Preview metadata instance
+
+        Returns
+        -------
+        preview_id : int
+            Preview ID number
+
+        """
+
+        if (isinstance(previewmeta['db_plate_id'], int) and 
+            (previewmeta['db_plate_id'] > 0)):
+            plate_id = previewmeta['db_plate_id']
+        else:
+            plate_id = self.get_plate_id(previewmeta['plate_num'],
+                                         previewmeta['archive_id'])
+
+            if plate_id is None:
+                plate_id = self.get_plate_id_wfpdb(previewmeta['wfpdb_id'])
+
+        col_list = ['preview_id', 'plate_id']
+
+        if (isinstance(previewmeta['preview_id'], int) and 
+            (previewmeta['preview_id'] > 0)):
+            val_tuple = (previewmeta['preview_id'], plate_id)
+        else:
+            val_tuple = (None, plate_id)
+
+        for k,v in _schema['preview'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (previewmeta[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+
+        sql = ('INSERT INTO preview ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+        preview_id = self.cursor.lastrowid
+
+        return preview_id
 
     def write_logbook(self, logbookmeta):
         """
