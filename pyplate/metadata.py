@@ -58,6 +58,8 @@ _keyword_meta = OrderedDict([
     ('fits_minval', (float, False, None, 'MINVAL', None)),
     ('fits_maxval', (float, False, None, 'MAXVAL', None)),
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
+    ('fits_datetime', (str, False, None, None, None)),
+    ('fits_size', (int, False, None, None, None)),
     ('date_orig', (str, True, [], 'DATEORIG', 'DATEORn')),
     ('date_orig_end', (str, True, [], None, None)),
     ('tms_orig', (str, True, [], 'TMS-ORIG', 'TMS-ORn')),
@@ -181,7 +183,9 @@ _logpage_meta = OrderedDict([
     ('file_format', (str, None)),
     ('image_width', (int, None)),
     ('image_height', (int, None)),
-    ('image_datetime', (str, None))
+    ('image_datetime', (str, None)),
+    ('file_datetime', (str, None)),
+    ('file_size', (int, None))
     ])
 
 _preview_meta = OrderedDict([
@@ -197,7 +201,8 @@ _preview_meta = OrderedDict([
     ('image_width', (int, None)),
     ('image_height', (int, None)),
     ('image_datetime', (str, None)),
-    ('file_datetime', (str, None))
+    ('file_datetime', (str, None)),
+    ('file_size', (int, None))
     ])
 
 def str_to_num(s):
@@ -879,6 +884,10 @@ class ArchiveMeta:
 
             if header:
                 platemeta.parse_header(header)
+                mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(filename))
+                mtime_str = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+                platemeta['fits_datetime'] = mtime_str
+                platemeta['fits_size'] = os.path.getsize(filename)
 
         if filename:
             fn_base = os.path.basename(filename)
@@ -1118,6 +1127,10 @@ class LogpageMeta(OrderedDict):
             if not os.path.exists(fn_path):
                 return
 
+        mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_path))
+        self['file_datetime'] = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+        self['file_size'] = os.path.getsize(fn_path)
+
         if gexiv_available:
             try:
                 exif = GExiv2.Metadata()
@@ -1270,6 +1283,7 @@ class PreviewMeta(OrderedDict):
 
         mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_path))
         self['file_datetime'] = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+        self['file_size'] = os.path.getsize(fn_path)
 
         if gexiv_available:
             try:

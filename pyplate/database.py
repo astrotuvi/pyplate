@@ -182,6 +182,8 @@ _schema['scan'] = OrderedDict([
     ('scan_author',      ('VARCHAR(80)', 'scan_author')),
     ('scan_notes',       ('VARCHAR(255)', 'scan_notes')),
     ('origin',           ('VARCHAR(80)', 'origin')),
+    ('file_datetime',    ('DATETIME', 'fits_datetime')),
+    ('file_size',        ('INT UNSIGNED', 'fits_size')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -201,6 +203,7 @@ _schema['preview'] = OrderedDict([
     ('image_height',     ('SMALLINT UNSIGNED', True)),
     ('image_datetime',   ('DATETIME', True)),
     ('file_datetime',    ('DATETIME', True)),
+    ('file_size',        ('INT UNSIGNED', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -234,6 +237,8 @@ _schema['logpage'] = OrderedDict([
     ('image_width',      ('SMALLINT UNSIGNED', True)),
     ('image_height',     ('SMALLINT UNSIGNED', True)),
     ('image_datetime',   ('DATETIME', True)),
+    ('file_datetime',    ('DATETIME', True)),
+    ('file_size',        ('INT UNSIGNED', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
