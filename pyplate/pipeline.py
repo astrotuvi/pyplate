@@ -192,6 +192,9 @@ class PlateImagePipeline:
             if self.solve_recursive:
                 proc.solve_recursive()
 
+                if self.output_solution_db:
+                    proc.output_astrom_sub_db()
+
             proc.process_source_coordinates()
 
             if self.calibrate_photometry:
@@ -204,7 +207,6 @@ class PlateImagePipeline:
                 proc.output_cterm_db()
                 proc.output_color_db()
                 proc.output_calibration_db()
-                proc.output_rmse_db()
 
             if self.output_sources_db:
                 proc.output_sources_db()

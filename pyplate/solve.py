@@ -623,6 +623,7 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solution = None
+        self.astrom_sub = []
         self.phot_cterm = []
         self.phot_color = None
         self.phot_calib = []
@@ -2877,12 +2878,43 @@ class SolveProcess:
             self.log.write('Found {:d} stars in the sub-field'
                            .format(nsubstars), double_newline=False)
 
+            # Store statistics about current sub-field
+            asub = OrderedDict([('astrom_sub_id', current_sub_id), 
+                                ('astrom_sub_grid', 2**recdepth), 
+                                ('parent_sub_id', parent_sub_id), 
+                                ('x_min', xmin), 
+                                ('x_max', xmax), 
+                                ('y_min', ymin), 
+                                ('y_max', ymax), 
+                                ('x_min_ext', xmin_ext), 
+                                ('x_max_ext', xmax_ext), 
+                                ('y_min_ext', ymin_ext), 
+                                ('y_max_ext', ymax_ext), 
+                                ('num_sub_stars', nsubstars), 
+                                ('num_ref_stars', None), 
+                                ('above_threshold', None), 
+                                ('num_selected_ref_stars', None), 
+                                ('scamp_crossid_radius', None), 
+                                ('num_scamp_stars', None), 
+                                ('scamp_sigma_axis1', None), 
+                                ('scamp_sigma_axis2', None), 
+                                ('scamp_sigma_mean', None), 
+                                ('scamp_sigma_prev_axis1', None), 
+                                ('scamp_sigma_prev_axis2', None), 
+                                ('scamp_sigma_prev_mean', None), 
+                                ('scamp_sigma_diff', None), 
+                                ('apply_astrometry', None), 
+                                ('num_applied_stars', None)])
+
             if nsubstars < 50:
                 self.log.write('Fewer stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
                 self.log.to_db(4, db_log_msg, event=51)
+                asub['above_threshold'] = 0
+                self.astrom_sub.append(asub)
                 continue
 
+            asub['above_threshold'] = 1
             indsub = np.where(bsub)
 
             # Create a SCAMP catalog for the sub-field
@@ -2922,6 +2954,7 @@ class SolveProcess:
                     (dec_ref < corners[:,1].max()))
             nrefstars = bref.sum()
             nrefset = nrefstars
+            asub['num_ref_stars'] = nrefstars
 
             self.log.write('Found {:d} reference stars in the sub-field'
                            .format(nrefstars), double_newline=False)
@@ -2931,6 +2964,8 @@ class SolveProcess:
                 self.log.write('Fewer reference stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
                 self.log.to_db(4, db_log_msg, event=51)
+                asub['above_threshold'] = 0
+                self.astrom_sub.append(asub)
                 continue
 
             indref = np.where(bref)[0]
@@ -2944,6 +2979,7 @@ class SolveProcess:
                                .format(nrefset), double_newline=False)
                 db_log_msg = '{}, #ref-selected: {:d}'.format(db_log_msg, 
                                                               nrefset)
+                asub['num_selected_ref_stars'] = nrefset
 
             self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
@@ -3078,6 +3114,8 @@ class SolveProcess:
             if crossid_radius < 5:
                 crossid_radius = 5.
 
+            asub['scamp_crossid_radius'] = crossid_radius
+
             # Run SCAMP 
             cmd = self.scamp_path
             cmd += ' -c %s_scamp.conf %s_scamp.cat' % (self.basefn, fnsub)
@@ -3136,6 +3174,14 @@ class SolveProcess:
                                   in_astromsigma[0], in_astromsigma[1], 
                                   mean_diff, mean_diff_ratio*100.))
             self.log.to_db(5, db_log_msg, event=52)
+            asub['num_scamp_stars'] = ndetect
+            asub['scamp_sigma_axis1'] = astromsigma[0]
+            asub['scamp_sigma_axis2'] = astromsigma[1]
+            asub['scamp_sigma_mean'] = astromsigma.mean()
+            asub['scamp_sigma_prev_axis1'] = in_astromsigma[0]
+            asub['scamp_sigma_prev_axis2'] = in_astromsigma[1]
+            asub['scamp_sigma_prev_mean'] = in_astromsigma.mean()
+            asub['scamp_sigma_diff'] = mean_diff
 
             # Use decreasing threshold for astrometric sigmas
             astrom_threshold = 2. - (recdepth - 1) * 0.2
@@ -3166,8 +3212,11 @@ class SolveProcess:
                 # Select stars for coordinate conversion
                 bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
                         (y >= ymin + 0.5) & (y < ymax + 0.5))
+                nout = bout.sum()
+                asub['apply_astrometry'] = 1
+                asub['num_applied_stars'] = nout
 
-                if bout.sum() == 0:
+                if nout == 0:
                     continue
                 
                 indout = np.where(bout)
@@ -3212,6 +3261,7 @@ class SolveProcess:
                 sigma_dec[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[1]**2)
                 gridsize[indout] = 2**recdepth
                 subid[indout] = current_sub_id
+                self.astrom_sub.append(asub)
 
                 # Solve sub-fields recursively if recursion depth is less
                 # than maximum.
@@ -3241,6 +3291,9 @@ class SolveProcess:
                         gridsize[indnew] = new_gridsize[indnew]
                         subid[indnew] = new_subid[indnew]
             elif recdepth < force_recursion_depth:
+                asub['apply_astrometry'] = 0
+                self.astrom_sub.append(asub)
+
                 # Solve sub-fields recursively if recursion depth is less
                 # than the required minimum.
                 head.set('XMIN', xmin)
@@ -3267,6 +3320,9 @@ class SolveProcess:
                     sigma_dec[indnew] = new_radec[indnew,3]
                     gridsize[indnew] = new_gridsize[indnew]
                     subid[indnew] = new_subid[indnew]
+            else:
+                asub['apply_astrometry'] = 0
+                self.astrom_sub.append(asub)
 
         return (np.column_stack((ra, dec, sigma_ra, sigma_dec)), 
                 gridsize, subid)
@@ -5014,6 +5070,39 @@ class SolveProcess:
                 head.set('DEPTH', recdepth)
                 head.set('SUB-ID', current_sub_id)
                 self._photrec(head, max_recursion_depth=max_recursion_depth)
+
+    def output_astrom_sub_db(self):
+        """
+        Write astrometric sub-field calibration to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing astrometric sub-field calibration '
+                       'to the database', event=53)
+
+        if self.astrom_sub == []:
+            self.log.write('No astrometric sub-field calibration to write '
+                           'to the database', level=2, event=53)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'astrom_sub table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            for asub in self.astrom_sub:
+                platedb.write_astrom_sub(asub, process_id=self.process_id,
+                                         scan_id=self.scan_id,
+                                         plate_id=self.plate_id,
+                                         archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
 
     def output_cterm_db(self):
         """
