@@ -627,6 +627,7 @@ class SolveProcess:
         self.phot_color = None
         self.phot_calib = []
         self.phot_calibrated = False
+        self.phot_sub = []
 
         self.id_tyc = None
         self.hip_tyc = None
@@ -4835,12 +4836,33 @@ class SolveProcess:
             self.log.write('Found {:d} stars in the sub-field'
                            .format(nsubstars), double_newline=False)
 
+            # Store statistics about current sub-field
+            psub = OrderedDict([('phot_sub_id', current_sub_id), 
+                                ('phot_sub_grid', 2**recdepth), 
+                                ('parent_sub_id', parent_sub_id), 
+                                ('x_min', xmin), 
+                                ('x_max', xmax), 
+                                ('y_min', ymin), 
+                                ('y_max', ymax), 
+                                ('num_selected_stars', nsubstars), 
+                                ('above_threshold', None), 
+                                ('num_fit_stars', None), 
+                                ('correction_min', None), 
+                                ('correction_max', None), 
+                                ('num_applied_stars', None), 
+                                ('rmse_min', None), 
+                                ('rmse_median', None), 
+                                ('rmse_max', None)])
+
             if nsubstars < 50:
                 self.log.write('Fewer stars than the threshold (50)')
                 db_log_msg = '{} (<50)'.format(db_log_msg)
                 self.log.to_db(4, db_log_msg, event=78)
+                psub['above_threshold'] = 0
+                self.phot_sub.append(psub)
                 continue
 
+            psub['above_threshold'] = 1
             indsub = np.where(bsub)
 
             self.log.to_db(4, db_log_msg, event=78)
@@ -4854,6 +4876,7 @@ class SolveProcess:
             ind_remain = ~flt.mask
             platemag_remain = platemag[ind_remain]
             nremain = ind_remain.size
+            psub['num_fit_stars'] = nremain
 
             frac = 0.7
 
@@ -4884,16 +4907,19 @@ class SolveProcess:
             weights = sden(platemag)
             self.sources['natmag_residual'][indsub] -= s(platemag) * weights
 
+            psub['correction_min'] = np.min(s(platemag) * weights)
+            psub['correction_max'] = np.max(s(platemag) * weights)
+
             # Output of calibration improvement for inspection
-            if self.write_phot_dir:
-                fn_sub = os.path.join(self.write_phot_dir,
-                                      '{}_sub_{:<05d}.txt'.format(self.basefn,
-                                                                  current_sub_id))
-                fsub = open(fn_sub, 'wb')
-                np.savetxt(fsub, np.column_stack((platemag, residuals, 
-                                                  s(platemag)*weights, s(platemag))))
-                fsub.write('\n\n')
-                fsub.close
+            #if self.write_phot_dir:
+            #    fn_sub = os.path.join(self.write_phot_dir,
+            #                          '{}_sub_{:<05d}.txt'.format(self.basefn,
+            #                                                      current_sub_id))
+            #    fsub = open(fn_sub, 'wb')
+            #    np.savetxt(fsub, np.column_stack((platemag, residuals, 
+            #                                      s(platemag)*weights, s(platemag))))
+            #    fsub.write('\n\n')
+            #    fsub.close
 
             # Evaluate RMS error from the calibration residuals
             residuals = self.sources['natmag_residual'][indsub]
@@ -4908,11 +4934,11 @@ class SolveProcess:
             bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
                     (y >= ymin + 0.5) & (y < ymax + 0.5) &
                     (self.sources['mag_auto'] < 90.))
-                    #(self.sources['flag_clean'] == 1) &
-                    #(self.sources['mag_auto'] >= np.min(platemag)) & 
-                    #(self.sources['mag_auto'] <= np.max(platemag)))
+            nout = bout.sum()
+            psub['num_applied_stars'] = nout
 
-            if bout.sum() == 0:
+            if nout == 0:
+                self.phot_sub.append(psub)
                 continue
             
             indout = np.where(bout)
@@ -4970,6 +4996,12 @@ class SolveProcess:
                               (cterm_err * b_v)**2 + ((cterm - 1.) * b_v_err)**2)
             self.sources['vmagerr'][indout] = vmagerr
             self.sources['bmagerr'][indout] = bmagerr
+
+            # Store statistics about calibration
+            psub['rmse_min'] = np.min(natmagerrsub)
+            psub['rmse_median'] = np.median(natmagerrsub)
+            psub['rmse_max'] = np.max(natmagerrsub)
+            self.phot_sub.append(psub)
 
             # Solve sub-fields recursively if recursion depth is less
             # than maximum.
@@ -5064,7 +5096,7 @@ class SolveProcess:
             return
 
         self.log.write('Open database connection for writing to the '
-                       'phot_calib table')
+                       'phot_calib and phot_sub tables')
         platedb = PlateDB()
         platedb.open_connection(host=self.output_db_host,
                                 user=self.output_db_user,
@@ -5078,6 +5110,12 @@ class SolveProcess:
                                          scan_id=self.scan_id,
                                          plate_id=self.plate_id,
                                          archive_id=self.archive_id)
+            
+            for psub in self.phot_sub:
+                platedb.write_phot_sub(psub, process_id=self.process_id,
+                                       scan_id=self.scan_id,
+                                       plate_id=self.plate_id,
+                                       archive_id=self.archive_id)
             
         platedb.close_connection()
         self.log.write('Closed database connection')

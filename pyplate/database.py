@@ -341,7 +341,7 @@ _schema['source_calib'] = OrderedDict([
     ('raerr_sub',        ('FLOAT', True)),
     ('decerr_sub',       ('FLOAT', True)),
     ('astrom_sub_grid',  ('SMALLINT', True)),
-    ('astrom_sub_id',    ('INT', True)),
+    ('astrom_sub_id',    ('INT UNSIGNED', True)),
     ('nn_dist',          ('FLOAT', True)),
     ('zenith_angle',     ('FLOAT', True)),
     ('airmass',          ('FLOAT', True)),
@@ -359,7 +359,7 @@ _schema['source_calib'] = OrderedDict([
     ('natmagerr_sub',    ('FLOAT', True)),
     ('natmag_residual',  ('FLOAT', True)),
     ('phot_sub_grid',    ('SMALLINT', True)),
-    ('phot_sub_id',      ('INT', True)),
+    ('phot_sub_id',      ('INT UNSIGNED', True)),
     ('phot_sub_flags',   ('TINYINT', True)),
     ('phot_calib_flags',  ('TINYINT', True)),
     ('color_term',       ('FLOAT', True)),
@@ -490,6 +490,41 @@ _schema['phot_calib'] = OrderedDict([
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
     ('INDEX annularbin_ind', ('(annular_bin)', None))
+    ])
+    
+_schema['phot_sub'] = OrderedDict([
+    ('sub_id',           ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('phot_sub_grid',    ('SMALLINT', True)),
+    ('phot_sub_id',      ('INT UNSIGNED', True)),
+    ('parent_sub_id',    ('INT UNSIGNED', True)),
+    ('x_min',            ('FLOAT', True)),
+    ('x_max',            ('FLOAT', True)),
+    ('y_min',            ('FLOAT', True)),
+    ('y_max',            ('FLOAT', True)),
+    ('num_selected_stars', ('INT UNSIGNED', True)),
+    ('above_threshold',  ('TINYINT(1)', True)),
+    ('num_fit_stars',    ('INT UNSIGNED', True)),
+    ('correction_min',   ('FLOAT', True)),
+    ('correction_max',   ('FLOAT', True)),
+    ('num_applied_stars', ('INT UNSIGNED', True)),
+    ('rmse_min',         ('FLOAT', True)),
+    ('rmse_median',      ('FLOAT', True)),
+    ('rmse_max',         ('FLOAT', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX photsubid_ind', ('(phot_sub_id)', None))
     ])
     
 _schema['phot_color'] = OrderedDict([
@@ -1141,6 +1176,28 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO phot_calib ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_phot_sub(self, phot_sub, process_id=None, scan_id=None, 
+                       plate_id=None, archive_id=None):
+        """
+        Write photometric sub-field calibration to the database.
+
+        """
+
+        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['phot_sub'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (phot_sub[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO phot_sub ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
