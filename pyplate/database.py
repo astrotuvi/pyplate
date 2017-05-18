@@ -637,6 +637,8 @@ _schema['process'] = OrderedDict([
     ('threshold',        ('FLOAT', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
+    ('astrom_sub_total', ('INT UNSIGNED', None)),
+    ('astrom_sub_eff',   ('INT UNSIGNED', None)),
     ('num_ucac4',        ('INT UNSIGNED', None)),
     ('num_tycho2',       ('INT UNSIGNED', None)),
     ('num_apass',        ('INT UNSIGNED', None)),
@@ -644,7 +646,10 @@ _schema['process'] = OrderedDict([
     ('bright_limit',     ('FLOAT', None)),
     ('faint_limit',      ('FLOAT', None)),
     ('mag_range',        ('FLOAT', None)),
+    ('num_calib',        ('INT UNSIGNED', None)),
     ('calibrated',       ('TINYINT(1)', None)),
+    ('phot_sub_total',   ('INT UNSIGNED', None)),
+    ('phot_sub_eff',     ('INT UNSIGNED', None)),
     ('completed',        ('TINYINT(1)', None)),
     ('pyplate_version',  ('VARCHAR(15)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
@@ -1426,80 +1431,25 @@ class PlateDB:
 
         return process_id
 
-    def update_process(self, process_id, sky=None, sky_sigma=None, 
-                       threshold=None, num_sources=None, solved=None,
-                       num_ucac4=None, num_tycho2=None, num_apass=None, 
-                       color_term=None,
-                       bright_limit=None, faint_limit=None, mag_range=None, 
-                       calibrated=None):
+    def update_process(self, process_id, **kwargs):
         """
         Update plate-solve process in the database.
 
         """
 
-        if (sky is None and sky_sigma is None and threshold is None 
-            and num_sources is None and num_ucac4 is None 
-            and num_tycho2 is None and num_apass is None
-            and solved is None 
-            and color_term is None and bright_limit is None
-            and faint_limit is None and mag_range is None
-            and calibrated is None):
-            return
-
         col_list = []
         val_tuple = ()
 
-        if sky is not None:
-            col_list.append('sky=%s')
-            val_tuple = val_tuple + (sky, )
+        for k in kwargs:
+            # Check if the keyword matches a column name in the process table
+            # and if the keyword is not None
+            if k in _schema['process'] and kwargs[k] is not None:
+                col_list.append('{}=%s'.format(k))
+                val_tuple = val_tuple + (kwargs[k], )
 
-        if sky_sigma is not None:
-            col_list.append('sky_sigma=%s')
-            val_tuple = val_tuple + (sky_sigma, )
-
-        if threshold is not None:
-            col_list.append('threshold=%s')
-            val_tuple = val_tuple + (threshold, )
-
-        if num_sources is not None:
-            col_list.append('num_sources=%s')
-            val_tuple = val_tuple + (num_sources, )
-
-        if solved is not None:
-            col_list.append('solved=%s')
-            val_tuple = val_tuple + (solved, )
-
-        if num_ucac4 is not None:
-            col_list.append('num_ucac4=%s')
-            val_tuple = val_tuple + (num_ucac4, )
-
-        if num_tycho2 is not None:
-            col_list.append('num_tycho2=%s')
-            val_tuple = val_tuple + (num_tycho2, )
-
-        if num_apass is not None:
-            col_list.append('num_apass=%s')
-            val_tuple = val_tuple + (num_apass, )
-
-        if color_term is not None:
-            col_list.append('color_term=%s')
-            val_tuple = val_tuple + (color_term, )
-
-        if bright_limit is not None:
-            col_list.append('bright_limit=%s')
-            val_tuple = val_tuple + (bright_limit, )
-
-        if faint_limit is not None:
-            col_list.append('faint_limit=%s')
-            val_tuple = val_tuple + (faint_limit, )
-
-        if mag_range is not None:
-            col_list.append('mag_range=%s')
-            val_tuple = val_tuple + (mag_range, )
-
-        if calibrated is not None:
-            col_list.append('calibrated=%s')
-            val_tuple = val_tuple + (calibrated, )
+        # If no valid keywords are given, then give up
+        if not col_list:
+            return
 
         col_str = ','.join(col_list)
         sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))

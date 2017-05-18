@@ -981,11 +981,7 @@ class SolveProcess:
 
         platedb.close_connection()
 
-    def db_update_process(self, sky=None, sky_sigma=None, threshold=None,
-                          num_sources=None, solved=None,
-                          num_ucac4=None, num_tycho2=None, num_apass=None,
-                          color_term=None, bright_limit=None, faint_limit=None, 
-                          mag_range=None, calibrated=None):
+    def db_update_process(self, **kwargs):
         """
         Update process in the database.
 
@@ -1005,18 +1001,7 @@ class SolveProcess:
                                     user=self.output_db_user,
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
-            platedb.update_process(self.process_id, sky=sky, 
-                                   sky_sigma=sky_sigma,
-                                   threshold=threshold,
-                                   num_sources=num_sources,
-                                   solved=solved,
-                                   num_ucac4=num_ucac4, num_tycho2=num_tycho2,
-                                   num_apass=num_apass,
-                                   color_term=color_term,
-                                   bright_limit=bright_limit,
-                                   faint_limit=faint_limit, 
-                                   mag_range=mag_range,
-                                   calibrated=calibrated)
+            platedb.update_process(self.process_id, **kwargs)
             platedb.close_connection()
 
     def db_process_end(self, completed=None):
@@ -2788,6 +2773,13 @@ class SolveProcess:
         self.sources['astrom_sub_grid'] = gridsize
         self.sources['astrom_sub_id'] = subid
 
+        # Write statistics into the process table
+        astrom_sub_total = len(self.astrom_sub)
+        astrom_sub_eff = np.array([asub['apply_astrometry']==1 
+                                   for asub in self.astrom_sub]).sum()
+        self.db_update_process(astrom_sub_total=astrom_sub_total, 
+                               astrom_sub_eff=astrom_sub_eff)
+
     def _solverec(self, in_head, in_astromsigma, distort=1, 
                   max_recursion_depth=None, force_recursion_depth=None):
         """
@@ -2865,16 +2857,6 @@ class SolveProcess:
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
                     (self.sources['flag_clean'] == 1))
             nsubstars = bsub.sum()
-
-            db_log_msg = ('Sub-field: {:d}, {:d}x{:d}, '
-                          'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
-                          'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
-                          '#stars: {:d}'
-                          .format(current_sub_id, 2**recdepth, 2**recdepth, 
-                                  xmin, xmax, ymin, ymax, 
-                                  xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
-                                  nsubstars))
-
             self.log.write('Found {:d} stars in the sub-field'
                            .format(nsubstars), double_newline=False)
 
@@ -2908,8 +2890,6 @@ class SolveProcess:
 
             if nsubstars < 50:
                 self.log.write('Fewer stars than the threshold (50)')
-                db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(4, db_log_msg, event=51)
                 asub['above_threshold'] = 0
                 self.astrom_sub.append(asub)
                 continue
@@ -2958,12 +2938,9 @@ class SolveProcess:
 
             self.log.write('Found {:d} reference stars in the sub-field'
                            .format(nrefstars), double_newline=False)
-            db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, nrefstars)
 
             if nrefstars < 50:
                 self.log.write('Fewer reference stars than the threshold (50)')
-                db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(4, db_log_msg, event=51)
                 asub['above_threshold'] = 0
                 self.astrom_sub.append(asub)
                 continue
@@ -2977,11 +2954,8 @@ class SolveProcess:
                 self.log.write('Selected {:d} brighter reference stars in the '
                                'sub-field'
                                .format(nrefset), double_newline=False)
-                db_log_msg = '{}, #ref-selected: {:d}'.format(db_log_msg, 
-                                                              nrefset)
                 asub['num_selected_ref_stars'] = nrefset
 
-            self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
             reftmp = fits.HDUList()
@@ -3067,7 +3041,6 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            db_log_msg = 'SCAMP: CROSSID_RADIUS: {:.2f}'.format(crossid_radius)
             self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
@@ -3140,7 +3113,6 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            db_log_msg = '{} {:.2f}'.format(db_log_msg, crossid_radius)
             self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
@@ -3166,14 +3138,6 @@ class SolveProcess:
             self.log.write('Mean astrometric sigma difference: '
                            '{:.3f} ({:+.1f}%)'
                            ''.format(mean_diff, mean_diff_ratio*100.))
-            db_log_msg = ('{}, #detections: {:d}, sigmas: {:.3f} {:.3f}, '
-                          'previous: {:.3f} {:.3f}, '
-                          'mean difference: {:.3f} ({:+.1f}%)'
-                          .format(db_log_msg, ndetect, 
-                                  astromsigma[0], astromsigma[1], 
-                                  in_astromsigma[0], in_astromsigma[1], 
-                                  mean_diff, mean_diff_ratio*100.))
-            self.log.to_db(5, db_log_msg, event=52)
             asub['num_scamp_stars'] = ndetect
             asub['scamp_sigma_axis1'] = astromsigma[0]
             asub['scamp_sigma_axis2'] = astromsigma[1]
@@ -4782,7 +4746,8 @@ class SolveProcess:
 
         self.phot_calibrated = True
         self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
-                               mag_range=mag_range, calibrated=1)
+                               mag_range=mag_range, num_calib=num_valid, 
+                               calibrated=1)
 
         if self.write_phot_dir:
             fcaldata.close()
@@ -4812,6 +4777,13 @@ class SolveProcess:
         self.wcshead.set('YMIN', 0)
         self.wcshead.set('YMAX', self.imheight)
         self._photrec(self.wcshead, max_recursion_depth=max_recursion_depth)
+
+        # Write statistics into the process table
+        phot_sub_total = len(self.phot_sub)
+        phot_sub_eff = np.array([psub['above_threshold']==1
+                                 for psub in self.phot_sub]).sum()
+        self.db_update_process(phot_sub_total=phot_sub_total, 
+                               phot_sub_eff=phot_sub_eff)
 
     def _photrec(self, in_head, max_recursion_depth=None):
         """
@@ -4879,16 +4851,6 @@ class SolveProcess:
                     (self.sources['sextractor_flags'] == 0) &
                     np.isfinite(self.sources['natmag_residual']))
             nsubstars = bsub.sum()
-
-            db_log_msg = ('Sub-field: {:d}, {:d}x{:d}, '
-                          'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
-                          'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
-                          '#stars: {:d}'
-                          .format(current_sub_id, 2**recdepth, 2**recdepth, 
-                                  xmin, xmax, ymin, ymax, 
-                                  xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
-                                  nsubstars))
-
             self.log.write('Found {:d} stars in the sub-field'
                            .format(nsubstars), double_newline=False)
 
@@ -4912,8 +4874,6 @@ class SolveProcess:
 
             if nsubstars < 50:
                 self.log.write('Fewer stars than the threshold (50)')
-                db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(4, db_log_msg, event=78)
                 psub['above_threshold'] = 0
                 self.phot_sub.append(psub)
                 continue
@@ -4921,7 +4881,6 @@ class SolveProcess:
             psub['above_threshold'] = 1
             indsub = np.where(bsub)
 
-            self.log.to_db(4, db_log_msg, event=78)
             self.log.write('', timestamp=False, double_newline=False)
 
             # Improvement of calibration
