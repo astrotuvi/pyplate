@@ -1989,6 +1989,7 @@ class PlateMeta(OrderedDict):
 
                 date_start_orig = date_orig
                 date_end_orig = date_orig
+                tz_orig = self['tz_orig']
 
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
@@ -2005,6 +2006,20 @@ class PlateMeta(OrderedDict):
                         tme_orig = tme_orig[3:].strip()
                 else:
                     tme_orig = None
+
+                # If UT times are given separately
+                if (not tms_orig and not tme_orig and 
+                        (self['ut_start_orig'] or self['ut_end_orig'])):
+                    tms_orig = self['ut_start_orig'][iexp]
+                    tme_orig = self['ut_end_orig'][iexp]
+                    tz_orig = 'UT'
+
+                # If ST times are given separately
+                if (not tms_orig and not tme_orig and 
+                        (self['st_start_orig'] or self['st_end_orig'])):
+                    tms_orig = self['st_start_orig'][iexp]
+                    tme_orig = self['st_end_orig'][iexp]
+                    tz_orig = 'ST'
 
                 if tms_orig and '|' in tms_orig:
                     tms_orig = [x.strip() for x in tms_orig.split('|')]
@@ -2117,7 +2132,7 @@ class PlateMeta(OrderedDict):
                                     tms_orig = Time(t_tms, 
                                                     precision=0).iso.split()[-1]
 
-                    if ((self['tz_orig'] == 'ST') and (tms_orig or tme_orig) and 
+                    if ((tz_orig == 'ST') and (tms_orig or tme_orig) and 
                         self['site_latitude'] and self['site_longitude']):
                         # Convert sidereal time to UT using pyEphem's next_transit
                         # Initialize location and date
@@ -2145,19 +2160,18 @@ class PlateMeta(OrderedDict):
                             st.compute()
                             ut_end_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
 
-                    elif (self['tz_orig'] == 'UT' or 
-                          (pytz_available and 
-                           self['tz_orig'] in pytz.all_timezones)):
+                    elif (tz_orig == 'UT' or 
+                          (pytz_available and tz_orig in pytz.all_timezones)):
                         # Handle UT times and local times with specified 
                         # pytz-compatible timezones
                         ut_start_orig = None
                         ut_end_orig = None
 
                         if self['ut_start_orig'] or tms_orig:
-                            if self['ut_start_orig']:
+                            if self['ut_start_orig'] and not tms_orig:
                                 ut_start_orig = self['ut_start_orig'][iexp]
                             else:
-                                if self['tz_orig'] == 'UT':
+                                if tz_orig == 'UT':
                                     ut_start_orig = tms_orig
                                 else:
                                     str_start = '{} {}'.format(date_start_orig,
@@ -2165,7 +2179,7 @@ class PlateMeta(OrderedDict):
                                     dt_start = (Time(str_start, scale='tai', 
                                                      format='iso')
                                                 .datetime)
-                                    dt_local = (pytz.timezone(self['tz_orig'])
+                                    dt_local = (pytz.timezone(tz_orig)
                                                 .localize(dt_start))
                                     date_start_orig = (dt_local.astimezone(pytz.utc)
                                                        .strftime('%Y-%m-%d'))
@@ -2184,10 +2198,10 @@ class PlateMeta(OrderedDict):
                                                      scale='ut1', precision=0).isot
 
                         if self['ut_end_orig'] or tme_orig:
-                            if self['ut_end_orig']:
+                            if self['ut_end_orig'] and not tme_orig:
                                 ut_end_orig = self['ut_end_orig'][iexp]
                             else:
-                                if self['tz_orig'] == 'UT':
+                                if tz_orig == 'UT':
                                     ut_end_orig = tme_orig
                                 else:
                                     str_end = '{} {}'.format(date_end_orig,
@@ -2195,7 +2209,7 @@ class PlateMeta(OrderedDict):
                                     dt_end = (Time(str_end, scale='tai', 
                                                    format='iso')
                                               .datetime)
-                                    dt_local = (pytz.timezone(self['tz_orig'])
+                                    dt_local = (pytz.timezone(tz_orig)
                                                 .localize(dt_end))
                                     date_end_orig = (dt_local.astimezone(pytz.utc)
                                                      .strftime('%Y-%m-%d'))
@@ -2222,7 +2236,7 @@ class PlateMeta(OrderedDict):
                                 ut_end_isot = Time(ut_end_isot, format='isot',
                                                    scale='ut1', precision=0).isot
 
-                    if not tms_orig:
+                    if not tms_orig and not self['ut_start_orig']:
                         ut_start_isot = Time(date_orig, format='iso', scale='ut1', 
                                              out_subfmt='date').iso
 
@@ -2230,11 +2244,11 @@ class PlateMeta(OrderedDict):
                         self['date_obs'].append(ut_start_isot)
                         time_start = Time(ut_start_isot, format='isot', scale='ut1')
 
-                        if tms_orig:
+                        if self['ut_start_orig'] or tms_orig:
                             self['jd'].append(float('%.5f' % time_start.jd))
                             self['year'].append(float('%.8f' % time_start.jyear))
                         else:
-                            self['jd'].append(float('%.0f' % time_start.jd) + 1.)
+                            self['jd'].append(float('%.0f' % time_start.jd))
                             self['year'].append(float('%.3f' % time_start.jyear))
                     else:
                         self['date_obs'].append(None)
@@ -2245,7 +2259,7 @@ class PlateMeta(OrderedDict):
                         self['date_end'].append(ut_end_isot)
                         time_end = Time(ut_end_isot, format='isot', scale='ut1')
 
-                        if tme_orig:
+                        if self['ut_end_orig'] or tme_orig:
                             self['jd_end'].append(float('{:.5f}'
                                                         .format(time_end.jd)))
                             self['year_end'].append(float('{:.8f}'
