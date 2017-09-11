@@ -692,7 +692,7 @@ def _get_columns_sql(table):
 
     return sql
 
-def print_tables(use_drop=False):
+def print_tables(use_drop=False, engine='Aria'):
     """
     Print table creation SQL queries to standard output.
 
@@ -701,9 +701,9 @@ def print_tables(use_drop=False):
     sql_drop = '\n'.join(['DROP TABLE IF EXISTS {};'.format(k) 
                           for k in _schema.keys()])
 
-    sql_list = ['CREATE TABLE {} (\n{}\n) ENGINE=MyISAM '
+    sql_list = ['CREATE TABLE {} (\n{}\n) ENGINE={} '
                 'CHARACTER SET=utf8 COLLATE=utf8_unicode_ci;\n'
-                .format(k, _get_columns_sql(k))
+                .format(k, _get_columns_sql(k), engine)
                 for k in _schema.keys()]
     sql = '\n'.join(sql_list)
 
