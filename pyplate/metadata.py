@@ -2850,6 +2850,36 @@ class PlateHeader(fits.Header):
                                               platemeta[k])
                 elif v[3]:
                     self._update_keyword(v[3], v[0], platemeta[k])
+                elif k == 'fits_acknowledgements':
+                    # Get acknowledgements from plate metadata
+                    ack = platemeta[k]
+                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) 
+                                       for ackpara in ack.split('\n\n')])
+                    ack_sep = ' Acknowledgements'.rjust(72, '-')
+
+                    # If acknowledgements section exists, remove it first
+                    if ack_sep in self.values():
+                        ack_ind = self.values().index(ack_sep) + 1
+
+                        for i,c in enumerate(self.cards[ack_ind:]):
+                            if c[0] == 'COMMENT':
+                                del self[ack_ind]
+                            else:
+                                break
+
+                        for ackline in ack.split('\n'):
+                            self.insert(ack_ind, ('COMMENT', ackline))
+                            ack_ind += 1
+                    else:
+                        # Start section with a separator/title line
+                        self.append(('', ack_sep), end=True)
+
+                        # Write acknowledgements with COMMENT keywords
+                        for ackline in ack.split('\n'):
+                            self.append(('COMMENT', ackline), end=True)
+
+                        # End section with a separator line
+                        self.append(('', '-' * 72), end=True)
 
         self.add_history('Header updated with PyPlate v{} at {}'
                          .format(__version__, dt.datetime.utcnow()
@@ -3143,15 +3173,20 @@ class PlateHeader(fits.Header):
                         else:
                             break
 
-                # Include acknowledgements
-                if (key.strip().endswith('Acknowledgements') and 
-                    self.platemeta['fits_acknowledgements']):
-                    ack = self.platemeta['fits_acknowledgements']
-                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) 
-                                       for ackpara in ack.split('\n\n')])
+                # Copy acknowledgements
+                ack_sep = ' Acknowledgements'.rjust(72, '-')
 
-                    for ackline in ack.split('\n'):
-                        self.append(('COMMENT', ackline), end=True)
+                if (key.strip().endswith('Acknowledgements') and
+                        ack_sep in h.values()):
+                        #self.platemeta['fits_acknowledgements']):
+                    ack_ind = h.values().index(ack_sep) + 1
+
+                    for i,c in enumerate(h.cards[ack_ind:]):
+                        if c[0] == 'COMMENT':
+                            self.append(c, end=True)
+                            del h[ack_ind]
+                        else:
+                            break
             elif 'n' in key:
                 for n in np.arange(99)+1:
                     keystr = key.replace('n', str(n))
