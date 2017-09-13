@@ -159,6 +159,7 @@ _keyword_meta = OrderedDict([
     ('fn_cover', (str, False, None, 'FN-COVER', None)),
     ('fn_log', (str, True, [], None, 'FN-LOGn')),
     ('origin', (str, False, None, 'ORIGIN', None)),
+    ('licence', (str, False, None, 'LICENCE', None)),
     ('date', (str, False, None, 'DATE', None)),
     ('fits_acknowledgements', (str, False, '', None, None)),
     ('fits_history', (str, True, [], 'HISTORY', None))
@@ -2536,6 +2537,7 @@ class PlateHeader(fits.Header):
         'FN-COVER': 'filename of the plate cover image',
         #'FILENOTE': 'filename of the observer notes image',
         'FN-LOGn':  'filename of logbook image {}',
+        #'LICENCE':  'licence of data files',
         'DATE':     'last change of this file',
         'WCSAXES':  'number of axes in the WCS description',
         'RADESYS':  'name of the reference frame',
@@ -2683,6 +2685,7 @@ class PlateHeader(fits.Header):
         'FN-COVER',
         'FN-LOGn',
         'ORIGIN',
+        'LICENCE',
         'DATE',
         'sep:WCS',
         'sep:Acknowledgements',
