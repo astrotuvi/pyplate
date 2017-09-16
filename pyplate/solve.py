@@ -1043,7 +1043,7 @@ class SolveProcess:
             fn_inverted = os.path.join(self.work_dir, fn_inverted)
         
         if not os.path.exists(fn_inverted):
-            self.log.write('Inverting image', level=3, event=20)
+            self.log.write('Inverting image', level=3, event=12)
 
             fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True, 
                                  ignore_missing_end=True)
@@ -1053,7 +1053,7 @@ class SolveProcess:
             invfits.header.set('BZERO', 32768)
             invfits.header.set('BSCALE', 1.0)
             self.log.write('Writing inverted image: {}'.format(fn_inverted), 
-                           level=4, event=21)
+                           level=4, event=13)
             invfits.writeto(fn_inverted)
 
             fitsfile.close()
@@ -1061,7 +1061,7 @@ class SolveProcess:
             del invfits
         else:
             self.log.write('Inverted file exists: {}'.format(fn_inverted), 
-                           level=4, event=20)
+                           level=4, event=12)
 
     def extract_sources(self, threshold_sigma=None, use_filter=None,
                         filter_path=None, use_psf=None, 
@@ -1088,9 +1088,9 @@ class SolveProcess:
             Assume circular film (default False)
         """
 
-        self.log.write('Extracting sources from image', level=3, event=30)
+        self.log.write('Extracting sources from image', level=3, event=20)
         sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
-        self.log.write('Using {}'.format(sex_ver), level=4, event=30)
+        self.log.write('Using {}'.format(sex_ver), level=4, event=20)
 
         if threshold_sigma is None:
             threshold_sigma = self.threshold_sigma
@@ -1110,7 +1110,7 @@ class SolveProcess:
             use_filter = False
             self.log.write('Filter file does not exist: {}'
                            ''.format(filter_path), 
-                           level=2, event=30)
+                           level=2, event=20)
 
         if use_psf is None:
             use_psf = self.use_psf
@@ -1125,7 +1125,7 @@ class SolveProcess:
             circular_film = self.circular_film
 
         self.log.write('Running SExtractor to get sky value', level=3, 
-                       event=31)
+                       event=21)
 
         # Create parameter file
         fn_sex_param = self.basefn + '_sextractor.param'
@@ -1150,9 +1150,9 @@ class SolveProcess:
 
         fn_sex_conf = self.basefn + '_sextractor.conf'
         self.log.write('Writing SExtractor configuration file {}'
-                       .format(fn_sex_conf), level=4, event=31)
+                       .format(fn_sex_conf), level=4, event=21)
         self.log.write('SExtractor configuration file:\n{}'
-                       .format(cnf), level=5, event=31)
+                       .format(cnf), level=5, event=21)
         fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
                      'w')
         fconf.write(cnf)
@@ -1162,7 +1162,7 @@ class SolveProcess:
         cmd += ' %s_inverted.fits' % self.basefn
         cmd += ' -c %s' % fn_sex_conf
         self.log.write('Subprocess: {}'.format(cmd), 
-                       level=4, event=31)
+                       level=4, event=21)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1175,7 +1175,7 @@ class SolveProcess:
             sky = float(root[1][4][15][19][0][0][8].text)
             sky_sigma = float(root[1][4][15][19][0][0][9].text)
             self.log.write('Sky: {:f}, sigma: {:f}'.format(sky, sky_sigma), 
-                       level=4, event=31)
+                       level=4, event=21)
             self.db_update_process(sky=sky, sky_sigma=sky_sigma)
 
             if sky < 2*sky_sigma or sky < 100:
@@ -1184,7 +1184,7 @@ class SolveProcess:
                 psf_threshold_adu = 20000
                 threshold_adu = 5000
                 self.log.write('Sky value too low, using fixed thresholds', 
-                               level=4, event=31)
+                               level=4, event=21)
 
         if use_psf:
             # If PSFEx input file does not exist then run SExtractor
@@ -1193,21 +1193,21 @@ class SolveProcess:
 
             if not os.path.exists(fn_psfex_cat):
                 self.log.write('Running SExtractor to get sources for PSFEx', 
-                               level=3, event=32)
+                               level=3, event=22)
 
                 while True:
                     if use_filter:
                         self.log.write('Using filter {}'.format(filter_path), 
-                                       level=4, event=32)
+                                       level=4, event=22)
 
                     if use_fix_threshold:
                         self.log.write('Using threshold {:f} ADU'
                                        .format(psf_model_threshold), 
-                                       level=4, event=32)
+                                       level=4, event=22)
                     else:
                         self.log.write('Using threshold {:.1f}'
                                        .format(psf_model_sigma), 
-                                       level=4, event=32)
+                                       level=4, event=22)
 
                     # Create parameter file
                     fn_sex_param = self.basefn + '_sextractor.param'
@@ -1249,9 +1249,9 @@ class SolveProcess:
 
                     fn_sex_conf = self.basefn + '_sextractor.conf'
                     self.log.write('Writing SExtractor configuration file {}'
-                                   .format(fn_sex_conf), level=4, event=32)
+                                   .format(fn_sex_conf), level=4, event=22)
                     self.log.write('SExtractor configuration file:\n{}'
-                                   .format(cnf), level=5, event=32)
+                                   .format(cnf), level=5, event=22)
                     fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
                                  'w')
                     fconf.write(cnf)
@@ -1261,7 +1261,7 @@ class SolveProcess:
                     cmd += ' %s_inverted.fits' % self.basefn
                     cmd += ' -c %s' % fn_sex_conf
                     self.log.write('Subprocess: {}'.format(cmd), 
-                                   level=4, event=32)
+                                   level=4, event=22)
                     sp.call(cmd, shell=True, stdout=self.log.handle, 
                             stderr=self.log.handle, cwd=self.scratch_dir)
                     self.log.write('', timestamp=False, double_newline=False)
@@ -1269,7 +1269,7 @@ class SolveProcess:
                     hcat = fits.getheader(fn_psfex_cat, 2)
                     num_psf_sources = hcat['NAXIS2']
                     self.log.write('Extracted {:d} PSF-model sources'
-                                   .format(num_psf_sources), level=4, event=32)
+                                   .format(num_psf_sources), level=4, event=22)
                     enough_psf_sources = False
 
                     if (num_psf_sources >= self.min_model_sources and 
@@ -1288,7 +1288,7 @@ class SolveProcess:
                                        'repeating extraction with lower '
                                        'threshold'
                                        .format(self.min_model_sources), 
-                                       level=4, event=32)
+                                       level=4, event=22)
 
                     if num_psf_sources > self.max_model_sources:
                         # Repeat with higher threshold to get less sources
@@ -1301,15 +1301,15 @@ class SolveProcess:
                                        'repeating extraction with higher '
                                        'threshold'
                                        .format(self.max_model_sources), 
-                                       level=4, event=32)
+                                       level=4, event=22)
 
             # Run PSFEx
             if (enough_psf_sources and
                 not os.path.exists(os.path.join(self.scratch_dir, 
                                                 self.basefn + '_psfex.psf'))):
-                self.log.write('Running PSFEx', level=3, event=33)
+                self.log.write('Running PSFEx', level=3, event=23)
                 psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
-                self.log.write('Using {}'.format(psfex_ver), level=4, event=33)
+                self.log.write('Using {}'.format(psfex_ver), level=4, event=23)
 
                 #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
                 #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
@@ -1333,9 +1333,9 @@ class SolveProcess:
 
                 fn_psfex_conf = self.basefn + '_psfex.conf'
                 self.log.write('Writing PSFEx configuration file {}'
-                               .format(fn_psfex_conf), level=4, event=33)
+                               .format(fn_psfex_conf), level=4, event=23)
                 self.log.write('PSFEx configuration file:\n{}'
-                               .format(cnf), level=5, event=33)
+                               .format(cnf), level=5, event=23)
                 fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
                 fconf.write(cnf)
                 fconf.close()
@@ -1343,7 +1343,7 @@ class SolveProcess:
                 cmd = self.psfex_path
                 cmd += ' %s_psfex.cat' % self.basefn
                 cmd += ' -c %s' % fn_psfex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=33)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=23)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -1353,20 +1353,20 @@ class SolveProcess:
                 not os.path.exists(os.path.join(self.scratch_dir, 
                                                 self.basefn + '.cat-psf'))):
                 self.log.write('Running SExtractor with PSF model',
-                               level=3, event=34)
+                               level=3, event=24)
 
                 if use_filter:
                     self.log.write('Using filter {}'.format(filter_path), 
-                                   level=4, event=34)
+                                   level=4, event=24)
 
                 if use_fix_threshold:
                     self.log.write('Using threshold {:f} ADU'
                                    .format(psf_threshold_adu), 
-                                   level=4, event=34)
+                                   level=4, event=24)
                 else:
                     self.log.write('Using threshold {:.1f}'
                                    .format(psf_threshold_sigma), 
-                                   level=4, event=34)
+                                   level=4, event=24)
 
                 fn_sex_param = self.basefn + '_sextractor.param'
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
@@ -1405,9 +1405,9 @@ class SolveProcess:
 
                 fn_sex_conf = self.basefn + '_sextractor.conf'
                 self.log.write('Writing SExtractor configuration file {}'
-                               .format(fn_sex_conf), level=4, event=34)
+                               .format(fn_sex_conf), level=4, event=24)
                 self.log.write('SExtractor configuration file:\n{}'
-                               .format(cnf), level=5, event=34)
+                               .format(cnf), level=5, event=24)
                 fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
                 fconf.write(cnf)
                 fconf.close()
@@ -1415,7 +1415,7 @@ class SolveProcess:
                 cmd = self.sextractor_path
                 cmd += ' %s_inverted.fits' % self.basefn
                 cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=34)
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=24)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -1424,21 +1424,21 @@ class SolveProcess:
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
             self.log.write('Running SExtractor without PSF model',
-                           level=3, event=35)
+                           level=3, event=25)
 
             if use_filter:
                 self.log.write('Using filter {}'.format(filter_path), 
-                               level=4, event=35)
+                               level=4, event=25)
 
             if use_fix_threshold:
                 self.log.write('Using threshold {:f} ADU'.format(threshold_adu), 
-                               level=4, event=35)
+                               level=4, event=25)
                 self.db_update_process(threshold=threshold_adu)
             else:
                 threshold_adu = sky_sigma * threshold_sigma
                 self.log.write('Using threshold {:.1f} ({:f} ADU)'
                                .format(threshold_sigma, threshold_adu),
-                               level=4, event=35)
+                               level=4, event=25)
                 self.db_update_process(threshold=threshold_adu)
 
             fn_sex_param = self.basefn + '_sextractor.param'
@@ -1504,9 +1504,9 @@ class SolveProcess:
 
             fn_sex_conf = self.basefn + '_sextractor.conf'
             self.log.write('Writing SExtractor configuration file {}'
-                           .format(fn_sex_conf), level=4, event=35)
+                           .format(fn_sex_conf), level=4, event=25)
             self.log.write('SExtractor configuration file:\n{}'.format(cnf), 
-                           level=5, event=35)
+                           level=5, event=25)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
             fconf.write(cnf)
             fconf.close()
@@ -1514,7 +1514,7 @@ class SolveProcess:
             cmd = self.sextractor_path
             cmd += ' %s_inverted.fits' % self.basefn
             cmd += ' -c %s' % fn_sex_conf
-            self.log.write('Subprocess: {}'.format(cmd), level=4, event=35)
+            self.log.write('Subprocess: {}'.format(cmd), level=4, event=25)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
@@ -1623,7 +1623,7 @@ class SolveProcess:
         self.sources['dist_edge'] = np.amin(distarr, 1)
         
         # Define 8 concentric annular bins + bin9 for edges
-        self.log.write('Flagging sources', level=3, event=36)
+        self.log.write('Flagging sources', level=3, event=26)
         sampling = 100
         imwidth_s = int(self.imwidth / sampling)
         imheight_s = int(self.imheight / sampling)
@@ -1664,7 +1664,7 @@ class SolveProcess:
             nbin = bbin.sum()
             self.log.write('Annular bin {:d} (radius {:8.2f} pixels): '
                            '{:6d} sources'.format(b, bin_dist[b], nbin), 
-                           double_newline=False, level=4, event=36)
+                           double_newline=False, level=4, event=26)
 
             if nbin > 0:
                 indbin = np.where(bbin)
@@ -1675,7 +1675,7 @@ class SolveProcess:
         nbin = bbin.sum()
         self.log.write('Annular bin 9 (radius {:8.2f} pixels): '
                        '{:6d} sources'.format(bin9_corner_dist, nbin), 
-                       level=4, event=36)
+                       level=4, event=26)
 
         if nbin > 0:
             indbin = np.where(bbin)
@@ -1717,23 +1717,23 @@ class SolveProcess:
         indclean = np.where(bclean)[0]
         self.sources['flag_clean'][indclean] = 1
         self.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
-                       double_newline=False, level=4, event=36)
+                       double_newline=False, level=4, event=26)
 
         indrim = np.where(borderbg >= 100)[0]
         self.sources['flag_rim'][indrim] = 1
         self.log.write('Flagged {:d} sources at the plate rim'
                        ''.format(len(indrim)), double_newline=False, 
-                       level=4, event=36)
+                       level=4, event=26)
 
         indnegrad = np.where(self.sources['flux_radius'] <= 0)[0]
         self.sources['flag_negradius'][indnegrad] = 1
         self.log.write('Flagged {:d} sources with negative FLUX_RADIUS'
-                       ''.format(len(indnegrad)), level=4, event=36)
+                       ''.format(len(indnegrad)), level=4, event=26)
 
         # For bright stars, update coordinates with PSF coordinates
         if use_psf and enough_psf_sources:
             self.log.write('Updating coordinates with PSF coordinates '
-                           'for bright sources', level=3, event=37)
+                           'for bright sources', level=3, event=27)
 
             fn_psfcat = os.path.join(self.scratch_dir, self.basefn + '.cat-psf')
 
@@ -1743,7 +1743,7 @@ class SolveProcess:
                 except IOError:
                     self.log.write('Could not read PSF coordinates, file {} '
                                    'is corrupt'.format(fn_psfcat), 
-                                   level=2, event=37)
+                                   level=2, event=27)
                     psfcat = None
 
                 if psfcat is not None and psfcat[1].header['NAXIS2'] > 0:
@@ -1772,7 +1772,7 @@ class SolveProcess:
 
                     self.log.write('Replacing x,y values from PSF photometry '
                                    'for {:d} sources'.format(len(ind1)), 
-                                   level=3, event=37)
+                                   level=3, event=27)
                     self.sources['x_psf'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
                     self.sources['y_psf'][ind1] = \
@@ -1796,11 +1796,11 @@ class SolveProcess:
                     self.sources['flag_usepsf'][ind1] = 1
                 elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
                     self.log.write('There are no sources with PSF coordinates!',
-                                   level=2, event=37)
+                                   level=2, event=27)
             else:
                 self.log.write('Could not read PSF coordinates, '
                                'file {} does not exist!'.format(fn_psfcat), 
-                               level=2, event=37)
+                               level=2, event=27)
 
         # Keep clean xy data for later use
         #self.xyclean = xycat[1].copy()
@@ -1832,7 +1832,7 @@ class SolveProcess:
 
         """
 
-        self.log.write('Solving astrometry', level=3, event=40)
+        self.log.write('Solving astrometry', level=3, event=30)
 
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
@@ -1846,7 +1846,7 @@ class SolveProcess:
                 plate_year = self.plate_year
 
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
-                       level=4, event=40)
+                       level=4, event=30)
 
         if sip is None:
             sip = self.sip
@@ -1933,7 +1933,7 @@ class SolveProcess:
         cmd += ' --corr none'
         cmd += ' --overwrite'
         cmd += ' --cpulimit 120'
-        self.log.write('Subprocess: {}'.format(cmd), level=4, event=40)
+        self.log.write('Subprocess: {}'.format(cmd), level=4, event=30)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1944,16 +1944,16 @@ class SolveProcess:
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
-            self.log.write('Astrometry solved', level=3, event=41)
+            self.log.write('Astrometry solved', level=3, event=31)
             self.db_update_process(solved=1)
         else:
             self.log.write('Could not solve astrometry for the plate', 
-                           level=2, event=40)
+                           level=2, event=31)
             self.db_update_process(solved=0)
             return
 
         self.log.write('Calculating plate-solution related parameters', 
-                       level=3, event=42)
+                       level=3, event=32)
 
         # Read the .wcs file and calculate star density
         self.wcshead = fits.getheader(fn_wcs)
@@ -2087,7 +2087,7 @@ class SolveProcess:
             rotation_angle = None
             plate_mirrored = None
             self.log.write('Could not calculate plate rotation angle', 
-                           level=2, event=42)
+                           level=2, event=32)
 
         # Prepare WCS header for output
         wcshead_strip = fits.Header()
@@ -2157,26 +2157,6 @@ class SolveProcess:
                 self.min_ra = min_above180
                 self.max_ra = max_below180
 
-    def output_wcs_header(self):
-        """
-        Write WCS header to an ASCII file.
-
-        """
-
-        if self.plate_solved:
-            self.log.write('Writing WCS header to a file', level=3, event=46)
-
-            # Create output directory, if missing
-            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
-                self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir), level=4, event=46)
-                os.makedirs(self.write_wcs_dir)
-
-            fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
-            self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
-                           level=4, event=46)
-            self.wcshead.tofile(fn_wcshead, clobber=True)
-
     def output_solution_db(self):
         """
         Write plate solution to the database.
@@ -2184,11 +2164,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing astrometric solution to the database', 
-                       event=45)
+                       event=35)
 
         if self.solution is None:
             self.log.write('No plate solution to write to the database', 
-                           level=2, event=45)
+                           level=2, event=35)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -2209,30 +2189,50 @@ class SolveProcess:
         platedb.close_connection()
         self.log.write('Closed database connection')
 
+    def output_wcs_header(self):
+        """
+        Write WCS header to an ASCII file.
+
+        """
+
+        if self.plate_solved:
+            self.log.write('Writing WCS header to a file', level=3, event=36)
+
+            # Create output directory, if missing
+            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
+                self.log.write('Creating WCS output directory {}'
+                               ''.format(self.write_wcs_dir), level=4, event=36)
+                os.makedirs(self.write_wcs_dir)
+
+            fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
+            self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
+                           level=4, event=36)
+            self.wcshead.tofile(fn_wcshead, clobber=True)
+
     def get_reference_catalogs(self):
         """
         Get reference catalogs for astrometric and photometric calibration.
 
         """
 
-        self.log.write('Getting reference catalogs', level=3, event=49)
+        self.log.write('Getting reference catalogs', level=3, event=40)
 
         if not self.plate_solved:
             self.log.write('Missing initial solution, '
                            'cannot get reference catalogs!', 
-                           level=2, event=49)
+                           level=2, event=40)
             return
 
         # Read the Tycho-2 catalogue
         if self.use_tycho2_fits:
-            self.log.write('Reading the Tycho-2 catalogue', level=3, event=49)
+            self.log.write('Reading the Tycho-2 catalogue', level=3, event=41)
             fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
 
             try:
                 tycho2 = fits.open(fn_tycho2)
                 tycho2_available = True
             except IOError:
-                self.log.write('Missing Tycho-2 data', level=2, event=49)
+                self.log.write('Missing Tycho-2 data', level=2, event=41)
                 tycho2_available = False
 
             if tycho2_available:
@@ -2306,18 +2306,18 @@ class SolveProcess:
 
         # Query the UCAC4 catalog
         if self.use_ucac4_db:
-            self.log.write('Querying the UCAC4 catalogue', level=3, event=49)
+            self.log.write('Querying the UCAC4 catalogue', level=3, event=42)
             query_ucac4 = True
 
             # Check UCAC4 database name and table name
             if self.ucac4_db_name == '':
                 self.log.write('UCAC4 database name missing!', 
-                               level=2, event=49)
+                               level=2, event=42)
                 query_ucac4 = False
 
             if self.ucac4_db_table == '':
                 self.log.write('UCAC4 database table name missing!', 
-                               level=2, event=49)
+                               level=2, event=42)
                 query_ucac4 = False
 
             ucac4_cols = [col.strip() 
@@ -2328,7 +2328,7 @@ class SolveProcess:
             # Check if all columns are specified
             if '' in ucac4_cols:
                 self.log.write('One ore more UCAC4 database column '
-                               'names missing!', level=2, event=49)
+                               'names missing!', level=2, event=42)
                 query_ucac4 = False
 
             # Check if APASS and UCAC4 data are in the same table
@@ -2343,7 +2343,7 @@ class SolveProcess:
                 # Check if all columns are specified
                 if '' in apass_cols:
                     self.log.write('One ore more APASS database column '
-                                   'names missing!', level=2, event=49)
+                                   'names missing!', level=2, event=42)
                     query_combined = False
                 else:
                     ucac4_cols.extend(apass_cols)
@@ -2447,7 +2447,7 @@ class SolveProcess:
                     # Use UCAC4 magnitudes to fill gaps in APASS
                     if query_healpix:
                         self.log.write('Filling gaps in the APASS data', 
-                                       level=3, event=49)
+                                       level=3, event=43)
                         healpix_ucac = res['f19']
                         uhp = np.unique(healpix_ucac)
                         indsort = np.argsort(healpix_ucac)
@@ -2502,13 +2502,13 @@ class SolveProcess:
 
         # Query the APASS catalog
         if self.use_apass_db and not query_combined:
-            self.log.write('Querying the APASS catalogue', level=3, event=49)
+            self.log.write('Querying the APASS catalogue', level=3, event=44)
             query_apass = True
 
             # Check UCAC4 database name
             if self.apass_db_name == '':
                 self.log.write('APASS database name missing!', 
-                               level=2, event=49)
+                               level=2, event=44)
                 query_apass = False
 
             apass_cols = [col.strip() 
@@ -2519,7 +2519,7 @@ class SolveProcess:
             # Check if all columns are specified
             if '' in apass_cols:
                 self.log.write('One ore more APASS database column '
-                               'names missing!', level=2, event=49)
+                               'names missing!', level=2, event=44)
                 query_apass = False
 
             if query_apass:
@@ -3356,13 +3356,13 @@ class SolveProcess:
         if self.crossmatch_radius is not None:
             self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
                            ''.format(float(self.crossmatch_radius)), 
-                           level=4, event=61)
+                           level=4, event=60)
             matchrad_arcsec = float(self.crossmatch_radius)*units.arcsec
         else:
             self.log.write('Using scaled cross-match radius of '
                            '{:.2f} astrometric sigmas'
                            ''.format(float(self.crossmatch_nsigma)), 
-                           level=4, event=61)
+                           level=4, event=60)
             matchrad_arcsec = (coorderr_finite * float(self.crossmatch_nsigma)
                                * units.arcsec)
 
@@ -3370,7 +3370,7 @@ class SolveProcess:
             self.log.write('Using scaled cross-match radius of '
                            '{:.2f} times log10(isoarea)'
                            ''.format(float(self.crossmatch_nlogarea)), 
-                           level=4, event=61)
+                           level=4, event=60)
             logarea_arcsec = (logarea_finite * self.mean_pixscale
                               * float(self.crossmatch_nlogarea) * units.arcsec)
             matchrad_arcsec = np.maximum(matchrad_arcsec, logarea_arcsec)
@@ -3378,7 +3378,7 @@ class SolveProcess:
         if self.crossmatch_maxradius is not None:
             self.log.write('Using maximum cross-match radius of {:.2f} arcsec'
                            ''.format(float(self.crossmatch_maxradius)), 
-                           level=4, event=61)
+                           level=4, event=60)
             maxradius_arcsec = (float(self.crossmatch_maxradius) 
                                 * units.arcsec)
             matchrad_arcsec = np.minimum(matchrad_arcsec, maxradius_arcsec)
@@ -3427,20 +3427,20 @@ class SolveProcess:
 
         # Match sources with the UCAC4 catalogue
         self.log.write('Cross-matching sources with the UCAC4 catalogue', 
-                       level=3, event=61)
+                       level=3, event=62)
 
         if self.ra_ucac is None or self.dec_ucac is None:
-            self.log.write('Missing UCAC4 data', level=2, event=61)
+            self.log.write('Missing UCAC4 data', level=2, event=62)
         else:
             if self.crossmatch_radius is not None:
                 self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
                                ''.format(float(self.crossmatch_radius)), 
-                               level=4, event=61)
+                               level=4, event=62)
             else:
                 self.log.write('Using scaled cross-match radius of '
                                '{:.2f} astrometric sigmas'
                                ''.format(float(self.crossmatch_nsigma)), 
-                               level=4, event=61)
+                               level=4, event=62)
 
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
@@ -3518,7 +3518,7 @@ class SolveProcess:
         # Match sources with the Tycho-2 catalogue
         if self.use_tycho2_fits:
             self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
-                           level=3, event=62)
+                           level=3, event=63)
 
             if self.num_tyc == 0:
                 self.log.write('Missing Tycho-2 data', level=2, event=63)
@@ -3526,12 +3526,12 @@ class SolveProcess:
                 if self.crossmatch_radius is not None:
                     self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
                                    ''.format(float(self.crossmatch_radius)), 
-                                   level=4, event=62)
+                                   level=4, event=63)
                 else:
                     self.log.write('Using scaled cross-match radius of '
                                    '{:.2f} astrometric sigmas'
                                    ''.format(float(self.crossmatch_nsigma)), 
-                                   level=4, event=62)
+                                   level=4, event=63)
 
                 if have_match_coord:
                     coords = ICRS(ra_finite, dec_finite, 
@@ -3603,22 +3603,22 @@ class SolveProcess:
         # Match sources with the APASS catalogue
         if self.use_apass_db:
             self.log.write('Cross-matching sources with the APASS catalogue', 
-                           level=3, event=63)
+                           level=3, event=64)
 
             # Begin cross-match
             if self.num_apass == 0:
-                self.log.write('Missing APASS data', level=2, event=63)
+                self.log.write('Missing APASS data', level=2, event=64)
             else:
                 if self.crossmatch_radius is not None:
                     self.log.write('Using fixed cross-match radius of '
                                    '{:.2f} arcsec'
                                    ''.format(float(self.crossmatch_radius)), 
-                                   level=4, event=63)
+                                   level=4, event=64)
                 else:
                     self.log.write('Using scaled cross-match radius of '
                                    '{:.2f} astrometric sigmas'
                                    ''.format(float(self.crossmatch_nsigma)), 
-                                   level=4, event=63)
+                                   level=4, event=64)
 
                 if self.combined_ucac_apass:
                     bool_finite_apass = (np.isfinite(self.ra_apass) &
@@ -3628,7 +3628,7 @@ class SolveProcess:
                     if num_finite_apass == 0:
                         self.log.write('No APASS sources with usable '
                                        'coordinates for cross-matching', 
-                                       level=2, event=63)
+                                       level=2, event=64)
                         return
 
                     ind_finite_apass = np.where(bool_finite_apass)[0]
@@ -4767,12 +4767,12 @@ class SolveProcess:
 
         """
 
-        self.log.write('Recursive improvement of photometry', level=3, event=78)
+        self.log.write('Recursive improvement of photometry', level=3, event=74)
 
         if self.phot_calibrated == False:
             self.log.write('Cannot improve photometric calibration due to '
                            'missing global calibration',
-                           level=2, event=78)
+                           level=2, event=74)
             return
 
         if max_recursion_depth is None:
@@ -5043,11 +5043,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing astrometric sub-field calibration '
-                       'to the database', event=53)
+                       'to the database', event=55)
 
         if self.astrom_sub == []:
             self.log.write('No astrometric sub-field calibration to write '
-                           'to the database', level=2, event=53)
+                           'to the database', level=2, event=55)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -5076,11 +5076,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric color term data to the database', 
-                       event=74)
+                       event=75)
 
         if self.phot_cterm == []:
             self.log.write('No photometric color term data to write to the database', 
-                           level=2, event=74)
+                           level=2, event=75)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -5109,11 +5109,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric color term result to the database', 
-                       event=75)
+                       event=76)
 
         if self.phot_color is None:
             self.log.write('No photometric color term result to write to the database', 
-                           level=2, event=75)
+                           level=2, event=76)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -5142,11 +5142,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric calibration to the database', 
-                       event=76)
+                       event=77)
 
         if self.phot_calib == []:
             self.log.write('No photometric calibration to write to the database', 
-                           level=2, event=76)
+                           level=2, event=77)
             return
 
         self.log.write('Open database connection for writing to the '
