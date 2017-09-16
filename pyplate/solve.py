@@ -491,6 +491,7 @@ _source_meta = OrderedDict([
     ('ucac4_dist2',         ('f4', '%7.3f', '')),
     ('ucac4_nn_dist',       ('f4', '%7.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
+    ('tycho2_id_pad',       ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
     ('tycho2_btmag',        ('f4', '%7.4f', '')),
@@ -631,6 +632,7 @@ class SolveProcess:
         self.phot_sub = []
 
         self.id_tyc = None
+        self.id_tyc_pad = None
         self.hip_tyc = None
         self.ra_tyc = None
         self.dec_tyc = None
@@ -2287,9 +2289,12 @@ class SolveProcess:
                 self.vtmag_tyc = vtmag_tyc[indtyc]
                 self.btmagerr_tyc = ebtmag_tyc[indtyc]
                 self.vtmagerr_tyc = evtmag_tyc[indtyc]
-                self.id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
-                                   .format(tyc1[i], tyc2[i], tyc3[i]) 
-                                   for i in indtyc])
+                self.id_tyc = np.array(['{:d}-{:d}-{:d}'
+                                        .format(tyc1[i], tyc2[i], tyc3[i])
+                                        for i in indtyc])
+                self.id_tyc_pad = np.array(['{:04d}-{:05d}-{:1d}'
+                                            .format(tyc1[i], tyc2[i], tyc3[i])
+                                            for i in indtyc])
                 self.hip_tyc = hip_tyc[indtyc]
                 self.num_tyc = numtyc
 
@@ -3580,6 +3585,7 @@ class SolveProcess:
                     if num_match > 0:
                         ind = ind_finite[ind_plate]
                         self.sources['tycho2_id'][ind] = self.id_tyc[ind_tyc]
+                        self.sources['tycho2_id_pad'][ind] = self.id_tyc_pad[ind_tyc]
                         self.sources['tycho2_ra'][ind] = self.ra_tyc[ind_tyc]
                         self.sources['tycho2_dec'][ind] = self.dec_tyc[ind_tyc]
                         self.sources['tycho2_btmag'][ind] = self.btmag_tyc[ind_tyc]

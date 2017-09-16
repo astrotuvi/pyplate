@@ -368,6 +368,7 @@ _schema['source_calib'] = OrderedDict([
     ('cat_natmag',       ('FLOAT', True)),
     ('match_radius',     ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
+    ('tycho2_id_pad',    ('CHAR(12)', True)),
     ('tycho2_ra',        ('DOUBLE', True)),
     ('tycho2_dec',       ('DOUBLE', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
@@ -1377,6 +1378,9 @@ class PlateDB:
                         source_val = None
                         
                     if 'tycho2_id' in k and source_val == '':
+                        source_val = None
+
+                    if 'tycho2_id_pad' in k and source_val == '':
                         source_val = None
 
                     if 'tycho2_hip' in k and source_val < 0:
