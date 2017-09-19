@@ -2408,6 +2408,7 @@ class PlateHeader(fits.Header):
         self.fits_dir = ''
         self.write_fits_dir = ''
         self.write_header_dir = ''
+        self.create_checksum = False
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -2692,6 +2693,9 @@ class PlateHeader(fits.Header):
         'sep:Acknowledgements',
         'sep:History',
         'HISTORY',
+        'sep:Checksums',
+        'CHECKSUM',
+        'DATASUM',
         'sep:']
 
     def assign_conf(self, conf):
@@ -2708,6 +2712,12 @@ class PlateHeader(fits.Header):
         for attr in ['fits_dir', 'write_fits_dir', 'write_header_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['create_checksum']:
+            try:
+                setattr(self, attr, conf.getboolean('Files', attr))
             except ConfigParser.Error:
                 pass
 
@@ -3272,11 +3282,14 @@ class PlateHeader(fits.Header):
             self.set('DATE', 
                      dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
 
-    def output_to_fits(self, filename):
+    def output_to_fits(self, filename, checksum=None):
         """
         Output header to FITS file.
 
         """
+
+        if checksum is None:
+            checksum = self.create_checksum
 
         fn_fits = os.path.join(self.fits_dir, filename)
         fn_out = os.path.join(self.write_fits_dir, filename)
@@ -3303,7 +3316,7 @@ class PlateHeader(fits.Header):
                            .format(self.write_fits_dir))
         
             try:
-                fitsfile.writeto(fn_out)
+                fitsfile.writeto(fn_out, checksum=checksum)
             except IOError:
                 print 'Could not write to {}'.format(fn_out)
             
