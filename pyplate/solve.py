@@ -3432,16 +3432,6 @@ class SolveProcess:
         if self.ra_ucac is None or self.dec_ucac is None:
             self.log.write('Missing UCAC4 data', level=2, event=62)
         else:
-            if self.crossmatch_radius is not None:
-                self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
-                               ''.format(float(self.crossmatch_radius)), 
-                               level=4, event=62)
-            else:
-                self.log.write('Using scaled cross-match radius of '
-                               '{:.2f} astrometric sigmas'
-                               ''.format(float(self.crossmatch_nsigma)), 
-                               level=4, event=62)
-
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -3523,16 +3513,6 @@ class SolveProcess:
             if self.num_tyc == 0:
                 self.log.write('Missing Tycho-2 data', level=2, event=63)
             else:
-                if self.crossmatch_radius is not None:
-                    self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
-                                   ''.format(float(self.crossmatch_radius)), 
-                                   level=4, event=63)
-                else:
-                    self.log.write('Using scaled cross-match radius of '
-                                   '{:.2f} astrometric sigmas'
-                                   ''.format(float(self.crossmatch_nsigma)), 
-                                   level=4, event=63)
-
                 if have_match_coord:
                     coords = ICRS(ra_finite, dec_finite, 
                                   unit=(units.degree, units.degree))
@@ -3609,17 +3589,6 @@ class SolveProcess:
             if self.num_apass == 0:
                 self.log.write('Missing APASS data', level=2, event=64)
             else:
-                if self.crossmatch_radius is not None:
-                    self.log.write('Using fixed cross-match radius of '
-                                   '{:.2f} arcsec'
-                                   ''.format(float(self.crossmatch_radius)), 
-                                   level=4, event=64)
-                else:
-                    self.log.write('Using scaled cross-match radius of '
-                                   '{:.2f} astrometric sigmas'
-                                   ''.format(float(self.crossmatch_nsigma)), 
-                                   level=4, event=64)
-
                 if self.combined_ucac_apass:
                     bool_finite_apass = (np.isfinite(self.ra_apass) &
                                          np.isfinite(self.dec_apass))
