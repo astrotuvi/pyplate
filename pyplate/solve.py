@@ -4188,7 +4188,7 @@ class SolveProcess:
                        ''.format(cterm, cterm_err), level=4, event=72)
         self.db_update_process(color_term=cterm)
 
-        self.log.write('Photometric calibration in annular bins', 
+        self.log.write('Photometric calibration using annular bins 1-8', 
                        level=3, event=73)
 
         # Loop over annular bins
@@ -4196,17 +4196,18 @@ class SolveProcess:
         for b in np.arange(1):
             if b == 0:
                 ind_bin = np.where(plate_bin < 9)[0]
+                bintxt = 'Bins 1-8'
             else:
                 ind_bin = np.where(plate_bin == b)[0]
 
             num_calstars = len(ind_bin)
-            self.log.write('Annular bin {:d}: {:d} calibration-star candidates'
-                           ''.format(b, num_calstars), 
+            self.log.write('{}: {:d} calibration-star candidates'
+                           ''.format(bintxt, num_calstars), 
                            double_newline=False, level=4, event=73)
 
             if num_calstars < 20:
-                self.log.write('Annular bin {:d}: too few calibration-star '
-                               'candidates!'.format(b), double_newline=False,
+                self.log.write('{}: too few calibration-star candidates!'
+                               ''.format(bintxt), double_newline=False,
                                level=2, event=73)
                 continue
 
@@ -4215,13 +4216,13 @@ class SolveProcess:
             #                              return_index=True)
             plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
 
-            self.log.write('Annular bin {:d}: {:d} stars with unique magnitude'
-                           ''.format(b, len(plate_mag_u)), 
+            self.log.write('{}: {:d} stars with unique magnitude'
+                           ''.format(bintxt, len(plate_mag_u)), 
                            double_newline=False, level=4, event=73)
 
             if len(plate_mag_u) < 20:
-                self.log.write('Annular bin {:d}: too few stars with unique '
-                               'magnitude ({:d})!'.format(b, len(plate_mag_u)),
+                self.log.write('{}: too few stars with unique magnitude '
+                               '({:d})!'.format(bintxt, len(plate_mag_u)),
                                double_newline=False, level=2, event=73)
                 continue
 
@@ -4469,39 +4470,40 @@ class SolveProcess:
                             ind_outliers = np.unique(ind_outliers)
                             ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
                                                     ind_outliers)
-                            self.log.write('Annular bin {:d}: {:d} faint stars '
+                            self.log.write('{}: {:d} faint stars '
                                            'eliminated as outliers'
-                                           ''.format(b, len(ind_faintout)),
+                                           ''.format(bintxt, len(ind_faintout)),
                                            double_newline=False,
                                            level=4, event=73)
 
-                        self.log.write('Annular bin {:d}: outlier elimination '
+                        self.log.write('{}: outlier elimination '
                                        'stopped due to a long gap in '
-                                       'magnitudes!'.format(b), 
+                                       'magnitudes!'.format(bintxt), 
                                         double_newline=False,
                                        level=2, event=73)
                         break
 
                     if len(ind_good) < 10:
-                        self.log.write('Annular bin {:d}: outlier elimination stopped '
-                                       'due to insufficient stars left!'.format(b), 
+                        self.log.write('{}: outlier elimination stopped '
+                                       'due to insufficient stars left!'
+                                       ''.format(bintxt), 
                                         double_newline=False, level=2, event=73)
                         break
 
                 num_outliers = len(ind_outliers)
-                self.log.write('Annular bin {:d}: {:d} outliers eliminated'
-                               ''.format(b, num_outliers), 
+                self.log.write('{}: {:d} outliers eliminated'
+                               ''.format(bintxt, num_outliers), 
                                double_newline=False, level=4, event=73)
                 ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
                                         ind_outliers)
-                self.log.write('Annular bin {:d}: {:d} stars after outlier '
-                               'elimination'.format(b, len(ind_good)), 
+                self.log.write('{}: {:d} stars after outlier '
+                               'elimination'.format(bintxt, len(ind_good)), 
                                double_newline=False, level=4, event=73)
 
                 if len(ind_good) < 20:
-                    self.log.write('Annular bin {:d}: too few calibration '
+                    self.log.write('{}: too few calibration '
                                    'stars ({:d}) after outlier elimination!'
-                                   ''.format(b, len(ind_good)), 
+                                   ''.format(bintxt, len(ind_good)), 
                                    double_newline=False, level=2, event=73)
                     continue
 
@@ -4518,9 +4520,9 @@ class SolveProcess:
                 ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
                 num_valid = len(ind_valid)
 
-                self.log.write('Annular bin {:d}: {:d} calibration stars '
+                self.log.write('{}: {:d} calibration stars '
                                'brighter than limiting magnitude'
-                               ''.format(b, num_valid), 
+                               ''.format(bintxt, num_valid), 
                                double_newline=False, level=4, event=73)
 
                 ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
