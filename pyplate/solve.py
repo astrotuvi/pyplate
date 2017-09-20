@@ -872,7 +872,7 @@ class SolveProcess:
         # Check if FITS file exists
         if not os.path.exists(self.fn_fits):
             self.log.write('FITS file does not exist: {}'.format(self.fn_fits), 
-                           level=1, event=11)
+                           level=1, event=10)
             return
 
         # Read FITS header
@@ -885,7 +885,7 @@ class SolveProcess:
             except IOError:
                 self.log.write('Could not read FITS file {}'
                                .format(self.fn_fits), 
-                               level=1, event=11)
+                               level=1, event=10)
                 return
 
         self.imwidth = self.plate_header['NAXIS1']
@@ -1043,7 +1043,7 @@ class SolveProcess:
             fn_inverted = os.path.join(self.work_dir, fn_inverted)
         
         if not os.path.exists(fn_inverted):
-            self.log.write('Inverting image', level=3, event=12)
+            self.log.write('Inverting image', level=3, event=11)
 
             fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True, 
                                  ignore_missing_end=True)
@@ -1053,7 +1053,7 @@ class SolveProcess:
             invfits.header.set('BZERO', 32768)
             invfits.header.set('BSCALE', 1.0)
             self.log.write('Writing inverted image: {}'.format(fn_inverted), 
-                           level=4, event=13)
+                           level=4, event=11)
             invfits.writeto(fn_inverted)
 
             fitsfile.close()
@@ -1061,7 +1061,7 @@ class SolveProcess:
             del invfits
         else:
             self.log.write('Inverted file exists: {}'.format(fn_inverted), 
-                           level=4, event=12)
+                           level=4, event=11)
 
     def extract_sources(self, threshold_sigma=None, use_filter=None,
                         filter_path=None, use_psf=None, 
@@ -4215,13 +4215,13 @@ class SolveProcess:
             #                              return_index=True)
             plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
 
-            self.log.write('Annular bin {:d}: {:d} plate_mag_u stars'
+            self.log.write('Annular bin {:d}: {:d} stars with unique magnitude'
                            ''.format(b, len(plate_mag_u)), 
                            double_newline=False, level=4, event=73)
 
             if len(plate_mag_u) < 20:
-                self.log.write('Annular bin {:d}: too few unique calibration '
-                               'stars ({:d})!'.format(b, len(plate_mag_u)), 
+                self.log.write('Annular bin {:d}: too few stars with unique '
+                               'magnitude ({:d})!'.format(b, len(plate_mag_u)),
                                double_newline=False, level=2, event=73)
                 continue
 
@@ -4494,6 +4494,9 @@ class SolveProcess:
                                double_newline=False, level=4, event=73)
                 ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
                                         ind_outliers)
+                self.log.write('Annular bin {:d}: {:d} stars after outlier '
+                               'elimination'.format(b, len(ind_good)), 
+                               double_newline=False, level=4, event=73)
 
                 if len(ind_good) < 20:
                     self.log.write('Annular bin {:d}: too few calibration '
@@ -4515,10 +4518,8 @@ class SolveProcess:
                 ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
                 num_valid = len(ind_valid)
 
-                self.log.write('Annular bin {:d}: {:d} ind_good stars'
-                               ''.format(b, len(ind_good)), 
-                               double_newline=False, level=4, event=73)
-                self.log.write('Annular bin {:d}: {:d} good calibration stars'
+                self.log.write('Annular bin {:d}: {:d} calibration stars '
+                               'brighter than limiting magnitude'
                                ''.format(b, num_valid), 
                                double_newline=False, level=4, event=73)
 
