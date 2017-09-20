@@ -1186,259 +1186,25 @@ class SolveProcess:
                 self.log.write('Sky value too low, using fixed thresholds', 
                                level=4, event=21)
 
-        if use_psf:
-            # If PSFEx input file does not exist then run SExtractor
-            fn_psfex_cat = os.path.join(self.scratch_dir, 
-                                        self.basefn + '_psfex.cat')
-
-            if not os.path.exists(fn_psfex_cat):
-                self.log.write('Running SExtractor to get sources for PSFEx', 
-                               level=3, event=22)
-
-                while True:
-                    if use_filter:
-                        self.log.write('Using filter {}'.format(filter_path), 
-                                       level=4, event=22)
-
-                    if use_fix_threshold:
-                        self.log.write('Using threshold {:f} ADU'
-                                       .format(psf_model_threshold), 
-                                       level=4, event=22)
-                    else:
-                        self.log.write('Using threshold {:.1f}'
-                                       .format(psf_model_sigma), 
-                                       level=4, event=22)
-
-                    # Create parameter file
-                    fn_sex_param = self.basefn + '_sextractor.param'
-                    fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 
-                                 'w')
-                    fconf.write('VIGNET(120,120)\n')
-                    fconf.write('X_IMAGE\n')
-                    fconf.write('Y_IMAGE\n')
-                    fconf.write('MAG_AUTO\n')
-                    fconf.write('FLUX_AUTO\n')
-                    fconf.write('FLUXERR_AUTO\n')
-                    fconf.write('SNR_WIN\n')
-                    fconf.write('FLUX_RADIUS\n')
-                    fconf.write('ELONGATION\n')
-                    fconf.write('FLAGS')
-                    fconf.close()
-
-                    # Create configuration file
-                    if use_fix_threshold:
-                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_threshold)
-                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_threshold)
-                        cnf += 'THRESH_TYPE      ABSOLUTE\n'
-                    else:
-                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
-                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
-
-                    if use_filter:
-                        cnf += 'FILTER           Y\n'
-                        cnf += 'FILTER_NAME      {}\n'.format(filter_path)
-                    else:
-                        cnf += 'FILTER           N\n'
-
-                    cnf += 'SATUR_LEVEL      65000.0\n'
-                    cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-                    cnf += 'MAG_ZEROPOINT    25.0\n'
-                    cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-                    cnf += 'CATALOG_TYPE     FITS_LDAC\n'
-                    cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.basefn)
-
-                    fn_sex_conf = self.basefn + '_sextractor.conf'
-                    self.log.write('Writing SExtractor configuration file {}'
-                                   .format(fn_sex_conf), level=4, event=22)
-                    self.log.write('SExtractor configuration file:\n{}'
-                                   .format(cnf), level=5, event=22)
-                    fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
-                                 'w')
-                    fconf.write(cnf)
-                    fconf.close()
-
-                    cmd = self.sextractor_path
-                    cmd += ' %s_inverted.fits' % self.basefn
-                    cmd += ' -c %s' % fn_sex_conf
-                    self.log.write('Subprocess: {}'.format(cmd), 
-                                   level=4, event=22)
-                    sp.call(cmd, shell=True, stdout=self.log.handle, 
-                            stderr=self.log.handle, cwd=self.scratch_dir)
-                    self.log.write('', timestamp=False, double_newline=False)
-
-                    hcat = fits.getheader(fn_psfex_cat, 2)
-                    num_psf_sources = hcat['NAXIS2']
-                    self.log.write('Extracted {:d} PSF-model sources'
-                                   .format(num_psf_sources), level=4, event=22)
-                    enough_psf_sources = False
-
-                    if (num_psf_sources >= self.min_model_sources and 
-                        num_psf_sources <= self.max_model_sources):
-                        enough_psf_sources = True
-                        break
-
-                    if num_psf_sources < self.min_model_sources:
-                        # Repeat with lower threshold to get more sources
-                        if use_fix_threshold:
-                            psf_model_threshold *= 0.9
-                        else:
-                            psf_model_sigma *= 0.9
-
-                        self.log.write('Too few PSF-model sources (min {:d}), '
-                                       'repeating extraction with lower '
-                                       'threshold'
-                                       .format(self.min_model_sources), 
-                                       level=4, event=22)
-
-                    if num_psf_sources > self.max_model_sources:
-                        # Repeat with higher threshold to get less sources
-                        if use_fix_threshold:
-                            psf_model_threshold *= 1.2
-                        else:
-                            psf_model_sigma *= 1.2
-
-                        self.log.write('Too many PSF-model sources (max {:d}), '
-                                       'repeating extraction with higher '
-                                       'threshold'
-                                       .format(self.max_model_sources), 
-                                       level=4, event=22)
-
-            # Run PSFEx
-            if (enough_psf_sources and
-                not os.path.exists(os.path.join(self.scratch_dir, 
-                                                self.basefn + '_psfex.psf'))):
-                self.log.write('Running PSFEx', level=3, event=23)
-                psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
-                self.log.write('Using {}'.format(psfex_ver), level=4, event=23)
-
-                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
-                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
-                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
-                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
-                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
-                cnf += 'PSFVAR_GROUPS      1,1\n'
-                cnf += 'PSFVAR_DEGREES     3\n'
-                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
-                cnf += 'SAMPLE_VARIABILITY 3.0\n'
-                #cnf += 'PSF_SIZE           25,25\n'
-                cnf += 'PSF_SIZE           50,50\n'
-                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
-                cnf += 'CHECKPLOT_NAME     ellipticity\n'
-                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
-                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
-                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn
-                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
-                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
-                cnf += 'VERBOSE_TYPE       LOG\n'
-
-                fn_psfex_conf = self.basefn + '_psfex.conf'
-                self.log.write('Writing PSFEx configuration file {}'
-                               .format(fn_psfex_conf), level=4, event=23)
-                self.log.write('PSFEx configuration file:\n{}'
-                               .format(cnf), level=5, event=23)
-                fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
-                fconf.write(cnf)
-                fconf.close()
-
-                cmd = self.psfex_path
-                cmd += ' %s_psfex.cat' % self.basefn
-                cmd += ' -c %s' % fn_psfex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=23)
-                sp.call(cmd, shell=True, stdout=self.log.handle, 
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
-
-            # Run SExtractor with PSF
-            if (enough_psf_sources and
-                not os.path.exists(os.path.join(self.scratch_dir, 
-                                                self.basefn + '.cat-psf'))):
-                self.log.write('Running SExtractor with PSF model',
-                               level=3, event=24)
-
-                if use_filter:
-                    self.log.write('Using filter {}'.format(filter_path), 
-                                   level=4, event=24)
-
-                if use_fix_threshold:
-                    self.log.write('Using threshold {:f} ADU'
-                                   .format(psf_threshold_adu), 
-                                   level=4, event=24)
-                else:
-                    self.log.write('Using threshold {:.1f}'
-                                   .format(psf_threshold_sigma), 
-                                   level=4, event=24)
-
-                fn_sex_param = self.basefn + '_sextractor.param'
-                fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
-                fconf.write('XPEAK_IMAGE\n')
-                fconf.write('YPEAK_IMAGE\n')
-                fconf.write('XPSF_IMAGE\n')
-                fconf.write('YPSF_IMAGE\n')
-                fconf.write('ERRAPSF_IMAGE\n')
-                fconf.write('ERRBPSF_IMAGE\n')
-                fconf.write('ERRTHETAPSF_IMAGE\n')
-                fconf.close()
-
-                if use_fix_threshold:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_adu)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_adu)
-                    cnf += 'THRESH_TYPE      ABSOLUTE\n'
-                else:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
-
-                if use_filter:
-                    cnf += 'FILTER           Y\n'
-                    cnf += 'FILTER_NAME      {}\n'.format(filter_path)
-                else:
-                    cnf += 'FILTER           N\n'
-
-                cnf += 'SATUR_LEVEL      65000.0\n'
-                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-                #cnf += 'BACKPHOTO_THICK  96\n'
-                cnf += 'MAG_ZEROPOINT    25.0\n'
-                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-                cnf += 'CATALOG_TYPE     FITS_1.0\n'
-                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.basefn)
-                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.basefn)
-                cnf += 'NTHREADS         0\n'
-
-                fn_sex_conf = self.basefn + '_sextractor.conf'
-                self.log.write('Writing SExtractor configuration file {}'
-                               .format(fn_sex_conf), level=4, event=24)
-                self.log.write('SExtractor configuration file:\n{}'
-                               .format(cnf), level=5, event=24)
-                fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-                fconf.write(cnf)
-                fconf.close()
-
-                cmd = self.sextractor_path
-                cmd += ' %s_inverted.fits' % self.basefn
-                cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=24)
-                sp.call(cmd, shell=True, stdout=self.log.handle, 
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
-
         # If SExtractor catalog does not exist then run SExtractor
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
             self.log.write('Running SExtractor without PSF model',
-                           level=3, event=25)
+                           level=3, event=22)
 
             if use_filter:
                 self.log.write('Using filter {}'.format(filter_path), 
-                               level=4, event=25)
+                               level=4, event=22)
 
             if use_fix_threshold:
                 self.log.write('Using threshold {:f} ADU'.format(threshold_adu), 
-                               level=4, event=25)
+                               level=4, event=22)
                 self.db_update_process(threshold=threshold_adu)
             else:
                 threshold_adu = sky_sigma * threshold_sigma
                 self.log.write('Using threshold {:.1f} ({:f} ADU)'
                                .format(threshold_sigma, threshold_adu),
-                               level=4, event=25)
+                               level=4, event=22)
                 self.db_update_process(threshold=threshold_adu)
 
             fn_sex_param = self.basefn + '_sextractor.param'
@@ -1504,9 +1270,9 @@ class SolveProcess:
 
             fn_sex_conf = self.basefn + '_sextractor.conf'
             self.log.write('Writing SExtractor configuration file {}'
-                           .format(fn_sex_conf), level=4, event=25)
+                           .format(fn_sex_conf), level=4, event=22)
             self.log.write('SExtractor configuration file:\n{}'.format(cnf), 
-                           level=5, event=25)
+                           level=5, event=22)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
             fconf.write(cnf)
             fconf.close()
@@ -1514,10 +1280,244 @@ class SolveProcess:
             cmd = self.sextractor_path
             cmd += ' %s_inverted.fits' % self.basefn
             cmd += ' -c %s' % fn_sex_conf
-            self.log.write('Subprocess: {}'.format(cmd), level=4, event=25)
+            self.log.write('Subprocess: {}'.format(cmd), level=4, event=22)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
+
+        if use_psf:
+            # If PSFEx input file does not exist then run SExtractor
+            fn_psfex_cat = os.path.join(self.scratch_dir, 
+                                        self.basefn + '_psfex.cat')
+
+            if not os.path.exists(fn_psfex_cat):
+                self.log.write('Running SExtractor to get sources for PSFEx', 
+                               level=3, event=23)
+
+                while True:
+                    if use_filter:
+                        self.log.write('Using filter {}'.format(filter_path), 
+                                       level=4, event=23)
+
+                    if use_fix_threshold:
+                        self.log.write('Using threshold {:f} ADU'
+                                       .format(psf_model_threshold), 
+                                       level=4, event=23)
+                    else:
+                        self.log.write('Using threshold {:.1f}'
+                                       .format(psf_model_sigma), 
+                                       level=4, event=23)
+
+                    # Create parameter file
+                    fn_sex_param = self.basefn + '_sextractor.param'
+                    fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 
+                                 'w')
+                    fconf.write('VIGNET(120,120)\n')
+                    fconf.write('X_IMAGE\n')
+                    fconf.write('Y_IMAGE\n')
+                    fconf.write('MAG_AUTO\n')
+                    fconf.write('FLUX_AUTO\n')
+                    fconf.write('FLUXERR_AUTO\n')
+                    fconf.write('SNR_WIN\n')
+                    fconf.write('FLUX_RADIUS\n')
+                    fconf.write('ELONGATION\n')
+                    fconf.write('FLAGS')
+                    fconf.close()
+
+                    # Create configuration file
+                    if use_fix_threshold:
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_threshold)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_threshold)
+                        cnf += 'THRESH_TYPE      ABSOLUTE\n'
+                    else:
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
+
+                    if use_filter:
+                        cnf += 'FILTER           Y\n'
+                        cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+                    else:
+                        cnf += 'FILTER           N\n'
+
+                    cnf += 'SATUR_LEVEL      65000.0\n'
+                    cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                    cnf += 'MAG_ZEROPOINT    25.0\n'
+                    cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                    cnf += 'CATALOG_TYPE     FITS_LDAC\n'
+                    cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.basefn)
+
+                    fn_sex_conf = self.basefn + '_sextractor.conf'
+                    self.log.write('Writing SExtractor configuration file {}'
+                                   .format(fn_sex_conf), level=4, event=23)
+                    self.log.write('SExtractor configuration file:\n{}'
+                                   .format(cnf), level=5, event=23)
+                    fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
+                                 'w')
+                    fconf.write(cnf)
+                    fconf.close()
+
+                    cmd = self.sextractor_path
+                    cmd += ' %s_inverted.fits' % self.basefn
+                    cmd += ' -c %s' % fn_sex_conf
+                    self.log.write('Subprocess: {}'.format(cmd), 
+                                   level=4, event=23)
+                    sp.call(cmd, shell=True, stdout=self.log.handle, 
+                            stderr=self.log.handle, cwd=self.scratch_dir)
+                    self.log.write('', timestamp=False, double_newline=False)
+
+                    hcat = fits.getheader(fn_psfex_cat, 2)
+                    num_psf_sources = hcat['NAXIS2']
+                    self.log.write('Extracted {:d} PSF-model sources'
+                                   .format(num_psf_sources), level=4, event=23)
+                    enough_psf_sources = False
+
+                    if (num_psf_sources >= self.min_model_sources and 
+                        num_psf_sources <= self.max_model_sources):
+                        enough_psf_sources = True
+                        break
+
+                    if num_psf_sources < self.min_model_sources:
+                        # Repeat with lower threshold to get more sources
+                        if use_fix_threshold:
+                            psf_model_threshold *= 0.9
+                        else:
+                            psf_model_sigma *= 0.9
+
+                        self.log.write('Too few PSF-model sources (min {:d}), '
+                                       'repeating extraction with lower '
+                                       'threshold'
+                                       .format(self.min_model_sources), 
+                                       level=4, event=23)
+
+                    if num_psf_sources > self.max_model_sources:
+                        # Repeat with higher threshold to get less sources
+                        if use_fix_threshold:
+                            psf_model_threshold *= 1.2
+                        else:
+                            psf_model_sigma *= 1.2
+
+                        self.log.write('Too many PSF-model sources (max {:d}), '
+                                       'repeating extraction with higher '
+                                       'threshold'
+                                       .format(self.max_model_sources), 
+                                       level=4, event=23)
+
+            # Run PSFEx
+            if (enough_psf_sources and
+                not os.path.exists(os.path.join(self.scratch_dir, 
+                                                self.basefn + '_psfex.psf'))):
+                self.log.write('Running PSFEx', level=3, event=24)
+                psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
+                self.log.write('Using {}'.format(psfex_ver), level=4, event=24)
+
+                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
+                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
+                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
+                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
+                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
+                cnf += 'PSFVAR_GROUPS      1,1\n'
+                cnf += 'PSFVAR_DEGREES     3\n'
+                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
+                cnf += 'SAMPLE_VARIABILITY 3.0\n'
+                #cnf += 'PSF_SIZE           25,25\n'
+                cnf += 'PSF_SIZE           50,50\n'
+                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
+                cnf += 'CHECKPLOT_NAME     ellipticity\n'
+                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
+                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
+                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn
+                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
+                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
+                cnf += 'VERBOSE_TYPE       LOG\n'
+
+                fn_psfex_conf = self.basefn + '_psfex.conf'
+                self.log.write('Writing PSFEx configuration file {}'
+                               .format(fn_psfex_conf), level=4, event=24)
+                self.log.write('PSFEx configuration file:\n{}'
+                               .format(cnf), level=5, event=24)
+                fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
+                fconf.write(cnf)
+                fconf.close()
+
+                cmd = self.psfex_path
+                cmd += ' %s_psfex.cat' % self.basefn
+                cmd += ' -c %s' % fn_psfex_conf
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=24)
+                sp.call(cmd, shell=True, stdout=self.log.handle, 
+                        stderr=self.log.handle, cwd=self.scratch_dir)
+                self.log.write('', timestamp=False, double_newline=False)
+
+            # Run SExtractor with PSF
+            if (enough_psf_sources and
+                not os.path.exists(os.path.join(self.scratch_dir, 
+                                                self.basefn + '.cat-psf'))):
+                self.log.write('Running SExtractor with PSF model',
+                               level=3, event=25)
+
+                if use_filter:
+                    self.log.write('Using filter {}'.format(filter_path), 
+                                   level=4, event=25)
+
+                if use_fix_threshold:
+                    self.log.write('Using threshold {:f} ADU'
+                                   .format(psf_threshold_adu), 
+                                   level=4, event=25)
+                else:
+                    self.log.write('Using threshold {:.1f}'
+                                   .format(psf_threshold_sigma), 
+                                   level=4, event=25)
+
+                fn_sex_param = self.basefn + '_sextractor.param'
+                fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
+                fconf.write('XPEAK_IMAGE\n')
+                fconf.write('YPEAK_IMAGE\n')
+                fconf.write('XPSF_IMAGE\n')
+                fconf.write('YPSF_IMAGE\n')
+                fconf.write('ERRAPSF_IMAGE\n')
+                fconf.write('ERRBPSF_IMAGE\n')
+                fconf.write('ERRTHETAPSF_IMAGE\n')
+                fconf.close()
+
+                if use_fix_threshold:
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_adu)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_adu)
+                    cnf += 'THRESH_TYPE      ABSOLUTE\n'
+                else:
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
+
+                if use_filter:
+                    cnf += 'FILTER           Y\n'
+                    cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+                else:
+                    cnf += 'FILTER           N\n'
+
+                cnf += 'SATUR_LEVEL      65000.0\n'
+                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                #cnf += 'BACKPHOTO_THICK  96\n'
+                cnf += 'MAG_ZEROPOINT    25.0\n'
+                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                cnf += 'CATALOG_TYPE     FITS_1.0\n'
+                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.basefn)
+                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.basefn)
+                cnf += 'NTHREADS         0\n'
+
+                fn_sex_conf = self.basefn + '_sextractor.conf'
+                self.log.write('Writing SExtractor configuration file {}'
+                               .format(fn_sex_conf), level=4, event=25)
+                self.log.write('SExtractor configuration file:\n{}'
+                               .format(cnf), level=5, event=25)
+                fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
+                fconf.write(cnf)
+                fconf.close()
+
+                cmd = self.sextractor_path
+                cmd += ' %s_inverted.fits' % self.basefn
+                cmd += ' -c %s' % fn_sex_conf
+                self.log.write('Subprocess: {}'.format(cmd), level=4, event=25)
+                sp.call(cmd, shell=True, stdout=self.log.handle, 
+                        stderr=self.log.handle, cwd=self.scratch_dir)
+                self.log.write('', timestamp=False, double_newline=False)
 
         # Read the SExtractor output catalog
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
