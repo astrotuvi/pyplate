@@ -3352,12 +3352,13 @@ class SolveProcess:
                                   self.sources['decerr_sub'][ind_finite]**2)
         logarea_finite = np.log10(self.sources['isoarea'][ind_finite])
 
-        # Assign zero errors to sources with no errors from sub-fields
+        # Assign default coordinate errors to sources with no error estimates 
+        # from sub-fields
         bool_nanerr = np.isnan(coorderr_finite)
         num_nanerr = bool_nanerr.sum()
 
         if num_nanerr > 0:
-            coorderr_finite[np.where(bool_nanerr)] = 0.
+            coorderr_finite[np.where(bool_nanerr)] = 20.
 
         # Combine cross-match criteria
         if self.crossmatch_radius is not None:
