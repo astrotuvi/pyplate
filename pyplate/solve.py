@@ -823,6 +823,9 @@ class SolveProcess:
 
         self.platemeta = platemeta
 
+        if self.platemeta['archive_id']:
+            self.archive_id = self.platemeta['archive_id']
+
     def setup(self):
         """
         Set up plate solve process.
