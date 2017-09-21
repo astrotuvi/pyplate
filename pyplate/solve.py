@@ -198,7 +198,7 @@ class AstrometryNetIndex:
 
         fn_tyc_year = os.path.join(self.index_dir, 
                                    'tycho2_{:d}.fits'.format(year))
-        hdu.writeto(fn_tyc_year, clobber=True)
+        hdu.writeto(fn_tyc_year, overwrite=True)
 
         tycho2_index_dir = os.path.join(self.index_dir, 
                                         'index_{:d}'.format(year))
@@ -2215,7 +2215,7 @@ class SolveProcess:
             fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
             self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
                            level=4, event=36)
-            self.wcshead.tofile(fn_wcshead, clobber=True)
+            self.wcshead.tofile(fn_wcshead, overwrite=True)
 
     def get_reference_catalogs(self):
         """
@@ -3045,7 +3045,7 @@ class SolveProcess:
             if os.path.exists(aheadfile):
                 os.remove(aheadfile)
 
-            ahead.totextfile(aheadfile, endcard=True, clobber=True)
+            ahead.totextfile(aheadfile, endcard=True, overwrite=True)
 
             crossid_radius = 20.
             
@@ -3105,7 +3105,7 @@ class SolveProcess:
             if os.path.exists(aheadfile):
                 os.remove(aheadfile)
 
-            head.totextfile(aheadfile, endcard=True, clobber=True)
+            head.totextfile(aheadfile, endcard=True, overwrite=True)
 
             #prev_crossid_radius = crossid_radius
             crossid_radius = 3. * in_astromsigma.max()

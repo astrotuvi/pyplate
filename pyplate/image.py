@@ -263,12 +263,12 @@ class PlateConverter:
 
             hdu_left.header.add_history(history_line)
             hdu_left.writeto(os.path.join(self.write_fits_dir, fn_left), 
-                             clobber=True)
+                             overwrite=True)
 
             if im_wedge is not None:
                 fn_wedge = os.path.splitext(fn_left)[0] + '_w.fits'
                 hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
-                                  clobber=True)
+                                  overwrite=True)
 
             # Store right-side plate FITS
             hdu_right = fits.PrimaryHDU(np.flipud(im_right))
@@ -280,12 +280,12 @@ class PlateConverter:
 
             hdu_right.header.add_history(history_line)
             hdu_right.writeto(os.path.join(self.write_fits_dir, fn_right), 
-                              clobber=True)
+                              overwrite=True)
 
             if im_wedge is not None:
                 fn_wedge = os.path.splitext(fn_right)[0] + '_w.fits'
                 hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge), 
-                                  clobber=True)
+                                  overwrite=True)
         else:
             fn_plate = os.path.splitext(os.path.basename(fn_tiff))[0] + '.fits'
             hdu_plate = fits.PrimaryHDU(np.flipud(im_plates))
@@ -297,10 +297,10 @@ class PlateConverter:
 
             hdu_plate.header.add_history(history_line)
             hdu_plate.writeto(os.path.join(self.write_fits_dir, fn_plate), 
-                              clobber=True)
+                              overwrite=True)
 
             if im_wedge is not None:
                 fn_wedge = os.path.splitext(fn_plate)[0] + '_w.fits'
                 hdu_wedge.writeto(os.path.join(self.write_wedge_dir, fn_wedge),
-                                  clobber=True)
+                                  overwrite=True)
 
