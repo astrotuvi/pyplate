@@ -1165,7 +1165,7 @@ class SolveProcess:
         cmd += ' %s_inverted.fits' % self.basefn
         cmd += ' -c %s' % fn_sex_conf
         self.log.write('Subprocess: {}'.format(cmd), 
-                       level=4, event=21)
+                       level=5, event=21)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1283,7 +1283,7 @@ class SolveProcess:
             cmd = self.sextractor_path
             cmd += ' %s_inverted.fits' % self.basefn
             cmd += ' -c %s' % fn_sex_conf
-            self.log.write('Subprocess: {}'.format(cmd), level=4, event=22)
+            self.log.write('Subprocess: {}'.format(cmd), level=5, event=22)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
@@ -1363,7 +1363,7 @@ class SolveProcess:
                     cmd += ' %s_inverted.fits' % self.basefn
                     cmd += ' -c %s' % fn_sex_conf
                     self.log.write('Subprocess: {}'.format(cmd), 
-                                   level=4, event=23)
+                                   level=5, event=23)
                     sp.call(cmd, shell=True, stdout=self.log.handle, 
                             stderr=self.log.handle, cwd=self.scratch_dir)
                     self.log.write('', timestamp=False, double_newline=False)
@@ -1445,7 +1445,7 @@ class SolveProcess:
                 cmd = self.psfex_path
                 cmd += ' %s_psfex.cat' % self.basefn
                 cmd += ' -c %s' % fn_psfex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=24)
+                self.log.write('Subprocess: {}'.format(cmd), level=5, event=24)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -1517,7 +1517,7 @@ class SolveProcess:
                 cmd = self.sextractor_path
                 cmd += ' %s_inverted.fits' % self.basefn
                 cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=25)
+                self.log.write('Subprocess: {}'.format(cmd), level=5, event=25)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -1936,7 +1936,7 @@ class SolveProcess:
         cmd += ' --corr none'
         cmd += ' --overwrite'
         cmd += ' --cpulimit 120'
-        self.log.write('Subprocess: {}'.format(cmd), level=4, event=30)
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=30)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -2639,6 +2639,9 @@ class SolveProcess:
         # Create or download the SCAMP reference catalog
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                             self.basefn + '_scampref.cat')):
+            self.log.write('Creating or downloading the SCAMP reference '
+                           'catalogue', level=3, event=51)
+
             # Default astrometric catalog
             astref_catalog = 'UCAC-4'
 
@@ -2647,6 +2650,10 @@ class SolveProcess:
 
             if astref_catalog == 'UCAC4':
                 astref_catalog = 'UCAC-4'
+
+            self.log.write('Astrometric reference catalogue specified: {}'
+                           ''.format(astref_catalog),
+                           level=4, event=51)
 
             # List of astrometric catalogs recognized by SCAMP
             known_catalogs = ['USNO-A1', 'USNO-A2', 'USNO-B1', 
@@ -2660,15 +2667,18 @@ class SolveProcess:
                 self.log.write('Unknown astrometric reference catalogue ({}), '
                                'recursive solving not possible!'
                                ''.format(astref_catalog),
-                               level=2, event=50)
+                               level=2, event=51)
                 return
 
             if (astref_catalog == 'TYCHO-2') and self.use_tycho2_fits:
+                self.log.write('Building the SCAMP reference catalogue from '
+                               'the Tycho-2 data', level=4, event=51)
+
                 # Check if we have Tycho-2 data
                 if self.num_tyc == 0:
                     self.log.write('No Tycho-2 sources available, '
                                    'recursive solving not possible!', 
-                                   level=2, event=50)
+                                   level=2, event=51)
                     return
 
                 # Build custom SCAMP reference catalog from Tycho-2 data
@@ -2699,11 +2709,14 @@ class SolveProcess:
 
                 self.scampref.writeto(scampref_file)
             elif (astref_catalog == 'UCAC-4') and self.use_ucac4_db:
+                self.log.write('Building the SCAMP reference catalogue from '
+                               'the UCAC4 data', level=4, event=51)
+
                 # Check if we have UCAC4 data
                 if self.num_ucac == 0:
                     self.log.write('No UCAC4 sources available, '
                                    'recursive solving not possible!', 
-                                   level=2, event=50)
+                                   level=2, event=51)
                     return
 
                 # Create reference catalog for SCAMP
@@ -2736,6 +2749,8 @@ class SolveProcess:
                 self.scampref.writeto(scampref_file)
             else:
                 # Let SCAMP download a reference catalog
+                self.log.write('Letting SCAMP download the reference catalogue',
+                               level=4, event=51)
                 cmd = self.scamp_path
                 cmd += ' -c %s_scamp.conf %s_scamp.cat' % (self.basefn, 
                                                            self.basefn)
@@ -2746,7 +2761,7 @@ class SolveProcess:
                 cmd += ' -SOLVE_PHOTOM N'
                 cmd += ' -VERBOSE_TYPE LOG'
                 cmd += ' -CHECKPLOT_TYPE NONE'
-                self.log.write('Subprocess: {}'.format(cmd), level=4)
+                self.log.write('Subprocess: {}'.format(cmd), level=5, event=51)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2764,6 +2779,8 @@ class SolveProcess:
                                                            '_scampref.cat'))
 
         # Improve astrometry in sub-fields (recursively)
+        self.log.write('Begin recursive solving in sub-fields', 
+                       level=3, event=52)
         self.wcshead.set('XMIN', 0)
         self.wcshead.set('XMAX', self.imwidth)
         self.wcshead.set('YMIN', 0)
