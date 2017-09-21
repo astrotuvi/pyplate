@@ -4625,9 +4625,15 @@ class SolveProcess:
             if b == 0:
                 ind_bin = np.where((self.sources['annular_bin'] <= 9) &
                                    (self.sources['mag_auto'] < 90.))[0]
+                self.log.write('Applying photometric calibration to sources '
+                               'in annular bins 1-9', 
+                               level=3, event=74)
             else:
                 ind_bin = np.where((self.sources['annular_bin'] == b) &
                                    (self.sources['mag_auto'] < 90.))[0]
+                self.log.write('Applying photometric calibration to sources '
+                               'in annular bin {:d}'.format(b), 
+                               level=3, event=74)
 
             src_bin = self.sources[ind_bin]
 
@@ -4749,12 +4755,12 @@ class SolveProcess:
 
         """
 
-        self.log.write('Recursive improvement of photometry', level=3, event=74)
+        self.log.write('Recursive improvement of photometry', level=3, event=75)
 
         if self.phot_calibrated == False:
             self.log.write('Cannot improve photometric calibration due to '
                            'missing global calibration',
-                           level=2, event=74)
+                           level=2, event=75)
             return
 
         if max_recursion_depth is None:
@@ -5058,11 +5064,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric color term data to the database', 
-                       event=75)
+                       event=76)
 
         if self.phot_cterm == []:
             self.log.write('No photometric color term data to write to the database', 
-                           level=2, event=75)
+                           level=2, event=76)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -5091,11 +5097,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric color term result to the database', 
-                       event=76)
+                       event=77)
 
         if self.phot_color is None:
             self.log.write('No photometric color term result to write to the database', 
-                           level=2, event=76)
+                           level=2, event=77)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -5124,11 +5130,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric calibration to the database', 
-                       event=77)
+                       event=78)
 
         if self.phot_calib == []:
             self.log.write('No photometric calibration to write to the database', 
-                           level=2, event=77)
+                           level=2, event=78)
             return
 
         self.log.write('Open database connection for writing to the '
