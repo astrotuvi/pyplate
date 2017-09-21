@@ -9,6 +9,7 @@ import numpy as np
 import ConfigParser
 import warnings
 import xml.etree.ElementTree as ET
+from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
 from astropy.coordinates import Angle, EarthLocation, AltAz
@@ -869,7 +870,11 @@ class SolveProcess:
             self.log.process_id = self.process_id
             self.log.to_db(3, 'Setting up plate solve process', event=10)
 
-        self.log.write('Using PyPlate v{}'.format(__version__), 
+        self.log.write('Using PyPlate version {}'.format(__version__), 
+                       level=4, event=10)
+        self.log.write('Using Astropy version {}'.format(astropy_version), 
+                       level=4, event=10)
+        self.log.write('Using NumPy version {}'.format(np.__version__), 
                        level=4, event=10)
 
         # Check if FITS file exists
