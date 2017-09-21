@@ -2522,7 +2522,7 @@ class PlateHeader(fits.Header):
         'SCANRES2': '[dpi] scan resolution along axis 2',
         'PIXSIZE1': '[um] pixel size along axis 1',
         'PIXSIZE2': '[um] pixel size along axis 2',
-        'SCANSOFT': 'name of the scanning software',
+        'SCANSOFT': 'scanning software',
         'SCANHCUT': 'scan high-cut value',
         'SCANLCUT': 'scan low-cut value',
         'SCANGAM':  'scan gamma value',
