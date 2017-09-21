@@ -3882,11 +3882,11 @@ class SolveProcess:
 
         num_calstars = len(plate_mag)
         
-        self.log.write('Found {:d} calibration stars in total'
+        self.log.write('Found {:d} calibration stars on the plate'
                        ''.format(num_calstars), level=4, event=71)
 
         if num_calstars < 10:
-            self.log.write('Too few calibration stars!'
+            self.log.write('Too few calibration stars on the plate!'
                            ''.format(num_calstars), level=2, event=71)
             self.db_update_process(calibrated=0)
             return
@@ -3896,16 +3896,17 @@ class SolveProcess:
         #cat_vmag_u = cat_vmag[uind]
 
         # Evaluate color term in 3 iterations
-        self.log.write('Finding color term', level=3, event=72)
+        self.log.write('Determining color term using annular bins 1-3', 
+                       level=3, event=72)
         ind_bin = np.where(plate_bin <= 3)[0]
         num_calstars = len(ind_bin)
         
-        self.log.write('Finding color term: {:d} stars'
+        self.log.write('Determining color term: {:d} stars'
                        ''.format(num_calstars), 
                        double_newline=False, level=4, event=72)
 
         if num_calstars < 10:
-            self.log.write('Finding color term: too few stars!',
+            self.log.write('Determininging color term: too few stars!',
                            level=2, event=72)
             self.db_update_process(calibrated=0)
             return
@@ -3927,12 +3928,13 @@ class SolveProcess:
         ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 1.)[0]
         num_nofaint = len(ind_nofaint)
 
-        self.log.write('Finding color term: {:d} stars after discarding faint sources'
-                       ''.format(num_nofaint), 
+        self.log.write('Determining color term: {:d} stars after discarding '
+                       'faint sources'.format(num_nofaint), 
                        double_newline=False, level=4, event=72)
 
         if num_nofaint < 10:
-            self.log.write('Finding color term: too few stars after discarding faint sources!',
+            self.log.write('Determining color term: too few stars after '
+                           'discarding faint sources!',
                            level=2, event=72)
             self.db_update_process(calibrated=0)
             return
