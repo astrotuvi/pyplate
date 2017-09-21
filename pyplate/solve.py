@@ -2302,7 +2302,7 @@ class SolveProcess:
                 self.num_tyc = numtyc
 
                 self.log.write('Fetched {:d} entries from Tycho-2'
-                               ''.format(numtyc))
+                               ''.format(numtyc), level=4, event=41)
 
         query_combined = False
         query_healpix = False
@@ -2394,9 +2394,10 @@ class SolveProcess:
                                       ucac4_dec_col, self.min_dec, self.max_dec))
 
                 sql += ';'
-                self.log.write(sql)
+                self.log.write('Query: {}'.format(sql), level=5, event=43)
                 numrows = cur.execute(sql)
-                self.log.write('Fetched {:d} rows'.format(numrows))
+                self.log.write('Fetched {:d} rows from UCAC4'.format(numrows), 
+                               level=4, event=42)
 
                 res = np.fromiter(cur.fetchall(), dtype=','.join(ucac4_types))
 
@@ -2501,7 +2502,7 @@ class SolveProcess:
 
                         self.log.write('Added UCAC4 magnitudes to {:d} stars '
                                        'to fill gaps in the APASS data'
-                                       ''.format(nfill))
+                                       ''.format(nfill), level=4, event=43)
 
         # Query the APASS catalog
         if self.use_apass_db and not query_combined:
@@ -2554,9 +2555,10 @@ class SolveProcess:
                                       apass_dec_col, self.min_dec, self.max_dec))
 
                 sql += ';'
-                self.log.write(sql)
+                self.log.write('Query: {}'.format(sql), level=5, event=44)
                 num_apass = cur.execute(sql)
-                self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
+                self.log.write('Fetched {:d} rows from APASS'.format(num_apass),
+                               level=4, event=44)
                 res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
                 cur.close()
                 db.commit()
