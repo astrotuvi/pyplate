@@ -1537,6 +1537,11 @@ class SolveProcess:
                                        for k in _source_meta])
 
         self.sources['flag_usepsf'] = 0
+        self.sources['x_psf'] = np.nan
+        self.sources['y_psf'] = np.nan
+        self.sources['erra_psf'] = np.nan
+        self.sources['errb_psf'] = np.nan
+        self.sources['errtheta_psf'] = np.nan
         self.sources['raj2000'] = np.nan
         self.sources['dej2000'] = np.nan
         self.sources['raj2000_wcs'] = np.nan
@@ -1780,7 +1785,7 @@ class SolveProcess:
 
                     self.log.write('Replacing x,y values from PSF photometry '
                                    'for {:d} sources'.format(len(ind1)), 
-                                   level=3, event=27)
+                                   level=4, event=27)
                     self.sources['x_psf'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
                     self.sources['y_psf'][ind1] = \
