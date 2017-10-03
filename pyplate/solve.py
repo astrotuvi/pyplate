@@ -1437,6 +1437,7 @@ class SolveProcess:
                 #cnf += 'CHECKIMAGE_TYPE    NONE\n'
                 cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
                 cnf += 'VERBOSE_TYPE       LOG\n'
+                cnf += 'NTHREADS           2\n'
 
                 fn_psfex_conf = self.basefn + '_psfex.conf'
                 self.log.write('Writing PSFEx configuration file {}'
