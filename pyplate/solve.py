@@ -1210,7 +1210,7 @@ class SolveProcess:
                 self.db_update_process(threshold=threshold_adu)
             else:
                 threshold_adu = sky_sigma * threshold_sigma
-                self.log.write('Using threshold {:.1f} ({:f} ADU)'
+                self.log.write('Using threshold {:.1f} sigma ({:f} ADU)'
                                .format(threshold_sigma, threshold_adu),
                                level=4, event=22)
                 self.db_update_process(threshold=threshold_adu)
@@ -1312,8 +1312,9 @@ class SolveProcess:
                                        .format(psf_model_threshold), 
                                        level=4, event=23)
                     else:
-                        self.log.write('Using threshold {:.1f}'
-                                       .format(psf_model_sigma), 
+                        threshold_adu = sky_sigma * psf_model_sigma
+                        self.log.write('Using threshold {:.1f} sigma ({:f} ADU)'
+                                       .format(psf_model_sigma, threshold_adu), 
                                        level=4, event=23)
 
                     # Create parameter file
@@ -1472,8 +1473,9 @@ class SolveProcess:
                                    .format(psf_threshold_adu), 
                                    level=4, event=25)
                 else:
-                    self.log.write('Using threshold {:.1f}'
-                                   .format(psf_threshold_sigma), 
+                    threshold_adu = sky_sigma * psf_threshold_sigma
+                    self.log.write('Using threshold {:.1f} sigma ({:f} ADU)'
+                                   .format(psf_threshold_sigma, threshold_adu), 
                                    level=4, event=25)
 
                 fn_sex_param = self.basefn + '_sextractor.param'
@@ -1529,9 +1531,13 @@ class SolveProcess:
                 self.log.write('', timestamp=False, double_newline=False)
 
         # Read the SExtractor output catalog
+        self.log.write('Reading sources from the SExtractor output file', 
+                       level=3, event=26)
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
         self.num_sources = len(xycat[1].data)
         self.db_update_process(num_sources=self.num_sources)
+        self.log.write('Extracted {:d} sources'
+                       .format(self.num_sources), level=4, event=26)
 
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
@@ -1637,7 +1643,7 @@ class SolveProcess:
         self.sources['dist_edge'] = np.amin(distarr, 1)
         
         # Define 8 concentric annular bins + bin9 for edges
-        self.log.write('Flagging sources', level=3, event=26)
+        self.log.write('Flagging sources', level=3, event=27)
         sampling = 100
         imwidth_s = int(self.imwidth / sampling)
         imheight_s = int(self.imheight / sampling)
@@ -1678,7 +1684,7 @@ class SolveProcess:
             nbin = bbin.sum()
             self.log.write('Annular bin {:d} (radius {:8.2f} pixels): '
                            '{:6d} sources'.format(b, bin_dist[b], nbin), 
-                           double_newline=False, level=4, event=26)
+                           double_newline=False, level=4, event=27)
 
             if nbin > 0:
                 indbin = np.where(bbin)
@@ -1689,7 +1695,7 @@ class SolveProcess:
         nbin = bbin.sum()
         self.log.write('Annular bin 9 (radius {:8.2f} pixels): '
                        '{:6d} sources'.format(bin9_corner_dist, nbin), 
-                       level=4, event=26)
+                       level=4, event=27)
 
         if nbin > 0:
             indbin = np.where(bbin)
@@ -1731,23 +1737,23 @@ class SolveProcess:
         indclean = np.where(bclean)[0]
         self.sources['flag_clean'][indclean] = 1
         self.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
-                       double_newline=False, level=4, event=26)
+                       double_newline=False, level=4, event=27)
 
         indrim = np.where(borderbg >= 100)[0]
         self.sources['flag_rim'][indrim] = 1
         self.log.write('Flagged {:d} sources at the plate rim'
                        ''.format(len(indrim)), double_newline=False, 
-                       level=4, event=26)
+                       level=4, event=27)
 
         indnegrad = np.where(self.sources['flux_radius'] <= 0)[0]
         self.sources['flag_negradius'][indnegrad] = 1
         self.log.write('Flagged {:d} sources with negative FLUX_RADIUS'
-                       ''.format(len(indnegrad)), level=4, event=26)
+                       ''.format(len(indnegrad)), level=4, event=27)
 
         # For bright stars, update coordinates with PSF coordinates
         if use_psf and enough_psf_sources:
             self.log.write('Updating coordinates with PSF coordinates '
-                           'for bright sources', level=3, event=27)
+                           'for bright sources', level=3, event=28)
 
             fn_psfcat = os.path.join(self.scratch_dir, self.basefn + '.cat-psf')
 
@@ -1757,7 +1763,7 @@ class SolveProcess:
                 except IOError:
                     self.log.write('Could not read PSF coordinates, file {} '
                                    'is corrupt'.format(fn_psfcat), 
-                                   level=2, event=27)
+                                   level=2, event=28)
                     psfcat = None
 
                 if psfcat is not None and psfcat[1].header['NAXIS2'] > 0:
@@ -1787,7 +1793,7 @@ class SolveProcess:
                     num_psf_sources = len(ind1)
                     self.log.write('Replacing x,y values from PSF photometry '
                                    'for {:d} sources'.format(num_psf_sources),
-                                   level=4, event=27)
+                                   level=4, event=28)
                     self.sources['x_psf'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
                     self.sources['y_psf'][ind1] = \
@@ -1812,12 +1818,12 @@ class SolveProcess:
                     self.db_update_process(num_psf_sources=num_psf_sources)
                 elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
                     self.log.write('There are no sources with PSF coordinates!',
-                                   level=2, event=27)
+                                   level=2, event=28)
                     self.db_update_process(num_psf_sources=0)
             else:
                 self.log.write('Could not read PSF coordinates, '
                                'file {} does not exist!'.format(fn_psfcat), 
-                               level=2, event=27)
+                               level=2, event=28)
                 self.db_update_process(num_psf_sources=0)
 
         # Keep clean xy data for later use
@@ -5209,7 +5215,7 @@ class SolveProcess:
             write_csv = self.write_sources_csv
 
         if write_csv:
-            self.log.to_db(3, 'Writing sources to the database files', event=80)
+            self.log.to_db(3, 'Writing sources to database files', event=80)
         else:
             self.log.to_db(3, 'Writing sources to the database', event=80)
 
