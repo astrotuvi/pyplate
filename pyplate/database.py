@@ -638,6 +638,7 @@ _schema['process'] = OrderedDict([
     ('use_psf',          ('TINYINT(1)', None)),
     ('threshold',        ('FLOAT', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
+    ('num_psf_sources',  ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
     ('astrom_sub_total', ('INT UNSIGNED', None)),
     ('astrom_sub_eff',   ('INT UNSIGNED', None)),

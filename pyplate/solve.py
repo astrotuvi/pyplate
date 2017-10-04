@@ -1784,8 +1784,9 @@ class SolveProcess:
                     #                                     ypeakpsf,
                     #                                     tol=1.)
 
+                    num_psf_sources = len(ind1)
                     self.log.write('Replacing x,y values from PSF photometry '
-                                   'for {:d} sources'.format(len(ind1)), 
+                                   'for {:d} sources'.format(num_psf_sources),
                                    level=4, event=27)
                     self.sources['x_psf'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
@@ -1808,13 +1809,16 @@ class SolveProcess:
                     self.sources['errtheta_source'][ind1] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
                     self.sources['flag_usepsf'][ind1] = 1
+                    self.db_update_process(num_psf_sources=num_psf_sources)
                 elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
                     self.log.write('There are no sources with PSF coordinates!',
                                    level=2, event=27)
+                    self.db_update_process(num_psf_sources=0)
             else:
                 self.log.write('Could not read PSF coordinates, '
                                'file {} does not exist!'.format(fn_psfcat), 
                                level=2, event=27)
+                self.db_update_process(num_psf_sources=0)
 
         # Keep clean xy data for later use
         #self.xyclean = xycat[1].copy()
