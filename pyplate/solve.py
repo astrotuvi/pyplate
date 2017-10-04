@@ -4950,7 +4950,17 @@ class SolveProcess:
 
             kde = sm.nonparametric.KDEUnivariate(platemag_remain.astype(np.double))
             kde.fit()
-            normden = (kde.density / kde.density.max())**(1./3.)
+            kde_density = kde.density
+            kde_density_max = kde.density.max()
+
+            # Check for negative density values and replace them with zeros
+            bneg = kde_density < 0
+
+            if bneg.sum() > 0:
+                ind_neg = np.where(bneg)
+                kde_density[ind_neg] = 0.
+
+            normden = (kde_density / kde_density_max)**(1./3.)
             sden = InterpolatedUnivariateSpline(kde.support, normden, k=1)
             #weights = sden(platemag_remain) / kde.density.max()
 
