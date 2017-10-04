@@ -4236,8 +4236,11 @@ class SolveProcess:
         self.log.write('Photometric calibration using annular bins 1-8', 
                        level=3, event=73)
 
+        num_calib = 0  # counter for calibration stars
+
         # Loop over annular bins
         #for b in np.arange(10):
+        # Currently, use bin 0, which means all bins together
         for b in np.arange(1):
             if b == 0:
                 ind_bin = np.where(plate_bin < 9)[0]
@@ -4564,6 +4567,7 @@ class SolveProcess:
                 plate_mag_lim = kde.support[ind_dense[-1]]
                 ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
                 num_valid = len(ind_valid)
+                num_calib += num_valid
 
                 self.log.write('{}: {:d} calibration stars '
                                'brighter than limiting magnitude'
@@ -4781,10 +4785,13 @@ class SolveProcess:
             faintlim = None
             mag_range = None
 
-        self.phot_calibrated = True
-        self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
-                               mag_range=mag_range, num_calib=num_valid, 
-                               calibrated=1)
+        if num_calib > 0:
+            self.phot_calibrated = True
+            self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
+                                   mag_range=mag_range, num_calib=num_calib, 
+                                   calibrated=1)
+        else:
+            self.db_update_process(num_calib=0, calibrated=0)
 
         if self.write_phot_dir:
             fcaldata.close()
