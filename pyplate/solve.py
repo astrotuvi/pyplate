@@ -1182,7 +1182,7 @@ class SolveProcess:
         if root[1][4][15][11].attrib['name'] == 'Background_Mean':
             sky = float(root[1][4][15][19][0][0][8].text)
             sky_sigma = float(root[1][4][15][19][0][0][9].text)
-            self.log.write('Sky: {:f}, sigma: {:f}'.format(sky, sky_sigma), 
+            self.log.write('Sky: {:.3f}, sigma: {:.3f}'.format(sky, sky_sigma), 
                        level=4, event=21)
             self.db_update_process(sky=sky, sky_sigma=sky_sigma)
 
@@ -1210,7 +1210,7 @@ class SolveProcess:
                 self.db_update_process(threshold=threshold_adu)
             else:
                 threshold_adu = sky_sigma * threshold_sigma
-                self.log.write('Using threshold {:.1f} sigma ({:f} ADU)'
+                self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
                                .format(threshold_sigma, threshold_adu),
                                level=4, event=22)
                 self.db_update_process(threshold=threshold_adu)
@@ -1313,7 +1313,7 @@ class SolveProcess:
                                        level=4, event=23)
                     else:
                         threshold_adu = sky_sigma * psf_model_sigma
-                        self.log.write('Using threshold {:.1f} sigma ({:f} ADU)'
+                        self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
                                        .format(psf_model_sigma, threshold_adu), 
                                        level=4, event=23)
 
@@ -1474,7 +1474,7 @@ class SolveProcess:
                                    level=4, event=25)
                 else:
                     threshold_adu = sky_sigma * psf_threshold_sigma
-                    self.log.write('Using threshold {:.1f} sigma ({:f} ADU)'
+                    self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
                                    .format(psf_threshold_sigma, threshold_adu), 
                                    level=4, event=25)
 
