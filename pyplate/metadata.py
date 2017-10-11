@@ -228,7 +228,7 @@ def str_to_num(s):
 
 def _combine_orig_times(orig_time, ut_time, st_time):
     """
-    Combine original observation times into a string.
+    Combine original observation times into a list of strings.
 
     """
 
@@ -271,6 +271,31 @@ def _combine_orig_times(orig_time, ut_time, st_time):
         tms.append(', '.join(tm))
 
     return tms
+
+def _split_orig_times(combined_str):
+    """
+    Split string of combined original observation times.
+
+    """
+
+    if not isinstance(combined_str, str):
+        return None
+
+    orig_time = None
+    ut_time = None
+    st_time = None
+
+    tm = [s.strip() for s in combined_str.split(',')]
+
+    for tm_str in tm:
+        if tm_str[:2] == 'ST':
+            st_time = tm_str[3:].strip()
+        elif tm_str[:2] == 'UT':
+            ut_time = tm_str[3:].strip()
+        else:
+            orig_time = tm_str.strip()
+
+    return (orig_time, ut_time, st_time)
 
 
 class CSV_Dict(OrderedDict):
@@ -1846,6 +1871,15 @@ class PlateMeta(OrderedDict):
                         except AttributeError:
                             self[key] = val
 
+            # Combine start times into tms_orig keyword
+            self['tms_orig'] = _combine_orig_times(self['tms_orig'], 
+                                                   self['ut_start_orig'],
+                                                   self['st_start_orig'])
+
+            # Combine end times into tme_orig keyword
+            self['tme_orig'] = _combine_orig_times(self['tme_orig'], 
+                                                   self['ut_end_orig'],
+                                                   self['st_end_orig'])
 
     def parse_header(self, header):
         """
@@ -1995,17 +2029,13 @@ class PlateMeta(OrderedDict):
 
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
-
-                    if tms_orig[0:2] == 'ST':
-                        tms_orig = tms_orig[3:].strip()
+                    tms_orig, uts_orig, sts_orig = _split_orig_times(tms_orig)
                 else:
                     tms_orig = None
 
                 if self['tme_orig']:
                     tme_orig = self['tme_orig'][iexp]
-
-                    if tme_orig[0:2] == 'ST':
-                        tme_orig = tme_orig[3:].strip()
+                    tme_orig, ute_orig, ste_orig = _split_orig_times(tme_orig)
                 else:
                     tme_orig = None
 
