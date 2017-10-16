@@ -904,10 +904,14 @@ class ArchiveMeta:
             if self.fits_dir:
                 filename = os.path.join(self.fits_dir, filename)
 
+            # Read FITS image and header
             try:
-                header = fits.getheader(filename, ignore_missing_end=True)
+                fitsdata,header = fits.getdata(filename, header=True,
+                                               do_not_scale_image_data=True,
+                                               ignore_missing_end=True)
             except Exception:
                 print 'Error reading {}'.format(filename)
+                fitsdata = None
                 header = None
 
             if header:
@@ -916,6 +920,21 @@ class ArchiveMeta:
                 mtime_str = mtime.strftime('%Y-%m-%dT%H:%M:%S')
                 platemeta['fits_datetime'] = mtime_str
                 platemeta['fits_size'] = os.path.getsize(filename)
+
+            # Use image data to determine min and max values
+            if fitsdata is not None:
+                platemeta['fits_minval'] = fitsdata.min()
+                platemeta['fits_maxval'] = fitsdata.max()
+
+                try:
+                    platemeta['fits_minval'] = (platemeta['fits_bzero'] 
+                                                + platemeta['fits_bscale'] 
+                                                * platemeta['fits_minval'])
+                    platemeta['fits_maxval'] = (platemeta['fits_bzero'] 
+                                                + platemeta['fits_bscale'] 
+                                                * platemeta['fits_maxval'])
+                except TypeError:
+                    pass
 
         if filename:
             fn_base = os.path.basename(filename)
