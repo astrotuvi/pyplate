@@ -123,13 +123,6 @@ class PlateImagePipeline:
         pmeta = ameta.get_platemeta(filename=fn)
         pmeta.compute_values()
 
-        #platedb = PlateDB()
-        #platedb.assign_conf(self.conf)
-        #platedb.open_connection()
-        #platedb.write_plate(pmeta)
-        #platedb.write_scan(pmeta)
-        #platedb.close_connection()
-        
         h = PlateHeader()
         h.assign_conf(pmeta.conf)
         h.assign_platemeta(pmeta)
@@ -186,6 +179,19 @@ class PlateImagePipeline:
                                level=3, event=39)
                 h.output_to_fits(fn)
 
+                # Get metadata for the updated FITS file
+                pmeta['fits_datetime'] = h.fits_datetime
+                pmeta['fits_size'] = h.fits_size
+                pmeta['fits_checksum'] = h.fits_checksum
+                pmeta['fits_datasum'] = h.fits_datasum
+
+                # Updating scan metadata in the scan table
+                platedb = PlateDB()
+                platedb.assign_conf(self.conf)
+                platedb.open_connection()
+                platedb.update_scan(pmeta, filecols=True)
+                platedb.close_connection()
+        
             if self.get_reference_catalogs:
                 proc.get_reference_catalogs()
 

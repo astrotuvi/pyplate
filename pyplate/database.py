@@ -185,6 +185,8 @@ _schema['scan'] = OrderedDict([
     ('origin',           ('VARCHAR(80)', 'origin')),
     ('file_datetime',    ('DATETIME', 'fits_datetime')),
     ('file_size',        ('INT UNSIGNED', 'fits_size')),
+    ('fits_checksum',    ('CHAR(16)', 'fits_checksum')),
+    ('fits_datasum',     ('CHAR(10)', 'fits_datasum')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -1045,6 +1047,55 @@ class PlateDB:
         scan_id = self.cursor.lastrowid
 
         return scan_id
+
+    def update_scan(self, platemeta, filecols=False):
+        """
+        Update scan entry in the database.
+
+        Parameters
+        ----------
+        platemeta : PlateMeta
+            Plate metadata instance
+        filecols : bool
+            If True, only specific file-related columns are updated
+
+        """
+
+        if (isinstance(platemeta['scan_id'], int) and 
+            (platemeta['scan_id'] > 0)):
+            scan_id = platemeta['scan_id']
+        else:
+            scan_id,_ = self.get_scan_id(platemeta['filename'],
+                                         platemeta['archive_id'])
+
+            if scan_id is None:
+                print ('Cannot update scan metadata in the database '
+                       '(filename={}, archive_id={})'
+                       ''.format(platemeta['filename'],
+                                 platemeta['archive_id']))
+                return
+
+        col_list = []
+        val_tuple = ()
+
+        columns = [k for k,v in _schema['scan'].items() if v[1]]
+
+        # Update only specific columns
+        if filecols:
+            columns = ['file_datetime', 'file_size', 'fits_checksum', 
+                       'fits_datasum']
+
+        for c in columns:
+            c_str = '{}=%s'.format(c)
+            col_list.append(c_str)
+            platemeta_key = _schema['scan'][c][1]
+            val_tuple = val_tuple + (platemeta.get_value(platemeta_key), )
+
+        col_str = ','.join(col_list)
+        val_tuple = val_tuple + (scan_id, )
+
+        sql = 'UPDATE scan SET {} WHERE scan_id=%s'.format(col_str)
+        self.execute_query(sql, val_tuple)
 
     def write_preview(self, previewmeta):
         """

@@ -60,6 +60,8 @@ _keyword_meta = OrderedDict([
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
     ('fits_datetime', (str, False, None, None, None)),
     ('fits_size', (int, False, None, None, None)),
+    ('fits_checksum', (str, False, None, 'CHECKSUM', None)),
+    ('fits_datasum', (str, False, None, 'DATASUM', None)),
     ('date_orig', (str, True, [], 'DATEORIG', 'DATEORn')),
     ('date_orig_end', (str, True, [], None, None)),
     ('tms_orig', (str, True, [], 'TMS-ORIG', 'TMS-ORn')),
@@ -2458,6 +2460,10 @@ class PlateHeader(fits.Header):
         self.write_fits_dir = ''
         self.write_header_dir = ''
         self.create_checksum = False
+        self.fits_datetime = None
+        self.fits_size = None
+        self.fits_checksum = None
+        self.fits_datasum = None
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -3371,6 +3377,20 @@ class PlateHeader(fits.Header):
             
         fitsfile.close()
         del fitsfile
+
+        # Get size and timestamp of the updated FITS file
+        try:
+            mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_out))
+            mtime_str = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+            self.fits_datetime = mtime_str
+            self.fits_size = os.path.getsize(fn_out)
+
+            if checksum:
+                h = fits.getheader(fn_out)
+                self.fits_checksum = h['CHECKSUM']
+                self.fits_datasum = h['DATASUM']
+        except IOError:
+            pass
 
     def output_to_file(self, filename):
         """
