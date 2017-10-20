@@ -322,7 +322,7 @@ class ArchiveMeta:
         self.archive_name = None
         self.logbooks = None
         self.logbookmeta = OrderedDict()
-        self.conf = None
+        self.conf = ConfigParser.ConfigParser()
         self.maindata_dict = OrderedDict()
         self.notes_dict = OrderedDict()
         self.observer_dict = OrderedDict()
@@ -1039,6 +1039,7 @@ class LogbookMeta(OrderedDict):
             self[k] = copy.deepcopy(v[1])
 
         self['logbook_num'] = num
+        self.conf = ConfigParser.ConfigParser()
 
     def assign_conf(self, conf):
         """
@@ -1095,6 +1096,7 @@ class LogpageMeta(OrderedDict):
         for k,v in _logpage_meta.items():
             self[k] = copy.deepcopy(v[1])
 
+        self.conf = ConfigParser.ConfigParser()
         self.logpage_dir = ''
         self.cover_dir = ''
         self.logpage_exif_timezone = None
@@ -1253,6 +1255,7 @@ class PreviewMeta(OrderedDict):
         for k,v in _preview_meta.items():
             self[k] = copy.deepcopy(v[1])
 
+        self.conf = ConfigParser.ConfigParser()
         self.preview_dir = ''
         self.preview_exif_timezone = None
         self['filename'] = filename
@@ -1410,7 +1413,7 @@ class PlateMeta(OrderedDict):
         self['plate_id'] = plate_id
         self.exposures = None
 
-        self.conf = None
+        self.conf = ConfigParser.ConfigParser()
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
