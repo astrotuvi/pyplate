@@ -2445,6 +2445,9 @@ class PlateMeta(OrderedDict):
 
         self['date'] = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
 
+    # Create alias for compute_values
+    calculate = compute_values
+
 
 class PlateHeader(fits.Header):
     """
