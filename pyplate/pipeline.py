@@ -37,8 +37,10 @@ class PlateImagePipeline:
         self.solve_plate = False
         self.output_solution_db = False
         self.output_wcs_file = False
+        self.get_reference_catalogs = False
         self.solve_recursive = False
         self.calibrate_photometry = False
+        self.improve_photometry = False
         self.output_calibration_db = False
         self.output_sources_db = False
         self.output_sources_csv = False
@@ -63,8 +65,10 @@ class PlateImagePipeline:
         for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
                      'output_header_file', 'output_header_fits', 
                      'invert_image', 'extract_sources', 'solve_plate', 
-                     'output_solution_db', 'output_wcs_file', 
+                     'output_solution_db', 'output_wcs_file',
+                     'get_reference_catalogs',
                      'solve_recursive', 'calibrate_photometry', 
+                     'improve_photometry',
                      'output_calibration_db', 
                      'output_sources_db', 'output_sources_csv']:
             try:
@@ -119,13 +123,6 @@ class PlateImagePipeline:
         pmeta = ameta.get_platemeta(filename=fn)
         pmeta.compute_values()
 
-        #platedb = PlateDB()
-        #platedb.assign_conf(self.conf)
-        #platedb.open_connection()
-        #platedb.write_plate(pmeta)
-        #platedb.write_scan(pmeta)
-        #platedb.close_connection()
-        
         h = PlateHeader()
         h.assign_conf(pmeta.conf)
         h.assign_platemeta(pmeta)
@@ -142,6 +139,7 @@ class PlateImagePipeline:
         proc = SolveProcess(fn)
         proc.assign_conf(pmeta.conf)
         proc.assign_header(h)
+        proc.assign_metadata(pmeta)
 
         if self.plate_epoch is not None:
             proc.plate_epoch = self.plate_epoch
@@ -168,32 +166,53 @@ class PlateImagePipeline:
 
             if proc.solution is not None:
                 proc.log.write('Updating FITS header with the WCS', 
-                               level=3, event=47)
+                               level=3, event=37)
                 h.insert_wcs(proc.solution['wcs'])
 
             if self.output_header_file:
                 proc.log.write('Writing FITS header to a file', 
-                               level=3, event=48)
+                               level=3, event=38)
                 h.output_to_file(fn_header)
 
             if self.output_header_fits:
                 proc.log.write('Writing FITS header to the FITS file', 
-                               level=3, event=49)
+                               level=3, event=39)
                 h.output_to_fits(fn)
+
+                # Get metadata for the updated FITS file
+                pmeta['fits_datetime'] = h.fits_datetime
+                pmeta['fits_size'] = h.fits_size
+                pmeta['fits_checksum'] = h.fits_checksum
+                pmeta['fits_datasum'] = h.fits_datasum
+
+                # Updating scan metadata in the scan table
+                platedb = PlateDB()
+                platedb.assign_conf(self.conf)
+                platedb.open_connection()
+                platedb.update_scan(pmeta, filecols=True)
+                platedb.close_connection()
+        
+            if self.get_reference_catalogs:
+                proc.get_reference_catalogs()
 
             if self.solve_recursive:
                 proc.solve_recursive()
+
+                if self.output_solution_db:
+                    proc.output_astrom_sub_db()
 
             proc.process_source_coordinates()
 
             if self.calibrate_photometry:
                 proc.calibrate_photometry()
 
+            if self.improve_photometry:
+                proc.improve_photometry_recursive()
+
             if self.output_calibration_db:
                 proc.output_cterm_db()
                 proc.output_color_db()
                 proc.output_calibration_db()
-                proc.output_rmse_db()
 
             if self.output_sources_db:
                 proc.output_sources_db()
@@ -382,62 +401,4 @@ class PlateImagePipeline:
         # Empty the input queue
         while not self.input_queue.empty():
             self.input_queue.get()
-
-def run_pipeline(filenames, fn_conf):
-    """
-    Run metadata processing and plate solving pipeline.
-
-    Parameters
-    ----------
-    filenames : list
-        List of FITS files to be processed
-    conf_file : str
-        Full path to the configuration file
-        
-    """
-
-    ameta = ArchiveMeta()
-    ameta.assign_conf(fn_conf)
-    ameta.read_wfpdb()
-    ameta.read_csv()
-
-    for fn in filenames:
-        fn = os.path.basename(fn)
-        pmeta = ameta.get_platemeta(filename=fn)
-        pmeta['archive_id'] = 0
-        pmeta.compute_values()
-
-        platedb = PlateDB()
-        platedb.open_connection(host=pmeta.output_db_host,
-                                user=pmeta.output_db_user,
-                                dbname=pmeta.output_db_name,
-                                passwd=pmeta.output_db_passwd)
-        platedb.write_plate(pmeta)
-        platedb.write_scan(pmeta)
-        platedb.close_connection()
-        
-        h = PlateHeader()
-        h.assign_conf(pmeta.conf)
-        h.assign_platemeta(pmeta)
-        h.update_from_platemeta()
-        h.assign_values()
-        h.update_comments()
-        h.rewrite()
-        h.reorder()
-        fn_header = os.path.splitext(fn)[0] + '.hdr'
-        h.output_to_file(fn_header)
-
-        proc = SolveProcess(fn)
-        proc.assign_conf(pmeta.conf)
-        proc.assign_header(h)
-        proc.setup()
-        proc.invert_plate()
-        proc.extract_sources()
-        proc.solve_plate()
-        proc.output_wcs_header()
-        proc.solve_recursive()
-        proc.output_sources_db()
-        proc.output_sources_csv()
-        proc.finish()
-
 

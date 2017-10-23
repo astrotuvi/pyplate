@@ -17,7 +17,7 @@ from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
 from astropy.time import Time, TimeDelta
-from astropy.coordinates import Angle
+from astropy.coordinates import Angle, SkyCoord, EarthLocation
 from astropy import units
 from collections import OrderedDict
 from .database import PlateDB
@@ -45,6 +45,8 @@ except ImportError:
 
 _keyword_meta = OrderedDict([
     ('plate_id', (int, False, None, None, None)),
+    ('db_plate_id', (int, False, None, None, None)),
+    ('scan_id', (int, False, None, None, None)),
     ('archive_id', (int, False, None, None, None)),
     ('fits_simple', (bool, False, True, 'SIMPLE', None)),
     ('fits_bitpix', (int, False, None, 'BITPIX', None)),
@@ -56,6 +58,10 @@ _keyword_meta = OrderedDict([
     ('fits_minval', (float, False, None, 'MINVAL', None)),
     ('fits_maxval', (float, False, None, 'MAXVAL', None)),
     ('fits_extend', (bool, False, True, 'EXTEND', None)),
+    ('fits_datetime', (str, False, None, None, None)),
+    ('fits_size', (int, False, None, None, None)),
+    ('fits_checksum', (str, False, None, 'CHECKSUM', None)),
+    ('fits_datasum', (str, False, None, 'DATASUM', None)),
     ('date_orig', (str, True, [], 'DATEORIG', 'DATEORn')),
     ('date_orig_end', (str, True, [], None, None)),
     ('tms_orig', (str, True, [], 'TMS-ORIG', 'TMS-ORn')),
@@ -82,9 +88,11 @@ _keyword_meta = OrderedDict([
     ('site_longitude', (float, False, None, 'SITELONG', None)),
     ('site_elevation', (float, False, None, 'SITEELEV', None)),
     ('telescope', (str, False, None, 'TELESCOP', None)),
-    ('tel_aperture', (float, False, None, 'TELAPER', None)),
-    ('tel_foclength', (float, False, None, 'TELFOC', None)),
-    ('tel_scale', (float, False, None, 'TELSCALE', None)),
+    ('ota_name', (str, False, None, 'OTA-NAME', None)),
+    ('ota_diameter', (float, False, None, 'OTA-DIAM', None)),
+    ('ota_aperture', (float, False, None, 'OTA-APER', None)),
+    ('ota_foclen', (float, False, None, 'FOCLEN', None)),
+    ('ota_scale', (float, False, None, 'PLTSCALE', None)),
     ('instrument', (str, False, None, 'INSTRUME', None)),
     ('detector', (str, False, None, 'DETNAM', None)),
     ('method_code', (int, False, None, None, None)),
@@ -95,13 +103,13 @@ _keyword_meta = OrderedDict([
     ('dispersion', (float, False, None, 'DISPERS', None)),
     ('grating', (str, False, None, 'GRATING', None)),
     ('focus', (float, True, [], 'FOCUS', 'FOCUSn')),
-    ('temperature', (float, False, None, 'TEMPERAT', None)),
-    ('calmness', (str, False, None, 'CALMNESS', None)),
-    ('sharpness', (str, False, None, 'SHARPNES', None)),
-    ('transparency', (str, False, None, 'TRANSPAR', None)),
-    ('skycond', (str, False, None, 'SKYCOND', None)),
+    ('air_temperature', (float, False, None, 'TEMPERAT', None)),
+    ('sky_calmness', (str, False, None, 'CALMNESS', None)),
+    ('sky_sharpness', (str, False, None, 'SHARPNES', None)),
+    ('sky_transparency', (str, False, None, 'TRANSPAR', None)),
+    ('sky_conditions', (str, False, None, 'SKYCOND', None)),
     ('observer', (str, False, None, 'OBSERVER', None)),
-    ('obsnotes', (str, False, None, 'OBSNOTES', None)),
+    ('observer_notes', (str, False, None, 'OBSNOTES', None)),
     ('notes', (str, False, None, 'NOTES', None)),
     ('bibcode', (str, False, None, 'BIBCODE', None)),
     ('plate_num', (str, False, None, 'PLATENUM', None)),
@@ -113,7 +121,7 @@ _keyword_meta = OrderedDict([
     ('plate_size2', (float, False, None, 'PLATESZ2', None)),
     ('emulsion', (str, False, None, 'EMULSION', None)),
     ('spectral_band', (str, False, None, None, None)),
-    ('developing', (str, False, None, 'DEVELOP', None)),
+    ('development', (str, False, None, 'DEVELOP', None)),
     ('plate_quality', (str, False, None, 'PQUALITY', None)),
     ('plate_notes', (str, False, None, 'PLATNOTE', None)),
     ('date_obs', (str, True, [], 'DATE-OBS', 'DT-OBSn')),
@@ -153,13 +161,24 @@ _keyword_meta = OrderedDict([
     ('fn_cover', (str, False, None, 'FN-COVER', None)),
     ('fn_log', (str, True, [], None, 'FN-LOGn')),
     ('origin', (str, False, None, 'ORIGIN', None)),
+    ('licence', (str, False, None, 'LICENCE', None)),
     ('date', (str, False, None, 'DATE', None)),
     ('fits_acknowledgements', (str, False, '', None, None)),
     ('fits_history', (str, True, [], 'HISTORY', None))
     ])
 
+_logbook_meta = OrderedDict([
+    ('logbook_id', (int, None)),
+    ('archive_id', (int, None)),
+    ('logbook_num', (str, None)),
+    ('logbook_title', (str, None)),
+    ('logbook_type', (int, None)),
+    ('logbook_notes', (str, None))
+    ])
+
 _logpage_meta = OrderedDict([
     ('filename', (str, None)),
+    ('logpage_id', (int, None)),
     ('archive_id', (int, None)),
     ('logbook_num', (str, None)),
     ('logbook_id', (int, None)),
@@ -169,7 +188,26 @@ _logpage_meta = OrderedDict([
     ('file_format', (str, None)),
     ('image_width', (int, None)),
     ('image_height', (int, None)),
-    ('image_datetime', (str, None))
+    ('image_datetime', (str, None)),
+    ('file_datetime', (str, None)),
+    ('file_size', (int, None))
+    ])
+
+_preview_meta = OrderedDict([
+    ('filename', (str, None)),
+    ('preview_id', (int, None)),
+    ('plate_id', (int, None)),
+    ('db_plate_id', (int, None)),
+    ('archive_id', (int, None)),
+    ('plate_num', (str, None)),
+    ('wfpdb_id', (str, None)),
+    ('preview_type', (int, None)),
+    ('file_format', (str, None)),
+    ('image_width', (int, None)),
+    ('image_height', (int, None)),
+    ('image_datetime', (str, None)),
+    ('file_datetime', (str, None)),
+    ('file_size', (int, None))
     ])
 
 def str_to_num(s):
@@ -192,7 +230,7 @@ def str_to_num(s):
 
 def _combine_orig_times(orig_time, ut_time, st_time):
     """
-    Combine original observation times into a string.
+    Combine original observation times into a list of strings.
 
     """
 
@@ -236,6 +274,31 @@ def _combine_orig_times(orig_time, ut_time, st_time):
 
     return tms
 
+def _split_orig_times(combined_str):
+    """
+    Split string of combined original observation times.
+
+    """
+
+    if not isinstance(combined_str, str):
+        return None
+
+    orig_time = None
+    ut_time = None
+    st_time = None
+
+    tm = [s.strip() for s in combined_str.split(',')]
+
+    for tm_str in tm:
+        if tm_str[:2] == 'ST':
+            st_time = tm_str[3:].strip()
+        elif tm_str[:2] == 'UT':
+            ut_time = tm_str[3:].strip()
+        else:
+            orig_time = tm_str.strip()
+
+    return (orig_time, ut_time, st_time)
+
 
 class CSV_Dict(OrderedDict):
     """
@@ -259,13 +322,15 @@ class ArchiveMeta:
         self.archive_name = None
         self.logbooks = None
         self.logbookmeta = OrderedDict()
-        self.conf = None
+        self.conf = ConfigParser.ConfigParser()
         self.maindata_dict = OrderedDict()
         self.notes_dict = OrderedDict()
         self.observer_dict = OrderedDict()
         self.quality_dict = OrderedDict()
         self.plate_csv_dict = [CSV_Dict()]
         self.scan_csv_dict = CSV_Dict()
+        self.preview_csv_dict = CSV_Dict()
+        self.logbook_csv_dict = CSV_Dict()
         self.logpage_csv_dict = CSV_Dict()
         self.fits_dir = ''
 
@@ -285,7 +350,16 @@ class ArchiveMeta:
 
         self.conf = conf
 
-        for attr in ['archive_id', 'archive_name', 'logbooks']:
+        for attr in ['archive_id']:
+            try:
+                setattr(self, attr, conf.getint('Archive', attr))
+            except ValueError:
+                print ('Error: Value in configuration file must be '
+                       'integer ([{}], {})'.format('Archive', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['archive_name', 'logbooks']:
             try:
                 setattr(self, attr, conf.get('Archive', attr))
             except ConfigParser.Error:
@@ -310,12 +384,27 @@ class ArchiveMeta:
             for lb in self.logbooks:
                 lbmeta = {'archive_id': self.archive_id}
 
-                for k in ['logbook_num', 'logbook_title', 'logbook_type',
-                          'logbook_notes']:
+                # Assign integer values
+                for k in ['logbook_id', 'logbook_type']:
+                    try:
+                        lbmeta[k] = conf.getint(lb, k)
+                    except ValueError:
+                        print ('Error: Value in configuration file must be '
+                               'integer ([{}], {})'.format(lb, k))
+                        lbmeta[k] = None
+                    except ConfigParser.Error:
+                        lbmeta[k] = None
+
+                # Assign string values
+                for k in ['logbook_num', 'logbook_title', 'logbook_notes']:
                     try:
                         lbmeta[k] = conf.get(lb, k)
                     except ConfigParser.Error:
                         lbmeta[k] = None
+
+                # Require non-zero logbook_id
+                if lbmeta['logbook_id'] == 0:
+                    lbmeta['logbook_id'] = None
 
                 self.logbookmeta[lb] = lbmeta
 
@@ -406,7 +495,7 @@ class ArchiveMeta:
                 print 'Could not read the WFPDB observer file!'
 
     def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
-                 fn_logpage_csv=None):
+                 fn_preview_csv=None, fn_logbook_csv=None, fn_logpage_csv=None):
         """
         Read CSV files.
 
@@ -418,6 +507,10 @@ class ArchiveMeta:
             Name of the plate metadata CSV file.
         fn_scan_csv : str
             Name of the scan metadata CSV file.
+        fn_preview_csv : str
+            Name of the preview metadata CSV file.
+        fn_logbook_csv : str
+            Name of the logbook CSV file.
         fn_logpage_csv : str
             Name of the logpage CSV file.
 
@@ -442,6 +535,18 @@ class ArchiveMeta:
 
                 if fn_str:
                     fn_scan_csv = os.path.join(csv_dir, fn_str)
+
+            if self.conf.has_option('Files', 'preview_csv'):
+                fn_str = self.conf.get('Files', 'preview_csv')
+
+                if fn_str:
+                    fn_preview_csv = os.path.join(csv_dir, fn_str)
+
+            if self.conf.has_option('Files', 'logbook_csv'):
+                fn_str = self.conf.get('Files', 'logbook_csv')
+
+                if fn_str:
+                    fn_logbook_csv = os.path.join(csv_dir, fn_str)
 
             if self.conf.has_option('Files', 'logpage_csv'):
                 fn_str = self.conf.get('Files', 'logpage_csv')
@@ -496,6 +601,44 @@ class ArchiveMeta:
                                                for row in reader))
                 self.scan_csv_dict.filename = fn_base
 
+        if fn_preview_csv:
+            fn_base = os.path.basename(fn_preview_csv)
+            csv_delimiter = ','
+            csv_quotechar = '"'
+
+            if self.conf.has_section(fn_base):
+                if self.conf.has_option(fn_base, 'csv_delimiter'):
+                    csv_delimiter = self.conf.get(fn_base, 'csv_delimiter')
+
+                if self.conf.has_option(fn_base, 'csv_quotechar'):
+                    csv_quotechar = self.conf.get(fn_base, 'csv_quotechar')
+
+            with open(fn_preview_csv, 'rb') as f:
+                reader = csv.reader(f, delimiter=csv_delimiter,
+                                    quotechar=csv_quotechar)
+                self.preview_csv_dict = CSV_Dict(((row[0],row)
+                                                   for row in reader))
+                self.preview_csv_dict.filename = fn_base
+
+        if fn_logbook_csv:
+            fn_base = os.path.basename(fn_logbook_csv)
+            csv_delimiter = ','
+            csv_quotechar = '"'
+
+            if self.conf.has_section(fn_base):
+                if self.conf.has_option(fn_base, 'csv_delimiter'):
+                    csv_delimiter = self.conf.get(fn_base, 'csv_delimiter')
+
+                if self.conf.has_option(fn_base, 'csv_quotechar'):
+                    csv_quotechar = self.conf.get(fn_base, 'csv_quotechar')
+
+            with open(fn_logbook_csv, 'rb') as f:
+                reader = csv.reader(f, delimiter=csv_delimiter,
+                                    quotechar=csv_quotechar)
+                self.logbook_csv_dict = CSV_Dict(((row[0],row)
+                                                  for row in reader))
+                self.logbook_csv_dict.filename = fn_base
+
         if fn_logpage_csv:
             fn_base = os.path.basename(fn_logpage_csv)
             csv_delimiter = ','
@@ -526,7 +669,7 @@ class ArchiveMeta:
         elif self.plate_csv_dict[0]:
             return self.plate_csv_dict[0].keys()
         else:
-            return None
+            return []
 
     def get_scanlist(self):
         """
@@ -537,7 +680,31 @@ class ArchiveMeta:
         if self.scan_csv_dict:
             return self.scan_csv_dict.keys()
         else:
-            return None
+            return []
+
+    def get_previewlist(self):
+        """
+        Get list of preview files
+
+        """
+
+        if self.preview_csv_dict:
+            return self.preview_csv_dict.keys()
+        else:
+            return []
+
+    def get_logbooklist(self):
+        """
+        Get list of logbook identifications
+
+        """
+
+        if self.logbooks:
+            return self.logbooks
+        if self.logbook_csv_dict:
+            return self.logbook_csv_dict.keys()
+        else:
+            return []
 
     def get_logpagelist(self):
         """
@@ -548,8 +715,30 @@ class ArchiveMeta:
         if self.logpage_csv_dict:
             return self.logpage_csv_dict.keys()
         else:
-            return None
+            return []
 
+    def get_logbookmeta(self, num=None):
+        """
+        Get metadata for the specific logbook.
+
+        """
+
+        logbookmeta = LogbookMeta(num=num)
+        logbookmeta['archive_id'] = self.archive_id
+
+        if self.conf is not None:
+            logbookmeta.assign_conf(self.conf)
+
+        if num:
+            if self.logbooks and (num in self.logbooks):
+                logbookmeta = self.logbookmeta[num]
+            elif num in self.logbook_csv_dict:
+                logbookmeta.parse_csv(self.logbook_csv_dict[num], 
+                                      csv_filename=self.logbook_csv_dict
+                                      .filename)
+
+        return logbookmeta
+        
     def get_logpagemeta(self, filename=None):
         """
         Get metadata for the specific logpage.
@@ -571,6 +760,43 @@ class ArchiveMeta:
             logpagemeta.parse_exif()
 
         return logpagemeta
+        
+    def get_previewmeta(self, filename=None):
+        """
+        Get metadata for the specific preview image.
+
+        """
+
+        previewmeta = PreviewMeta(filename=filename)
+        previewmeta['archive_id'] = self.archive_id
+
+        if self.conf is not None:
+            previewmeta.assign_conf(self.conf)
+
+        if filename:
+            if filename in self.preview_csv_dict:
+                previewmeta.parse_csv(self.preview_csv_dict[filename], 
+                                      csv_filename=self.preview_csv_dict
+                                      .filename)
+
+            previewmeta.parse_exif()
+
+        if previewmeta['plate_id']:
+            platemeta = self.get_platemeta(previewmeta['plate_id'])
+
+            if not previewmeta['db_plate_id'] and platemeta['db_plate_id']:
+                previewmeta['db_plate_id'] = platemeta['db_plate_id']
+
+            if not previewmeta['plate_num'] and platemeta['plate_num']:
+                previewmeta['plate_num'] = platemeta['plate_num']
+
+            if not previewmeta['wfpdb_id'] and platemeta['wfpdb_id']:
+                previewmeta['wfpdb_id'] = platemeta['wfpdb_id']
+
+            if not previewmeta['archive_id'] and platemeta['archive_id']:
+                previewmeta['archive_id'] = platemeta['archive_id']
+
+        return previewmeta
         
     def output_plates_db(self):
         """
@@ -607,21 +833,38 @@ class ArchiveMeta:
 
             platedb.close_connection()
 
+    def output_previews_db(self):
+        """
+        Write previews to the database.
+
+        """
+
+        if self.preview_csv_dict:
+            platedb = PlateDB()
+            platedb.assign_conf(self.conf)
+            platedb.open_connection()
+
+            for filename in self.get_previewlist():
+                previewmeta = self.get_previewmeta(filename=filename)
+                platedb.write_preview(previewmeta)
+
+            platedb.close_connection()
+
     def output_logpages_db(self):
         """
         Write logpages to the database.
 
         """
 
-        #if self.logbooks or self.logpage_csv_dict:
         platedb = PlateDB()
         platedb.assign_conf(self.conf)
         platedb.open_connection()
 
-        for k,v in self.logbookmeta.items():
-            platedb.write_logbook(v)
+        for num in self.get_logbooklist():
+            logbookmeta = self.get_logbookmeta(num=num)
+            platedb.write_logbook(logbookmeta)
 
-        for filename in self.logpage_csv_dict.keys():
+        for filename in self.get_logpagelist():
             logpagemeta = self.get_logpagemeta(filename=filename)
             platedb.write_logpage(logpagemeta)
 
@@ -663,14 +906,37 @@ class ArchiveMeta:
             if self.fits_dir:
                 filename = os.path.join(self.fits_dir, filename)
 
+            # Read FITS image and header
             try:
-                header = fits.getheader(filename, ignore_missing_end=True)
+                fitsdata,header = fits.getdata(filename, header=True,
+                                               do_not_scale_image_data=True,
+                                               ignore_missing_end=True)
             except Exception:
                 print 'Error reading {}'.format(filename)
+                fitsdata = None
                 header = None
 
             if header:
                 platemeta.parse_header(header)
+                mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(filename))
+                mtime_str = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+                platemeta['fits_datetime'] = mtime_str
+                platemeta['fits_size'] = os.path.getsize(filename)
+
+            # Use image data to determine min and max values
+            if fitsdata is not None:
+                platemeta['fits_minval'] = fitsdata.min()
+                platemeta['fits_maxval'] = fitsdata.max()
+
+                try:
+                    platemeta['fits_minval'] = (platemeta['fits_bzero'] 
+                                                + platemeta['fits_bscale'] 
+                                                * platemeta['fits_minval'])
+                    platemeta['fits_maxval'] = (platemeta['fits_bzero'] 
+                                                + platemeta['fits_bscale'] 
+                                                * platemeta['fits_maxval'])
+                except TypeError:
+                    pass
 
         if filename:
             fn_base = os.path.basename(filename)
@@ -759,6 +1025,64 @@ class ArchiveMeta:
         return platemeta
 
 
+class LogbookMeta(OrderedDict):
+    """
+    Logbook metadata class.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        num = kwargs.pop('num', None)
+        super(LogbookMeta, self).__init__(*args, **kwargs)
+
+        for k,v in _logbook_meta.items():
+            self[k] = copy.deepcopy(v[1])
+
+        self['logbook_num'] = num
+        self.conf = ConfigParser.ConfigParser()
+
+    def assign_conf(self, conf):
+        """
+        Assign configuration.
+
+        """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
+        self.conf = conf
+
+    def parse_csv(self, val_list, csv_filename=None):
+        """
+        Extract data from a CSV row.
+
+        """
+
+        if self.conf.has_section(csv_filename):
+            for (key, pos) in self.conf.items(csv_filename):
+                if key in self:
+                    try:
+                        pos = int(pos)
+                    except ValueError:
+                        pos = 0
+
+                    if (pos > 0 and pos <= len(val_list)):
+                        if (_logbook_meta[key][0] is int or 
+                            _logbook_meta[key][0] is float):
+                            val = str_to_num(val_list[pos-1])
+                        else:
+                            val = val_list[pos-1]
+
+                        try:
+                            self[key].append(val)
+                        except AttributeError:
+                            self[key] = val
+
+            # Require non-zero logbook_id
+            if self['logbook_id'] == 0:
+                self['logbook_id'] = None
+
+
 class LogpageMeta(OrderedDict):
     """
     Logpage metadata class.
@@ -772,6 +1096,7 @@ class LogpageMeta(OrderedDict):
         for k,v in _logpage_meta.items():
             self[k] = copy.deepcopy(v[1])
 
+        self.conf = ConfigParser.ConfigParser()
         self.logpage_dir = ''
         self.cover_dir = ''
         self.logpage_exif_timezone = None
@@ -817,17 +1142,15 @@ class LogpageMeta(OrderedDict):
 
         if self.conf.has_section(csv_filename):
             for (key, pos) in self.conf.items(csv_filename):
-                if key in self:
+                if (key in self) and (key != 'filename'):
                     try:
                         pos = int(pos)
                     except ValueError:
                         pos = 0
 
                     if (pos > 0 and pos <= len(val_list)):
-                        if key == 'filename':
-                            pass
-                        elif (_logpage_meta[key][0] is int or 
-                              _logpage_meta[key][0] is float):
+                        if (_logpage_meta[key][0] is int or 
+                            _logpage_meta[key][0] is float):
                             val = str_to_num(val_list[pos-1])
                         else:
                             val = val_list[pos-1]
@@ -836,6 +1159,10 @@ class LogpageMeta(OrderedDict):
                             self[key].append(val)
                         except AttributeError:
                             self[key] = val
+
+            # Require non-zero logpage_id
+            if self['logpage_id'] == 0:
+                self['logpage_id'] = None
 
     def parse_exif(self):
         """
@@ -851,9 +1178,14 @@ class LogpageMeta(OrderedDict):
             if not os.path.exists(fn_path):
                 return
 
+        mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_path))
+        self['file_datetime'] = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+        self['file_size'] = os.path.getsize(fn_path)
+
         if gexiv_available:
             try:
-                exif = GExiv2.Metadata(fn_path)
+                exif = GExiv2.Metadata()
+                exif.open_path(fn_path)
             except Exception:
                 return
 
@@ -862,9 +1194,11 @@ class LogpageMeta(OrderedDict):
 
             try:
                 self['image_datetime'] = exif.get_date_time().isoformat()
-            except (KeyError, TypeError):
+            except (KeyError, TypeError, AttributeError):
                 pass
-        else:
+
+        if (not self['image_width'] or not self['image_height'] 
+            or not self['image_datetime']):
             try:
                 im_pil = Image.open(fn_path)
             except Exception:
@@ -908,6 +1242,161 @@ class LogpageMeta(OrderedDict):
                 self['image_datetime'] = exif_datetime
 
 
+class PreviewMeta(OrderedDict):
+    """
+    Preview image metadata class.
+
+    """
+
+    def __init__(self, *args, **kwargs):
+        filename = kwargs.pop('filename', None)
+        super(PreviewMeta, self).__init__(*args, **kwargs)
+
+        for k,v in _preview_meta.items():
+            self[k] = copy.deepcopy(v[1])
+
+        self.conf = ConfigParser.ConfigParser()
+        self.preview_dir = ''
+        self.preview_exif_timezone = None
+        self['filename'] = filename
+        fmt = filename.split('.')[-1].upper()
+
+        if fmt == 'JPG':
+            fmt = 'JPEG'
+        elif fmt == 'TIF':
+            fmt = 'TIFF'
+
+        if fmt in ['JPEG', 'PNG', 'TIFF']:
+            self['file_format'] = fmt
+        
+    def assign_conf(self, conf):
+        """
+        Assign configuration.
+
+        """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
+        self.conf = conf
+
+        for attr in ['preview_dir']:
+            try:
+                setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['preview_exif_timezone']:
+            try:
+                setattr(self, attr, conf.get('Image', attr))
+            except ConfigParser.Error:
+                pass
+
+    def parse_csv(self, val_list, csv_filename=None):
+        """
+        Extract data from a CSV row.
+
+        """
+
+        if self.conf.has_section(csv_filename):
+            for (key, pos) in self.conf.items(csv_filename):
+                if (key in self) and (key != 'filename'):
+                    try:
+                        pos = int(pos)
+                    except ValueError:
+                        pos = 0
+
+                    if (pos > 0 and pos <= len(val_list)):
+                        if (_preview_meta[key][0] is int or 
+                            _preview_meta[key][0] is float):
+                            val = str_to_num(val_list[pos-1])
+                        else:
+                            val = val_list[pos-1]
+
+                        try:
+                            self[key].append(val)
+                        except AttributeError:
+                            self[key] = val
+
+            # Require non-zero preview_id
+            if self['preview_id'] == 0:
+                self['preview_id'] = None
+
+    def parse_exif(self):
+        """
+        Extract data from image EXIF.
+
+        """
+
+        fn_path = os.path.join(self.preview_dir, self['filename'])
+
+        if not os.path.exists(fn_path):
+            return
+
+        mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_path))
+        self['file_datetime'] = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+        self['file_size'] = os.path.getsize(fn_path)
+
+        if gexiv_available:
+            try:
+                exif = GExiv2.Metadata()
+                exif.open_path(fn_path)
+            except Exception:
+                return
+
+            self['image_width'] = exif.get_pixel_width()
+            self['image_height'] = exif.get_pixel_height()
+
+            try:
+                self['image_datetime'] = exif.get_date_time().isoformat()
+            except (KeyError, TypeError, AttributeError):
+                pass
+
+        if (not self['image_width'] or not self['image_height'] 
+            or not self['image_datetime']):
+            try:
+                im_pil = Image.open(fn_path)
+            except Exception:
+                return
+            
+            self['image_width'], self['image_height'] = im_pil.size
+            self['file_format'] = im_pil.format
+            exif_datetime = None
+
+            if self['file_format'] == 'JPEG':
+                exif = im_pil._getexif()
+
+                try:
+                    exif_datetime = exif[306]
+                except (KeyError, TypeError):
+                    pass
+            elif self['file_format'] == 'TIFF':
+                try:
+                    exif_datetime = im_pil.tag[306]
+                except (KeyError, TypeError):
+                    pass
+
+            if exif_datetime:
+                if exif_datetime[4] == ':':
+                    exif_datetime = '{} {}'.format(exif_datetime[:10]
+                                                   .replace(':', '-'),
+                                                   exif_datetime[11:])
+
+                if pytz_available and self.preview_exif_timezone:
+                    dt_exif = dt.datetime.strptime(exif_datetime, 
+                                                   '%Y-%m-%d %H:%M:%S')
+
+                    try:
+                        dt_local = (pytz.timezone(self.preview_exif_timezone)
+                                    .localize(dt_exif))
+                        exif_datetime = (dt_local.astimezone(pytz.utc)
+                                         .strftime('%Y-%m-%dT%H:%M:%S'))
+                    except pytz.exceptions.UnknownTimeZoneError:
+                        pass
+
+                self['image_datetime'] = exif_datetime
+
+
 class PlateMeta(OrderedDict):
     """
     Plate metadata class.
@@ -924,7 +1413,7 @@ class PlateMeta(OrderedDict):
         self['plate_id'] = plate_id
         self.exposures = None
 
-        self.conf = None
+        self.conf = ConfigParser.ConfigParser()
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
@@ -1406,6 +1895,15 @@ class PlateMeta(OrderedDict):
                         except AttributeError:
                             self[key] = val
 
+            # Combine start times into tms_orig keyword
+            self['tms_orig'] = _combine_orig_times(self['tms_orig'], 
+                                                   self['ut_start_orig'],
+                                                   self['st_start_orig'])
+
+            # Combine end times into tme_orig keyword
+            self['tme_orig'] = _combine_orig_times(self['tme_orig'], 
+                                                   self['ut_end_orig'],
+                                                   self['st_end_orig'])
 
     def parse_header(self, header):
         """
@@ -1522,9 +2020,11 @@ class PlateMeta(OrderedDict):
             self['year'] = []
             self['date_avg'] = []
             self['jd_avg'] = []
+            self['hjd_avg'] = []
             self['year_avg'] = []
             self['date_weighted'] = []
             self['jd_weighted'] = []
+            self['hjd_weighted'] = []
             self['year_weighted'] = []
             self['date_end'] = []
             self['jd_end'] = []
@@ -1549,22 +2049,33 @@ class PlateMeta(OrderedDict):
 
                 date_start_orig = date_orig
                 date_end_orig = date_orig
+                tz_orig = self['tz_orig']
 
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
-
-                    if tms_orig[0:2] == 'ST':
-                        tms_orig = tms_orig[3:].strip()
+                    tms_orig, uts_orig, sts_orig = _split_orig_times(tms_orig)
                 else:
                     tms_orig = None
 
                 if self['tme_orig']:
                     tme_orig = self['tme_orig'][iexp]
-
-                    if tme_orig[0:2] == 'ST':
-                        tme_orig = tme_orig[3:].strip()
+                    tme_orig, ute_orig, ste_orig = _split_orig_times(tme_orig)
                 else:
                     tme_orig = None
+
+                # If UT times are given separately
+                if (not tms_orig and not tme_orig and 
+                        (self['ut_start_orig'] or self['ut_end_orig'])):
+                    tms_orig = self['ut_start_orig'][iexp]
+                    tme_orig = self['ut_end_orig'][iexp]
+                    tz_orig = 'UT'
+
+                # If ST times are given separately
+                if (not tms_orig and not tme_orig and 
+                        (self['st_start_orig'] or self['st_end_orig'])):
+                    tms_orig = self['st_start_orig'][iexp]
+                    tme_orig = self['st_end_orig'][iexp]
+                    tz_orig = 'ST'
 
                 if tms_orig and '|' in tms_orig:
                     tms_orig = [x.strip() for x in tms_orig.split('|')]
@@ -1677,7 +2188,7 @@ class PlateMeta(OrderedDict):
                                     tms_orig = Time(t_tms, 
                                                     precision=0).iso.split()[-1]
 
-                    if ((self['tz_orig'] == 'ST') and (tms_orig or tme_orig) and 
+                    if ((tz_orig == 'ST') and (tms_orig or tme_orig) and 
                         self['site_latitude'] and self['site_longitude']):
                         # Convert sidereal time to UT using pyEphem's next_transit
                         # Initialize location and date
@@ -1705,19 +2216,18 @@ class PlateMeta(OrderedDict):
                             st.compute()
                             ut_end_isot = '%04d-%02d-%02dT%02d:%02d:%02d' % loc.next_transit(st).tuple()
 
-                    elif (self['tz_orig'] == 'UT' or 
-                          (pytz_available and 
-                           self['tz_orig'] in pytz.all_timezones)):
+                    elif (tz_orig == 'UT' or 
+                          (pytz_available and tz_orig in pytz.all_timezones)):
                         # Handle UT times and local times with specified 
                         # pytz-compatible timezones
                         ut_start_orig = None
                         ut_end_orig = None
 
                         if self['ut_start_orig'] or tms_orig:
-                            if self['ut_start_orig']:
+                            if self['ut_start_orig'] and not tms_orig:
                                 ut_start_orig = self['ut_start_orig'][iexp]
                             else:
-                                if self['tz_orig'] == 'UT':
+                                if tz_orig == 'UT':
                                     ut_start_orig = tms_orig
                                 else:
                                     str_start = '{} {}'.format(date_start_orig,
@@ -1725,7 +2235,7 @@ class PlateMeta(OrderedDict):
                                     dt_start = (Time(str_start, scale='tai', 
                                                      format='iso')
                                                 .datetime)
-                                    dt_local = (pytz.timezone(self['tz_orig'])
+                                    dt_local = (pytz.timezone(tz_orig)
                                                 .localize(dt_start))
                                     date_start_orig = (dt_local.astimezone(pytz.utc)
                                                        .strftime('%Y-%m-%d'))
@@ -1744,10 +2254,10 @@ class PlateMeta(OrderedDict):
                                                      scale='ut1', precision=0).isot
 
                         if self['ut_end_orig'] or tme_orig:
-                            if self['ut_end_orig']:
+                            if self['ut_end_orig'] and not tme_orig:
                                 ut_end_orig = self['ut_end_orig'][iexp]
                             else:
-                                if self['tz_orig'] == 'UT':
+                                if tz_orig == 'UT':
                                     ut_end_orig = tme_orig
                                 else:
                                     str_end = '{} {}'.format(date_end_orig,
@@ -1755,7 +2265,7 @@ class PlateMeta(OrderedDict):
                                     dt_end = (Time(str_end, scale='tai', 
                                                    format='iso')
                                               .datetime)
-                                    dt_local = (pytz.timezone(self['tz_orig'])
+                                    dt_local = (pytz.timezone(tz_orig)
                                                 .localize(dt_end))
                                     date_end_orig = (dt_local.astimezone(pytz.utc)
                                                      .strftime('%Y-%m-%d'))
@@ -1782,7 +2292,7 @@ class PlateMeta(OrderedDict):
                                 ut_end_isot = Time(ut_end_isot, format='isot',
                                                    scale='ut1', precision=0).isot
 
-                    if not tms_orig:
+                    if not tms_orig and not self['ut_start_orig']:
                         ut_start_isot = Time(date_orig, format='iso', scale='ut1', 
                                              out_subfmt='date').iso
 
@@ -1790,11 +2300,11 @@ class PlateMeta(OrderedDict):
                         self['date_obs'].append(ut_start_isot)
                         time_start = Time(ut_start_isot, format='isot', scale='ut1')
 
-                        if tms_orig:
+                        if self['ut_start_orig'] or tms_orig:
                             self['jd'].append(float('%.5f' % time_start.jd))
                             self['year'].append(float('%.8f' % time_start.jyear))
                         else:
-                            self['jd'].append(float('%.0f' % time_start.jd) + 1.)
+                            self['jd'].append(float('%.0f' % time_start.jd))
                             self['year'].append(float('%.3f' % time_start.jyear))
                     else:
                         self['date_obs'].append(None)
@@ -1805,7 +2315,7 @@ class PlateMeta(OrderedDict):
                         self['date_end'].append(ut_end_isot)
                         time_end = Time(ut_end_isot, format='isot', scale='ut1')
 
-                        if tme_orig:
+                        if self['ut_end_orig'] or tme_orig:
                             self['jd_end'].append(float('{:.5f}'
                                                         .format(time_end.jd)))
                             self['year_end'].append(float('{:.8f}'
@@ -1903,7 +2413,43 @@ class PlateMeta(OrderedDict):
                 self['ra_deg'].append(ra_deg)
                 self['dec_deg'].append(dec_deg)
 
+                # Calculate heliocentric correction for the plate center
+                if (self['site_latitude'] and self['site_longitude']):
+                    lon = self['site_longitude']
+                    lat = self['site_latitude']
+                    elev = 0.
+
+                    if self['site_elevation']:
+                        elev = self['site_elevation']
+
+                    loc = EarthLocation.from_geodetic(lon, lat, elev)
+                    coord = SkyCoord(ra_deg, dec_deg, unit='deg')
+
+                    if self['jd_avg'][iexp]:
+                        tavg = Time(self['jd_avg'][iexp], format='jd', 
+                                    scale='ut1')
+                        tavg_ltt = tavg.light_travel_time(coord, 
+                                                          'heliocentric',
+                                                          location=loc)
+                        hjd_avg = float('{:.5f}'.format((tavg + tavg_ltt).jd))
+                        self['hjd_avg'].append(hjd_avg)
+                    else:
+                        self['hjd_avg'].append(None)
+
+                    if self['jd_weighted'][iexp]:
+                        tw = Time(self['jd_weighted'][iexp], format='jd', 
+                                  scale='ut1')
+                        tw_ltt = tw.light_travel_time(coord, 'heliocentric',
+                                                      location=loc)
+                        hjd_weighted = float('{:.5f}'.format((tw + tw_ltt).jd))
+                        self['hjd_weighted'].append(hjd_weighted)
+                    else:
+                        self['hjd_weighted'].append(None)
+
         self['date'] = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+
+    # Create alias for compute_values
+    calculate = compute_values
 
 
 class PlateHeader(fits.Header):
@@ -1919,6 +2465,11 @@ class PlateHeader(fits.Header):
         self.fits_dir = ''
         self.write_fits_dir = ''
         self.write_header_dir = ''
+        self.create_checksum = False
+        self.fits_datetime = None
+        self.fits_size = None
+        self.fits_checksum = None
+        self.fits_datasum = None
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -1961,9 +2512,11 @@ class PlateHeader(fits.Header):
         'SITELAT':  '[deg] latitude of the observatory',
         'SITEELEV': '[m] elevation of the observatory',
         'TELESCOP': 'telescope name',
-        'TELAPER':  '[m] clear aperture of the telescope',
-        'TELFOC':   '[m] focal length of the telescope',
-        'TELSCALE': '[arcsec/mm] plate scale of the telescope',
+        'OTA-NAME': 'optical tube assembly (OTA)',
+        'OTA-DIAM': '[m] diameter of the OTA',
+        'OTA-APER': '[m] clear aperture of the OTA',
+        'FOCLEN':   '[m] focal length of the OTA',
+        'PLTSCALE': '[arcsec/mm] plate scale of the OTA',
         'INSTRUME': 'instrument',
         'DETNAM':   'detector',
         'METHOD':   'method of observation',
@@ -1993,7 +2546,7 @@ class PlateHeader(fits.Header):
         'FOV1':     '[deg] field of view along axis 1',
         'FOV2':     '[deg] field of view along axis 2',
         'EMULSION': 'photographic emulsion type',
-        'DEVELOP':  'plate developing details',
+        'DEVELOP':  'plate development details',
         'PQUALITY': 'quality of plate',
         'PLATNOTE': 'plate notes',
         #'DATE-OBS': 'UT date of the start of the observation',
@@ -2030,7 +2583,7 @@ class PlateHeader(fits.Header):
         'SCANRES2': '[dpi] scan resolution along axis 2',
         'PIXSIZE1': '[um] pixel size along axis 1',
         'PIXSIZE2': '[um] pixel size along axis 2',
-        'SCANSOFT': 'name of the scanning software',
+        'SCANSOFT': 'scanning software',
         'SCANHCUT': 'scan high-cut value',
         'SCANLCUT': 'scan low-cut value',
         'SCANGAM':  'scan gamma value',
@@ -2046,6 +2599,7 @@ class PlateHeader(fits.Header):
         'FN-COVER': 'filename of the plate cover image',
         #'FILENOTE': 'filename of the observer notes image',
         'FN-LOGn':  'filename of logbook image {}',
+        #'LICENCE':  'licence of data files',
         'DATE':     'last change of this file',
         'WCSAXES':  'number of axes in the WCS description',
         'RADESYS':  'name of the reference frame',
@@ -2103,9 +2657,11 @@ class PlateHeader(fits.Header):
         'SITELAT',
         'SITEELEV',
         'TELESCOP',
-        'TELAPER',
-        'TELFOC',
-        'TELSCALE',
+        'OTA-NAME',
+        'OTA-DIAM',
+        'OTA-APER',
+        'FOCLEN',
+        'PLTSCALE',
         'INSTRUME',
         'DETNAM',
         'METHOD',
@@ -2193,9 +2749,14 @@ class PlateHeader(fits.Header):
         'ORIGIN',
         'DATE',
         'sep:WCS',
+        'sep:Licence',
+        'LICENCE',
         'sep:Acknowledgements',
         'sep:History',
         'HISTORY',
+        'sep:Checksums',
+        'CHECKSUM',
+        'DATASUM',
         'sep:']
 
     def assign_conf(self, conf):
@@ -2212,6 +2773,12 @@ class PlateHeader(fits.Header):
         for attr in ['fits_dir', 'write_fits_dir', 'write_header_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
+            except ConfigParser.Error:
+                pass
+
+        for attr in ['create_checksum']:
+            try:
+                setattr(self, attr, conf.getboolean('Files', attr))
             except ConfigParser.Error:
                 pass
 
@@ -2358,6 +2925,36 @@ class PlateHeader(fits.Header):
                                               platemeta[k])
                 elif v[3]:
                     self._update_keyword(v[3], v[0], platemeta[k])
+                elif k == 'fits_acknowledgements':
+                    # Get acknowledgements from plate metadata
+                    ack = platemeta[k]
+                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) 
+                                       for ackpara in ack.split('\n\n')])
+                    ack_sep = ' Acknowledgements'.rjust(72, '-')
+
+                    # If acknowledgements section exists, remove it first
+                    if ack_sep in self.values():
+                        ack_ind = self.values().index(ack_sep) + 1
+
+                        for i,c in enumerate(self.cards[ack_ind:]):
+                            if c[0] == 'COMMENT':
+                                del self[ack_ind]
+                            else:
+                                break
+
+                        for ackline in ack.split('\n'):
+                            self.insert(ack_ind, ('COMMENT', ackline))
+                            ack_ind += 1
+                    else:
+                        # Start section with a separator/title line
+                        self.append(('', ack_sep), end=True)
+
+                        # Write acknowledgements with COMMENT keywords
+                        for ackline in ack.split('\n'):
+                            self.append(('COMMENT', ackline), end=True)
+
+                        # End section with a separator line
+                        self.append(('', '-' * 72), end=True)
 
         self.add_history('Header updated with PyPlate v{} at {}'
                          .format(__version__, dt.datetime.utcnow()
@@ -2651,15 +3248,20 @@ class PlateHeader(fits.Header):
                         else:
                             break
 
-                # Include acknowledgements
-                if (key.strip().endswith('Acknowledgements') and 
-                    self.platemeta['fits_acknowledgements']):
-                    ack = self.platemeta['fits_acknowledgements']
-                    ack = '\n\n'.join([textwrap.fill(ackpara, 72) 
-                                       for ackpara in ack.split('\n\n')])
+                # Copy acknowledgements
+                ack_sep = ' Acknowledgements'.rjust(72, '-')
 
-                    for ackline in ack.split('\n'):
-                        self.append(('COMMENT', ackline), end=True)
+                if (key.strip().endswith('Acknowledgements') and
+                        ack_sep in h.values()):
+                        #self.platemeta['fits_acknowledgements']):
+                    ack_ind = h.values().index(ack_sep) + 1
+
+                    for i,c in enumerate(h.cards[ack_ind:]):
+                        if c[0] == 'COMMENT':
+                            self.append(c, end=True)
+                            del h[ack_ind]
+                        else:
+                            break
             elif 'n' in key:
                 for n in np.arange(99)+1:
                     keystr = key.replace('n', str(n))
@@ -2741,11 +3343,14 @@ class PlateHeader(fits.Header):
             self.set('DATE', 
                      dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
 
-    def output_to_fits(self, filename):
+    def output_to_fits(self, filename, checksum=None):
         """
         Output header to FITS file.
 
         """
+
+        if checksum is None:
+            checksum = self.create_checksum
 
         fn_fits = os.path.join(self.fits_dir, filename)
         fn_out = os.path.join(self.write_fits_dir, filename)
@@ -2772,12 +3377,26 @@ class PlateHeader(fits.Header):
                            .format(self.write_fits_dir))
         
             try:
-                fitsfile.writeto(fn_out)
+                fitsfile.writeto(fn_out, checksum=checksum)
             except IOError:
                 print 'Could not write to {}'.format(fn_out)
             
         fitsfile.close()
         del fitsfile
+
+        # Get size and timestamp of the updated FITS file
+        try:
+            mtime = dt.datetime.utcfromtimestamp(os.path.getmtime(fn_out))
+            mtime_str = mtime.strftime('%Y-%m-%dT%H:%M:%S')
+            self.fits_datetime = mtime_str
+            self.fits_size = os.path.getsize(fn_out)
+
+            if checksum:
+                h = fits.getheader(fn_out)
+                self.fits_checksum = h['CHECKSUM']
+                self.fits_datasum = h['DATASUM']
+        except IOError:
+            pass
 
     def output_to_file(self, filename):
         """

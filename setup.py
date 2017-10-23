@@ -10,16 +10,23 @@ setup(
     description = 'A Python package for processing astronomical photographic plates',
     classifiers = ['Programming Language :: Python',
                    'Programming Language :: Python :: 2.7',
-                   'Development Status :: 4 - Beta',
+                   'Development Status :: 5 - Production/Stable',
                    'Intended Audience :: Science/Research',
                    'License :: OSI Approved :: Apache Software License',
                    'Topic :: Scientific/Engineering :: Astronomy'
                   ],
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
-                        'astropy>=0.2.3',
+                        'astropy>=1.0',
+                        'scipy',
+                        'statsmodels',
                         'ephem',
-                        'pytimeparse'
-                       ]
+                        'pytimeparse',
+                        'pytz',
+                        'healpy',
+                        'esutil',
+                        'Pillow'
+                       ],
+    extras_require = {'mysql': ['MySQL-python']}
 )
 

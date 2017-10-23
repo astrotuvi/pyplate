@@ -2,6 +2,8 @@ import numpy as np
 import time
 import ConfigParser
 import socket
+import os
+import csv
 from collections import OrderedDict
 from .conf import read_conf
 from ._version import __version__
@@ -10,6 +12,21 @@ try:
     import MySQLdb
 except ImportError:
     pass
+
+
+# Special class for handling None (NULL) values when writing data to
+# CSV files for later ingestion into the database
+# http://stackoverflow.com/questions/11379300/csv-reader-behavior-with-none-and-empty-string
+class csvWriter(object):
+    def __init__(self, csvfile, *args, **kwrags):
+        self.writer = csv.writer(csvfile, *args, **kwrags)
+
+    def writerow(self, row):
+        self.writer.writerow(['\N' if val is None else val for val in row])
+
+    def writerows(self, rows):
+        map(self.writerow, rows)
+
 
 _schema = OrderedDict()
 
@@ -34,39 +51,37 @@ _schema['plate'] = OrderedDict([
     ('plate_size2',      ('FLOAT', 'plate_size2')),
     ('emulsion',         ('VARCHAR(80)', 'emulsion')),
     ('filter',           ('VARCHAR(80)', 'filter')),
-    ('spectral_band',    ('VARCHAR(80)', 'spectral_band')),
-    ('develop',          ('VARCHAR(80)', 'developing')),
+    ('development',      ('VARCHAR(80)', 'development')),
     ('plate_quality',    ('VARCHAR(80)', 'plate_quality')),
     ('plate_notes',      ('VARCHAR(255)', 'plate_notes')),
     ('date_orig',        ('DATE', 'date_orig')),
     ('numexp',           ('TINYINT UNSIGNED', 'numexp')),
     ('observatory',      ('VARCHAR(80)', 'observatory')),
-    ('sitename',         ('VARCHAR(80)', 'site_name')),
-    ('longitude_deg',    ('DOUBLE', 'site_longitude')),
-    ('latitude_deg',     ('DOUBLE', 'site_latitude')),
-    ('elevation',        ('FLOAT', 'site_elevation')),
+    ('site_name',        ('VARCHAR(80)', 'site_name')),
+    ('site_longitude',   ('DOUBLE', 'site_longitude')),
+    ('site_latitude',    ('DOUBLE', 'site_latitude')),
+    ('site_elevation',   ('FLOAT', 'site_elevation')),
     ('telescope',        ('VARCHAR(80)', 'telescope')),
-    ('tel_aper',         ('FLOAT', 'tel_aperture')),
-    ('tel_foc',          ('FLOAT', 'tel_foclength')),
-    ('tel_scale',        ('FLOAT', 'tel_scale')),
+    ('ota_name',         ('VARCHAR(80)', 'ota_name')),
+    ('ota_diameter',     ('FLOAT', 'ota_diameter')),
+    ('ota_aperture',     ('FLOAT', 'ota_aperture')),
+    ('ota_foclen',       ('FLOAT', 'ota_foclen')),
+    ('ota_scale',        ('FLOAT', 'ota_scale')),
     ('instrument',       ('VARCHAR(80)', 'instrument')),
     ('method',           ('TINYINT UNSIGNED', 'method_code')),
     ('prism',            ('VARCHAR(80)', 'prism')),
     ('prism_angle',      ('VARCHAR(10)', 'prism_angle')),
     ('dispersion',       ('FLOAT', 'dispersion')),
     ('grating',          ('VARCHAR(80)', 'grating')),
-    ('air_temp',         ('FLOAT', 'temperature')),
-    ('calmness',         ('VARCHAR(10)', 'calmness')),
-    ('sharpness',        ('VARCHAR(10)', 'sharpness')),
-    ('transparency',     ('VARCHAR(10)', 'transparency')),
-    ('sky_conditions',   ('VARCHAR(80)', 'skycond')),
+    ('air_temperature',  ('FLOAT', 'air_temperature')),
+    ('sky_calmness',     ('VARCHAR(10)', 'sky_calmness')),
+    ('sky_sharpness',    ('VARCHAR(10)', 'sky_sharpness')),
+    ('sky_transparency', ('VARCHAR(10)', 'sky_transparency')),
+    ('sky_conditions',   ('VARCHAR(80)', 'sky_conditions')),
     ('observer',         ('VARCHAR(80)', 'observer')),
-    ('obs_notes',        ('VARCHAR(255)', 'obsnotes')),
+    ('observer_notes',   ('VARCHAR(255)', 'observer_notes')),
     ('notes',            ('VARCHAR(255)', 'notes')),
     ('bibcode',          ('VARCHAR(80)', 'bibcode')),
-    ('filename_preview', ('VARCHAR(80)', 'fn_pre')),
-    ('filename_thumbnail', ('VARCHAR(80)', None)),
-    ('filename_cover',   ('VARCHAR(80)', 'fn_cover')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -77,7 +92,7 @@ _schema['plate'] = OrderedDict([
 
 _schema['exposure'] = OrderedDict([
     ('exposure_id',      ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', None)),
-    ('plate_id',         ('INT UNSIGNED NOT NULL', 'plate_id')),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', 'db_plate_id')),
     ('archive_id',       ('INT UNSIGNED NOT NULL', 'archive_id')),
     ('exposure_num',     ('TINYINT UNSIGNED NOT NULL', None)),
     ('object_name',      ('VARCHAR(80)', 'object_name')),
@@ -106,8 +121,8 @@ _schema['exposure'] = OrderedDict([
     ('jd_mid',           ('DOUBLE', 'jd_avg')),
     ('jd_weighted',      ('DOUBLE', 'jd_weighted')),
     ('jd_end',           ('DOUBLE', 'jd_end')),
-    ('hjd_mid',          ('DOUBLE', None)),
-    ('hjd_weighted',     ('DOUBLE', None)),
+    ('hjd_mid',          ('DOUBLE', 'hjd_avg')),
+    ('hjd_weighted',     ('DOUBLE', 'hjd_weighted')),
     ('exptime',          ('FLOAT', 'exptime')),
     ('num_sub',          ('TINYINT UNSIGNED', 'numsub')),
     ('method',           ('TINYINT UNSIGNED', None)),
@@ -168,6 +183,10 @@ _schema['scan'] = OrderedDict([
     ('scan_author',      ('VARCHAR(80)', 'scan_author')),
     ('scan_notes',       ('VARCHAR(255)', 'scan_notes')),
     ('origin',           ('VARCHAR(80)', 'origin')),
+    ('file_datetime',    ('DATETIME', 'fits_datetime')),
+    ('file_size',        ('INT UNSIGNED', 'fits_size')),
+    ('fits_checksum',    ('CHAR(16)', 'fits_checksum')),
+    ('fits_datasum',     ('CHAR(10)', 'fits_datasum')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -175,9 +194,28 @@ _schema['scan'] = OrderedDict([
     ('INDEX archive_ind', ('(archive_id)', None))
     ])
 
+_schema['preview'] = OrderedDict([
+    ('preview_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY',
+                          False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', True)),
+    ('preview_type',     ('TINYINT', True)),
+    ('filename',         ('VARCHAR(80)', True)),
+    ('file_format',      ('VARCHAR(80)', True)),
+    ('image_width',      ('SMALLINT UNSIGNED', True)),
+    ('image_height',     ('SMALLINT UNSIGNED', True)),
+    ('image_datetime',   ('DATETIME', True)),
+    ('file_datetime',    ('DATETIME', True)),
+    ('file_size',        ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX archive_ind', ('(archive_id)', None))
+    ])
+
 _schema['logbook'] = OrderedDict([
     ('logbook_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
-                          False)),
+                          True)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', True)),
     ('logbook_num',      ('CHAR(10)', True)),
     ('logbook_title',    ('VARCHAR(80)', True)),
@@ -191,7 +229,7 @@ _schema['logbook'] = OrderedDict([
 
 _schema['logpage'] = OrderedDict([
     ('logpage_id',       ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY',
-                          False)),
+                          True)),
     ('logbook_id',       ('INT UNSIGNED', True)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', True)),
     ('logpage_type',     ('TINYINT', True)),
@@ -202,6 +240,8 @@ _schema['logpage'] = OrderedDict([
     ('image_width',      ('SMALLINT UNSIGNED', True)),
     ('image_height',     ('SMALLINT UNSIGNED', True)),
     ('image_datetime',   ('DATETIME', True)),
+    ('file_datetime',    ('DATETIME', True)),
+    ('file_size',        ('INT UNSIGNED', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -303,20 +343,34 @@ _schema['source_calib'] = OrderedDict([
     ('dej2000_sub',      ('DOUBLE', True)),
     ('raerr_sub',        ('FLOAT', True)),
     ('decerr_sub',       ('FLOAT', True)),
-    ('gridsize_sub',     ('SMALLINT', True)),
+    ('astrom_sub_grid',  ('SMALLINT', True)),
+    ('astrom_sub_id',    ('INT UNSIGNED', True)),
     ('nn_dist',          ('FLOAT', True)),
+    ('zenith_angle',     ('FLOAT', True)),
+    ('airmass',          ('FLOAT', True)),
     ('natmag',           ('FLOAT', True)),
     ('natmagerr',        ('FLOAT', True)),
     ('bmag',             ('FLOAT', True)),
     ('bmagerr',          ('FLOAT', True)),
     ('vmag',             ('FLOAT', True)),
     ('vmagerr',          ('FLOAT', True)),
-    ('flag_calib_star',  ('TINYINT', True)),
-    ('flag_calib_outlier', ('TINYINT', True)),
+    ('natmag_plate',     ('FLOAT', True)),
+    ('natmagerr_plate',  ('FLOAT', True)),
+    ('phot_plate_flags', ('TINYINT', True)),
+    ('natmag_correction', ('FLOAT', True)),
+    ('natmag_sub',       ('FLOAT', True)),
+    ('natmagerr_sub',    ('FLOAT', True)),
+    ('natmag_residual',  ('FLOAT', True)),
+    ('phot_sub_grid',    ('SMALLINT', True)),
+    ('phot_sub_id',      ('INT UNSIGNED', True)),
+    ('phot_sub_flags',   ('TINYINT', True)),
+    ('phot_calib_flags',  ('TINYINT', True)),
     ('color_term',       ('FLOAT', True)),
     ('color_bv',         ('FLOAT', True)),
     ('cat_natmag',       ('FLOAT', True)),
+    ('match_radius',     ('FLOAT', True)),
     ('tycho2_id',        ('CHAR(12)', True)),
+    ('tycho2_id_pad',    ('CHAR(12)', True)),
     ('tycho2_ra',        ('DOUBLE', True)),
     ('tycho2_dec',       ('DOUBLE', True)),
     ('tycho2_btmag',     ('FLOAT', True)),
@@ -410,6 +464,51 @@ _schema['solution'] = OrderedDict([
     ('INDEX dej2000_ind',  ('(dej2000)', None))
     ])
 
+_schema['astrom_sub'] = OrderedDict([
+    ('sub_id',           ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+                          False)),
+    ('process_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
+    ('exposure_id',      ('INT UNSIGNED', False)),
+    ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
+    ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('astrom_sub_grid',  ('SMALLINT', True)),
+    ('astrom_sub_id',    ('INT UNSIGNED', True)),
+    ('parent_sub_id',    ('INT UNSIGNED', True)),
+    ('x_min',            ('FLOAT', True)),
+    ('x_max',            ('FLOAT', True)),
+    ('y_min',            ('FLOAT', True)),
+    ('y_max',            ('FLOAT', True)),
+    ('x_min_ext',        ('FLOAT', True)),
+    ('x_max_ext',        ('FLOAT', True)),
+    ('y_min_ext',        ('FLOAT', True)),
+    ('y_max_ext',        ('FLOAT', True)),
+    ('num_sub_stars',    ('INT UNSIGNED', True)),
+    ('num_ref_stars',    ('INT UNSIGNED', True)),
+    ('above_threshold',  ('TINYINT(1)', True)),
+    ('num_selected_ref_stars', ('INT UNSIGNED', True)),
+    ('scamp_crossid_radius', ('FLOAT', True)),
+    ('num_scamp_stars',  ('INT UNSIGNED', True)),
+    ('scamp_sigma_axis1', ('FLOAT', True)),
+    ('scamp_sigma_axis2', ('FLOAT', True)),
+    ('scamp_sigma_mean', ('FLOAT', True)),
+    ('scamp_sigma_prev_axis1', ('FLOAT', True)),
+    ('scamp_sigma_prev_axis2', ('FLOAT', True)),
+    ('scamp_sigma_prev_mean', ('FLOAT', True)),
+    ('scamp_sigma_diff', ('FLOAT', True)),
+    ('apply_astrometry',  ('TINYINT(1)', True)),
+    ('num_applied_stars', ('INT UNSIGNED', True)),
+    ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
+    ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
+                          'ON UPDATE CURRENT_TIMESTAMP', None)),
+    ('INDEX process_ind',  ('(process_id)', None)),
+    ('INDEX scan_ind',     ('(scan_id)', None)),
+    ('INDEX exposure_ind', ('(exposure_id)', None)),
+    ('INDEX plate_ind',    ('(plate_id)', None)),
+    ('INDEX archive_ind',  ('(archive_id)', None)),
+    ('INDEX astromsubid_ind', ('(astrom_sub_id)', None))
+    ])
+    
 _schema['phot_calib'] = OrderedDict([
     ('calib_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           False)),
@@ -442,19 +541,30 @@ _schema['phot_calib'] = OrderedDict([
     ('INDEX annularbin_ind', ('(annular_bin)', None))
     ])
     
-_schema['phot_rmse'] = OrderedDict([
-    ('rmse_id',         ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
+_schema['phot_sub'] = OrderedDict([
+    ('sub_id',           ('INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY', 
                           False)),
     ('process_id',       ('INT UNSIGNED NOT NULL', False)),
     ('scan_id',          ('INT UNSIGNED NOT NULL', False)),
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
-    ('annular_bin',      ('TINYINT', True)),
-    ('plate_mag',        ('FLOAT', True)),
-    ('rmse',             ('FLOAT', True)),
-    ('mag_window',       ('FLOAT', True)),
-    ('num_stars',        ('INT UNSIGNED', True)),
+    ('phot_sub_grid',    ('SMALLINT', True)),
+    ('phot_sub_id',      ('INT UNSIGNED', True)),
+    ('parent_sub_id',    ('INT UNSIGNED', True)),
+    ('x_min',            ('FLOAT', True)),
+    ('x_max',            ('FLOAT', True)),
+    ('y_min',            ('FLOAT', True)),
+    ('y_max',            ('FLOAT', True)),
+    ('num_selected_stars', ('INT UNSIGNED', True)),
+    ('above_threshold',  ('TINYINT(1)', True)),
+    ('num_fit_stars',    ('INT UNSIGNED', True)),
+    ('correction_min',   ('FLOAT', True)),
+    ('correction_max',   ('FLOAT', True)),
+    ('num_applied_stars', ('INT UNSIGNED', True)),
+    ('rmse_min',         ('FLOAT', True)),
+    ('rmse_median',      ('FLOAT', True)),
+    ('rmse_max',         ('FLOAT', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -463,7 +573,7 @@ _schema['phot_rmse'] = OrderedDict([
     ('INDEX exposure_ind', ('(exposure_id)', None)),
     ('INDEX plate_ind',    ('(plate_id)', None)),
     ('INDEX archive_ind',  ('(archive_id)', None)),
-    ('INDEX annularbin_ind', ('(annular_bin)', None))
+    ('INDEX photsubid_ind', ('(phot_sub_id)', None))
     ])
     
 _schema['phot_color'] = OrderedDict([
@@ -530,7 +640,10 @@ _schema['process'] = OrderedDict([
     ('use_psf',          ('TINYINT(1)', None)),
     ('threshold',        ('FLOAT', None)),
     ('num_sources',      ('INT UNSIGNED', None)),
+    ('num_psf_sources',  ('INT UNSIGNED', None)),
     ('solved',           ('TINYINT(1)', None)),
+    ('astrom_sub_total', ('INT UNSIGNED', None)),
+    ('astrom_sub_eff',   ('INT UNSIGNED', None)),
     ('num_ucac4',        ('INT UNSIGNED', None)),
     ('num_tycho2',       ('INT UNSIGNED', None)),
     ('num_apass',        ('INT UNSIGNED', None)),
@@ -538,7 +651,10 @@ _schema['process'] = OrderedDict([
     ('bright_limit',     ('FLOAT', None)),
     ('faint_limit',      ('FLOAT', None)),
     ('mag_range',        ('FLOAT', None)),
+    ('num_calib',        ('INT UNSIGNED', None)),
     ('calibrated',       ('TINYINT(1)', None)),
+    ('phot_sub_total',   ('INT UNSIGNED', None)),
+    ('phot_sub_eff',     ('INT UNSIGNED', None)),
     ('completed',        ('TINYINT(1)', None)),
     ('pyplate_version',  ('VARCHAR(15)', None)),
     ('INDEX scan_ind',   ('(scan_id)', None)),
@@ -581,7 +697,7 @@ def _get_columns_sql(table):
 
     return sql
 
-def print_tables(use_drop=False):
+def print_tables(use_drop=False, engine='Aria'):
     """
     Print table creation SQL queries to standard output.
 
@@ -590,9 +706,9 @@ def print_tables(use_drop=False):
     sql_drop = '\n'.join(['DROP TABLE IF EXISTS {};'.format(k) 
                           for k in _schema.keys()])
 
-    sql_list = ['CREATE TABLE {} (\n{}\n) ENGINE=MyISAM '
+    sql_list = ['CREATE TABLE {} (\n{}\n) ENGINE={} '
                 'CHARACTER SET=utf8 COLLATE=utf8_unicode_ci;\n'
-                .format(k, _get_columns_sql(k))
+                .format(k, _get_columns_sql(k), engine)
                 for k in _schema.keys()]
     sql = '\n'.join(sql_list)
 
@@ -617,6 +733,9 @@ class PlateDB:
         self.db = None
         self.cursor = None
 
+        self.write_db_source_dir = ''
+        self.write_db_source_calib_dir = ''
+
     def assign_conf(self, conf):
         """
         Assign and parse configuration.
@@ -628,7 +747,8 @@ class PlateDB:
 
         self.conf = conf
 
-        for attr in ['write_log_dir']:
+        for attr in ['write_log_dir', 'write_db_source_dir', 
+                     'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except ConfigParser.Error:
@@ -771,7 +891,12 @@ class PlateDB:
 
         # The plate table
         col_list = ['plate_id']
-        val_tuple = (None,)
+
+        if (isinstance(platemeta['db_plate_id'], int) and 
+            (platemeta['db_plate_id'] > 0)):
+            val_tuple = (platemeta['db_plate_id'],)
+        else:
+            val_tuple = (None,)
 
         for k,v in _schema['plate'].items():
             if v[1]:
@@ -786,7 +911,7 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
         plate_id = self.cursor.lastrowid
-        platemeta['plate_id'] = plate_id
+        platemeta['db_plate_id'] = plate_id
 
         # The exposure table
         for exp in np.arange(platemeta['numexp']):
@@ -851,11 +976,16 @@ class PlateDB:
         for order,filename in enumerate(fn_list):
             if filename:
                 col_list = ['plate_id', 'logpage_id', 'logpage_order']
-                plate_id = self.get_plate_id(platemeta['plate_num'],
-                                             platemeta['archive_id'])
 
-                if plate_id is None:
-                    plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
+                if (isinstance(platemeta['db_plate_id'], int) and 
+                    (platemeta['db_plate_id'] > 0)):
+                    plate_id = platemeta['db_plate_id']
+                else:
+                    plate_id = self.get_plate_id(platemeta['plate_num'],
+                                                 platemeta['archive_id'])
+
+                    if plate_id is None:
+                        plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
 
                 logpage_id = self.get_logpage_id(filename, 
                                                  platemeta['archive_id'])
@@ -884,14 +1014,23 @@ class PlateDB:
 
         """
 
-        plate_id = self.get_plate_id(platemeta['plate_num'],
-                                     platemeta['archive_id'])
+        if (isinstance(platemeta['db_plate_id'], int) and 
+            (platemeta['db_plate_id'] > 0)):
+            plate_id = platemeta['db_plate_id']
+        else:
+            plate_id = self.get_plate_id(platemeta['plate_num'],
+                                         platemeta['archive_id'])
 
-        if plate_id is None:
-            plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
+            if plate_id is None:
+                plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
 
         col_list = ['scan_id', 'plate_id']
-        val_tuple = (None, plate_id)
+
+        if (isinstance(platemeta['scan_id'], int) and 
+            (platemeta['scan_id'] > 0)):
+            val_tuple = (platemeta['scan_id'], plate_id)
+        else:
+            val_tuple = (None, plate_id)
 
         for k,v in _schema['scan'].items():
             if v[1]:
@@ -909,14 +1048,112 @@ class PlateDB:
 
         return scan_id
 
+    def update_scan(self, platemeta, filecols=False):
+        """
+        Update scan entry in the database.
+
+        Parameters
+        ----------
+        platemeta : PlateMeta
+            Plate metadata instance
+        filecols : bool
+            If True, only specific file-related columns are updated
+
+        """
+
+        if (isinstance(platemeta['scan_id'], int) and 
+            (platemeta['scan_id'] > 0)):
+            scan_id = platemeta['scan_id']
+        else:
+            scan_id,_ = self.get_scan_id(platemeta['filename'],
+                                         platemeta['archive_id'])
+
+            if scan_id is None:
+                print ('Cannot update scan metadata in the database '
+                       '(filename={}, archive_id={})'
+                       ''.format(platemeta['filename'],
+                                 platemeta['archive_id']))
+                return
+
+        col_list = []
+        val_tuple = ()
+
+        columns = [k for k,v in _schema['scan'].items() if v[1]]
+
+        # Update only specific columns
+        if filecols:
+            columns = ['file_datetime', 'file_size', 'fits_checksum', 
+                       'fits_datasum']
+
+        for c in columns:
+            c_str = '{}=%s'.format(c)
+            col_list.append(c_str)
+            platemeta_key = _schema['scan'][c][1]
+            val_tuple = val_tuple + (platemeta.get_value(platemeta_key), )
+
+        col_str = ','.join(col_list)
+        val_tuple = val_tuple + (scan_id, )
+
+        sql = 'UPDATE scan SET {} WHERE scan_id=%s'.format(col_str)
+        self.execute_query(sql, val_tuple)
+
+    def write_preview(self, previewmeta):
+        """
+        Write preview image entry to the database.
+
+        Parameters
+        ----------
+        previewmeta : PreviewMeta
+            Preview metadata instance
+
+        Returns
+        -------
+        preview_id : int
+            Preview ID number
+
+        """
+
+        if (isinstance(previewmeta['db_plate_id'], int) and 
+            (previewmeta['db_plate_id'] > 0)):
+            plate_id = previewmeta['db_plate_id']
+        else:
+            plate_id = self.get_plate_id(previewmeta['plate_num'],
+                                         previewmeta['archive_id'])
+
+            if plate_id is None:
+                plate_id = self.get_plate_id_wfpdb(previewmeta['wfpdb_id'])
+
+        col_list = ['preview_id', 'plate_id']
+
+        if (isinstance(previewmeta['preview_id'], int) and 
+            (previewmeta['preview_id'] > 0)):
+            val_tuple = (previewmeta['preview_id'], plate_id)
+        else:
+            val_tuple = (None, plate_id)
+
+        for k,v in _schema['preview'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (previewmeta[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+
+        sql = ('INSERT INTO preview ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+        preview_id = self.cursor.lastrowid
+
+        return preview_id
+
     def write_logbook(self, logbookmeta):
         """
         Write a logbook to the database.
 
         """
 
-        col_list = ['logbook_id']
-        val_tuple = (None, )
+        col_list = []
+        val_tuple = ()
 
         for k,v in _schema['logbook'].items():
             if v[1]:
@@ -942,8 +1179,8 @@ class PlateDB:
                                              logpagemeta['archive_id'])
             logpagemeta['logbook_id'] = logbook_id
             
-        col_list = ['logpage_id']
-        val_tuple = (None, )
+        col_list = []
+        val_tuple = ()
 
         for k,v in _schema['logpage'].items():
             if v[1]:
@@ -977,6 +1214,28 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO solution ({}) VALUES ({})'
+               .format(col_str, val_str))
+        self.execute_query(sql, val_tuple)
+
+    def write_astrom_sub(self, astrom_sub, process_id=None, scan_id=None, 
+                       plate_id=None, archive_id=None):
+        """
+        Write astrometric sub-field calibration to the database.
+
+        """
+
+        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id', 
+                    'plate_id', 'archive_id']
+        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+
+        for k,v in _schema['astrom_sub'].items():
+            if v[1]:
+                col_list.append(k)
+                val_tuple = val_tuple + (astrom_sub[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO astrom_sub ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
@@ -1046,34 +1305,51 @@ class PlateDB:
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
-    def write_phot_rmse(self, phot_rmse, process_id=None, scan_id=None, 
-                        plate_id=None, archive_id=None):
+    def write_phot_sub(self, phot_sub, process_id=None, scan_id=None, 
+                       plate_id=None, archive_id=None):
         """
-        Write photometric calibration errors to the database.
+        Write photometric sub-field calibration to the database.
 
         """
 
-        col_list = ['rmse_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id', 
                     'plate_id', 'archive_id']
         val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
-        for k,v in _schema['phot_rmse'].items():
+        for k,v in _schema['phot_sub'].items():
             if v[1]:
                 col_list.append(k)
-                val_tuple = val_tuple + (phot_rmse[k], )
+                val_tuple = val_tuple + (phot_sub[k], )
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO phot_rmse ({}) VALUES ({})'
+        sql = ('INSERT INTO phot_sub ({}) VALUES ({})'
                .format(col_str, val_str))
         self.execute_query(sql, val_tuple)
 
     def write_sources(self, sources, process_id=None, scan_id=None, 
-                      plate_id=None, archive_id=None):
+                      plate_id=None, archive_id=None, write_csv=None):
         """
-        Write source list with calibrated RA and Dec to the database.
+        Write source data to the database.
 
         """
+
+        # Open CSV files for writing
+        if write_csv:
+            fn_source_csv = '{:05d}_source.csv'.format(process_id)
+            fn_source_csv = os.path.join(self.write_db_source_dir, 
+                                         fn_source_csv)
+            source_csv = open(fn_source_csv, 'wb')
+            source_writer = csvWriter(source_csv, delimiter=',',
+                                      quotechar='"', 
+                                      quoting=csv.QUOTE_MINIMAL)
+            fn_source_calib_csv = '{:05d}_source_calib.csv'.format(process_id)
+            fn_source_calib_csv = os.path.join(self.write_db_source_calib_dir, 
+                                               fn_source_calib_csv)
+            source_calib_csv = open(fn_source_calib_csv, 'wb')
+            source_calib_writer = csvWriter(source_calib_csv, delimiter=',',
+                                            quotechar='"', 
+                                            quoting=csv.QUOTE_MINIMAL)
 
         # Prepare query for the source table
         col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
@@ -1082,6 +1358,7 @@ class PlateDB:
             if v[1]:
                 col_list.append(k)
 
+        source_columns = col_list
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql_source = ('INSERT INTO source ({}) VALUES ({})'
@@ -1095,10 +1372,16 @@ class PlateDB:
             if v[1]:
                 col_list.append(k)
 
+        source_calib_columns = col_list
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql_source_calib = ('INSERT INTO source_calib ({}) VALUES ({})'
                             .format(col_str, val_str))
+
+        # Write header rows to CSV files
+        if write_csv:
+            source_writer.writerow(source_columns)
+            source_calib_writer.writerow(source_calib_columns)
 
         # Prepare data and execute queries
         source_data = []
@@ -1106,7 +1389,7 @@ class PlateDB:
 
         for i, source in enumerate(sources):
             # Insert 1000 rows simultaneously
-            if i > 0 and i%1000 == 0:
+            if not write_csv and i > 0 and i%1000 == 0:
                 self.executemany_query(sql_source, source_data)
                 source_data = []
                 self.executemany_query(sql_source_calib, source_calib_data)
@@ -1123,7 +1406,10 @@ class PlateDB:
                                   else None)
                     val_tuple = val_tuple + (source_val, )
 
-            source_data.append(val_tuple)
+            if write_csv:
+                source_writer.writerow(val_tuple)
+            else:
+                source_data.append(val_tuple)
 
             # Prepare source_calib data
             val_tuple = (source_id, process_id, scan_id, None, plate_id, 
@@ -1146,16 +1432,27 @@ class PlateDB:
                     if 'tycho2_id' in k and source_val == '':
                         source_val = None
 
+                    if 'tycho2_id_pad' in k and source_val == '':
+                        source_val = None
+
                     if 'tycho2_hip' in k and source_val < 0:
                         source_val = None
                         
                     val_tuple = val_tuple + (source_val, )
 
-            source_calib_data.append(val_tuple)
+            if write_csv:
+                source_calib_writer.writerow(val_tuple)
+            else:
+                source_calib_data.append(val_tuple)
 
-        # Insert remaining rows
-        self.executemany_query(sql_source, source_data)
-        self.executemany_query(sql_source_calib, source_calib_data)
+        if write_csv:
+            # Close CSV files
+            source_csv.close()
+            source_calib_csv.close()
+        else:
+            # Insert remaining rows
+            self.executemany_query(sql_source, source_data)
+            self.executemany_query(sql_source_calib, source_calib_data)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):
@@ -1191,80 +1488,25 @@ class PlateDB:
 
         return process_id
 
-    def update_process(self, process_id, sky=None, sky_sigma=None, 
-                       threshold=None, num_sources=None, solved=None,
-                       num_ucac4=None, num_tycho2=None, num_apass=None, 
-                       color_term=None,
-                       bright_limit=None, faint_limit=None, mag_range=None, 
-                       calibrated=None):
+    def update_process(self, process_id, **kwargs):
         """
         Update plate-solve process in the database.
 
         """
 
-        if (sky is None and sky_sigma is None and threshold is None 
-            and num_sources is None and num_ucac4 is None 
-            and num_tycho2 is None and num_apass is None
-            and solved is None 
-            and color_term is None and bright_limit is None
-            and faint_limit is None and mag_range is None
-            and calibrated is None):
-            return
-
         col_list = []
         val_tuple = ()
 
-        if sky is not None:
-            col_list.append('sky=%s')
-            val_tuple = val_tuple + (sky, )
+        for k in kwargs:
+            # Check if the keyword matches a column name in the process table
+            # and if the keyword is not None
+            if k in _schema['process'] and kwargs[k] is not None:
+                col_list.append('{}=%s'.format(k))
+                val_tuple = val_tuple + (kwargs[k], )
 
-        if sky_sigma is not None:
-            col_list.append('sky_sigma=%s')
-            val_tuple = val_tuple + (sky_sigma, )
-
-        if threshold is not None:
-            col_list.append('threshold=%s')
-            val_tuple = val_tuple + (threshold, )
-
-        if num_sources is not None:
-            col_list.append('num_sources=%s')
-            val_tuple = val_tuple + (num_sources, )
-
-        if solved is not None:
-            col_list.append('solved=%s')
-            val_tuple = val_tuple + (solved, )
-
-        if num_ucac4 is not None:
-            col_list.append('num_ucac4=%s')
-            val_tuple = val_tuple + (num_ucac4, )
-
-        if num_tycho2 is not None:
-            col_list.append('num_tycho2=%s')
-            val_tuple = val_tuple + (num_tycho2, )
-
-        if num_apass is not None:
-            col_list.append('num_apass=%s')
-            val_tuple = val_tuple + (num_apass, )
-
-        if color_term is not None:
-            col_list.append('color_term=%s')
-            val_tuple = val_tuple + (color_term, )
-
-        if bright_limit is not None:
-            col_list.append('bright_limit=%s')
-            val_tuple = val_tuple + (bright_limit, )
-
-        if faint_limit is not None:
-            col_list.append('faint_limit=%s')
-            val_tuple = val_tuple + (faint_limit, )
-
-        if mag_range is not None:
-            col_list.append('mag_range=%s')
-            val_tuple = val_tuple + (mag_range, )
-
-        if calibrated is not None:
-            col_list.append('calibrated=%s')
-            val_tuple = val_tuple + (calibrated, )
+        # If no valid keywords are given, then give up
+        if not col_list:
+            return
 
         col_str = ','.join(col_list)
         sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))

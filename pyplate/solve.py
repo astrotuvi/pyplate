@@ -9,13 +9,15 @@ import numpy as np
 import ConfigParser
 import warnings
 import xml.etree.ElementTree as ET
+from astropy import __version__ as astropy_version
 from astropy import wcs
-from astropy.io import fits
-from astropy.io import votable
-from astropy.coordinates import Angle
+from astropy.io import fits, votable
+from astropy.coordinates import Angle, EarthLocation, AltAz
 from astropy import units
+from astropy.time import Time
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.ndimage.filters import generic_filter
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
@@ -196,7 +198,7 @@ class AstrometryNetIndex:
 
         fn_tyc_year = os.path.join(self.index_dir, 
                                    'tycho2_{:d}.fits'.format(year))
-        hdu.writeto(fn_tyc_year, clobber=True)
+        hdu.writeto(fn_tyc_year, overwrite=True)
 
         tycho2_index_dir = os.path.join(self.index_dir, 
                                         'index_{:d}'.format(year))
@@ -392,40 +394,8 @@ def new_scampref():
     return hdulist
 
 
-def run_solve_process(filename, conf_file=None, **kwargs):
-    """
-    Run the source extraction and plate solving process.
-
-    Parameters
-    ----------
-    filename : str
-        Filename of the digitised plate
-        
-    """
-
-    proc = SolveProcess(filename)
-
-    if conf_file:
-        conf = ConfigParser.ConfigParser()
-        conf.read(conf_file)
-        proc.assign_conf(conf)
-
-    for key in ('threshold_sigma', 'use_psf', 'psf_threshold_sigma', 
-                'psf_model_sigma', 'plate_epoch', 'sip', 'skip_bright',
-                'max_recursion_depth', 'force_recursion_depth',
-                'circular_film'):
-        if key in kwargs:
-            setattr(proc, key, kwargs[key])
-
-    proc.setup()
-    proc.invert_plate()
-    proc.extract_sources()
-    proc.solve_plate()
-    proc.output_wcs_header()
-    proc.solve_recursive()
-    proc.output_sources_db()
-    proc.output_sources_csv()
-    proc.finish()
+def _rmse(residuals):
+    return np.sqrt(np.mean(residuals**2))
 
 
 _source_meta = OrderedDict([
@@ -484,19 +454,33 @@ _source_meta = OrderedDict([
     ('dej2000_sub',         ('f8', '%11.7f', '')),
     ('raerr_sub',           ('f4', '%7.4f', '')),
     ('decerr_sub',          ('f4', '%7.4f', '')),
-    ('gridsize_sub',        ('i2', '%3d', '')),
+    ('astrom_sub_grid',     ('i2', '%3d', '')),
+    ('astrom_sub_id',       ('i4', '%5d', '')),
     ('nn_dist',             ('f4', '%6.3f', '')),
+    ('zenith_angle',        ('f4', '%7.4f', '')),
+    ('airmass',             ('f4', '%7.4f', '')),
     ('natmag',              ('f4', '%7.4f', '')),
     ('natmagerr',           ('f4', '%7.4f', '')),
     ('bmag',                ('f4', '%7.4f', '')),
     ('bmagerr',             ('f4', '%7.4f', '')),
     ('vmag',                ('f4', '%7.4f', '')),
     ('vmagerr',             ('f4', '%7.4f', '')),
-    ('flag_calib_star',     ('i1', '%1d', '')),
-    ('flag_calib_outlier',  ('i1', '%1d', '')),
+    ('natmag_plate',        ('f4', '%7.4f', '')),
+    ('natmagerr_plate',     ('f4', '%7.4f', '')),
+    ('phot_plate_flags',    ('i1', '%1d', '')),
+    ('natmag_correction',   ('f4', '%7.4f', '')),
+    ('natmag_sub',          ('f4', '%7.4f', '')),
+    ('natmagerr_sub',       ('f4', '%7.4f', '')),
+    ('natmag_residual',     ('f4', '%7.4f', '')),
+    ('phot_sub_grid',       ('i2', '%3d', '')),
+    ('phot_sub_id',         ('i4', '%5d', '')),
+    ('phot_sub_flags',      ('i1', '%1d', '')),
+    ('phot_calib_flags',    ('i1', '%1d', '')),
     ('color_term',          ('f4', '%7.4f', '')),
     ('color_bv',            ('f4', '%7.4f', '')),
+    ('color_bv_err',        ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
+    ('match_radius',        ('f4', '%7.3f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
@@ -505,9 +489,10 @@ _source_meta = OrderedDict([
     ('ucac4_bmagerr',       ('f4', '%6.4f', '')),
     ('ucac4_vmagerr',       ('f4', '%6.4f', '')),
     ('ucac4_dist',          ('f4', '%6.3f', '')),
-    ('ucac4_dist2',         ('f4', '%6.3f', '')),
-    ('ucac4_nn_dist',       ('f4', '%6.3f', '')),
+    ('ucac4_dist2',         ('f4', '%7.3f', '')),
+    ('ucac4_nn_dist',       ('f4', '%7.3f', '')),
     ('tycho2_id',           ('a12', '%s', '')),
+    ('tycho2_id_pad',       ('a12', '%s', '')),
     ('tycho2_ra',           ('f8', '%11.7f', '')),
     ('tycho2_dec',          ('f8', '%11.7f', '')),
     ('tycho2_btmag',        ('f4', '%7.4f', '')),
@@ -516,8 +501,8 @@ _source_meta = OrderedDict([
     ('tycho2_vtmagerr',     ('f4', '%6.4f', '')),
     ('tycho2_hip',          ('i4', '%6d', '')),
     ('tycho2_dist',         ('f4', '%6.3f', '')),
-    ('tycho2_dist2',        ('f4', '%6.3f', '')),
-    ('tycho2_nn_dist',      ('f4', '%6.3f', '')),
+    ('tycho2_dist2',        ('f4', '%7.3f', '')),
+    ('tycho2_nn_dist',      ('f4', '%7.3f', '')),
     ('apass_ra',            ('f8', '%11.7f', '')),
     ('apass_dec',           ('f8', '%11.7f', '')),
     ('apass_bmag',          ('f4', '%7.4f', '')),
@@ -525,8 +510,8 @@ _source_meta = OrderedDict([
     ('apass_bmagerr',       ('f4', '%6.4f', '')),
     ('apass_vmagerr',       ('f4', '%6.4f', '')),
     ('apass_dist',          ('f4', '%6.3f', '')),
-    ('apass_dist2',         ('f4', '%6.3f', '')),
-    ('apass_nn_dist',       ('f4', '%6.3f', ''))
+    ('apass_dist2',         ('f4', '%7.3f', '')),
+    ('apass_nn_dist',       ('f4', '%7.3f', ''))
 ])
 
 
@@ -549,12 +534,16 @@ class SolveProcess:
         self.tycho2_dir = ''
         self.work_dir = ''
         self.write_source_dir = ''
+        self.write_db_source_dir = ''
+        self.write_db_source_calib_dir = ''
         self.write_phot_dir = ''
         self.write_wcs_dir = ''
         self.write_log_dir = ''
 
+        self.astref_catalog = None
+        self.photref_catalog = None
+
         self.use_tycho2_fits = False
-        self.use_tycho2_astrometry = False
 
         self.use_ucac4_db = False
         self.ucac4_db_host = 'localhost'
@@ -564,7 +553,6 @@ class SolveProcess:
         self.ucac4_db_table = 'ucac4'
 
         self.use_apass_db = False
-        self.use_apass_photometry = False
         self.apass_db_host = 'localhost'
         self.apass_db_user = ''
         self.apass_db_name = ''
@@ -575,6 +563,7 @@ class SolveProcess:
         self.output_db_user = ''
         self.output_db_name = ''
         self.output_db_passwd = ''
+        self.write_sources_csv = False
 
         self.sextractor_path = 'sex'
         self.scamp_path = 'scamp'
@@ -593,6 +582,8 @@ class SolveProcess:
         self.plate_epoch = 1950
         self.plate_year = int(self.plate_epoch)
         self.threshold_sigma = 4.
+        self.use_filter = False
+        self.filter_path = None
         self.use_psf = False
         self.psf_threshold_sigma = 20.
         self.psf_model_sigma = 20.
@@ -600,14 +591,17 @@ class SolveProcess:
         self.max_model_sources = 10000
         self.sip = 3
         self.skip_bright = 10
+        self.distort = 1
         self.max_recursion_depth = 5
         self.force_recursion_depth = 0
         self.circular_film = False
         self.crossmatch_radius = None
         self.crossmatch_nsigma = 10.
-        self.crossmatch_maxradius = 10.
+        self.crossmatch_nlogarea = 2.
+        self.crossmatch_maxradius = 20.
 
         self.plate_header = None
+        self.platemeta = None
         self.imwidth = None
         self.imheight = None
         self.plate_solved = False
@@ -631,18 +625,36 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solution = None
+        self.astrom_sub = []
         self.phot_cterm = []
         self.phot_color = None
         self.phot_calib = []
-        self.phot_rmse = []
+        self.phot_calibrated = False
+        self.phot_sub = []
 
+        self.id_tyc = None
+        self.id_tyc_pad = None
+        self.hip_tyc = None
+        self.ra_tyc = None
+        self.dec_tyc = None
+        self.btmag_tyc = None
+        self.vtmag_tyc = None
+        self.btmagerr_tyc = None
+        self.vtmagerr_tyc = None
+        self.num_tyc = 0
+        
+        self.id_ucac = None
         self.ra_ucac = None
         self.dec_ucac = None
-        self.id_ucac = None
+        self.raerr_ucac = None
+        self.decerr_ucac = None
+        self.mag_ucac = None
         self.bmag_ucac = None
         self.vmag_ucac = None
-        self.berr_ucac = None
-        self.verr_ucac = None
+        self.magerr_ucac = None
+        self.bmagerr_ucac = None
+        self.vmagerr_ucac = None
+        self.num_ucac = 0
         
         self.ra_apass = None
         self.dec_apass = None
@@ -650,7 +662,35 @@ class SolveProcess:
         self.vmag_apass = None
         self.berr_apass = None
         self.verr_apass = None
-        
+        self.num_apass = 0
+
+        self.combined_ucac_apass = None
+
+        self.ucac4_columns = OrderedDict([
+            ('ucac4_ra', ('RAJ2000', 'f8')),
+            ('ucac4_dec', ('DEJ2000', 'f8')),
+            ('ucac4_raerr', ('e_RAJ2000', 'i')),
+            ('ucac4_decerr', ('e_DEJ2000', 'i')),
+            ('ucac4_mag', ('amag', 'f8')),
+            ('ucac4_magerr', ('e_amag', 'f8')),
+            ('ucac4_pmra', ('pmRA', 'f8')),
+            ('ucac4_pmdec', ('pmDE', 'f8')),
+            ('ucac4_id', ('UCAC4', 'a10')),
+            ('ucac4_bmag', ('Bmag', 'f8')),
+            ('ucac4_vmag', ('Vmag', 'f8')),
+            ('ucac4_bmagerr', ('e_Bmag', 'f8')),
+            ('ucac4_vmagerr', ('e_Vmag', 'f8'))
+        ])
+
+        self.apass_columns = OrderedDict([
+            ('apass_ra', ('RAdeg', 'f8')),
+            ('apass_dec', ('DEdeg', 'f8')),
+            ('apass_bmag', ('B', 'f8')),
+            ('apass_vmag', ('V', 'f8')),
+            ('apass_bmagerr', ('e_B', 'f8')),
+            ('apass_vmagerr', ('e_V', 'f8'))
+        ])
+
     def assign_conf(self, conf):
         """
         Parse configuration and set class attributes.
@@ -679,7 +719,8 @@ class SolveProcess:
 
         for attr in ['fits_dir', 'tycho2_dir', 
                      'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir']:
+                     'write_source_dir', 'write_wcs_dir',
+                     'write_db_source_dir', 'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except ConfigParser.Error:
@@ -688,9 +729,8 @@ class SolveProcess:
         if self.write_log_dir:
             self.enable_log = True
 
-        for attr in ['use_tycho2_fits', 'use_tycho2_astrometry', 
-                     'use_ucac4_db', 'use_apass_db', 'use_apass_photometry',
-                     'enable_db_log']:
+        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'use_apass_db',
+                     'enable_db_log', 'write_sources_csv']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
             except ValueError:
@@ -710,7 +750,7 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['use_psf', 'circular_film']:
+        for attr in ['use_filter', 'use_psf', 'circular_film']:
             try:
                 setattr(self, attr, conf.getboolean('Solve', attr))
             except ValueError:
@@ -722,7 +762,7 @@ class SolveProcess:
         for attr in ['plate_epoch', 'threshold_sigma', 
                      'psf_threshold_sigma', 'psf_model_sigma', 
                      'crossmatch_radius', 'crossmatch_nsigma', 
-                     'crossmatch_maxradius']:
+                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
             try:
                 setattr(self, attr, conf.getfloat('Solve', attr))
             except ValueError:
@@ -731,7 +771,7 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
-        for attr in ['sip', 'skip_bright', 'max_recursion_depth', 
+        for attr in ['sip', 'skip_bright', 'distort', 'max_recursion_depth', 
                      'force_recursion_depth', 'min_model_sources', 
                      'max_model_sources']:
             try:
@@ -742,6 +782,32 @@ class SolveProcess:
             except ConfigParser.Error:
                 pass
 
+        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
+            try:
+                setattr(self, attr, conf.get('Solve', attr))
+            except ConfigParser.Error:
+                pass
+
+        # Read UCAC4 and APASS table column names from the dedicated sections,
+        # named after the tables
+        if conf.has_section(self.ucac4_db_table):
+            for attr in self.ucac4_columns.keys():
+                try:
+                    colstr = conf.get(self.ucac4_db_table, attr)
+                    _,typ = self.ucac4_columns[attr]
+                    self.ucac4_columns[attr] = (colstr, typ)
+                except ConfigParser.Error:
+                    pass
+
+        if conf.has_section(self.apass_db_table):
+            for attr in self.apass_columns.keys():
+                try:
+                    colstr = conf.get(self.apass_db_table, attr)
+                    _,typ = self.apass_columns[attr]
+                    self.apass_columns[attr] = (colstr, typ)
+                except ConfigParser.Error:
+                    pass
+
     def assign_header(self, header):
         """
         Assign FITS header with metadata.
@@ -749,6 +815,17 @@ class SolveProcess:
         """
 
         self.plate_header = header
+
+    def assign_metadata(self, platemeta):
+        """
+        Assign plate metadata.
+
+        """
+
+        self.platemeta = platemeta
+
+        if self.platemeta['archive_id']:
+            self.archive_id = self.platemeta['archive_id']
 
     def setup(self):
         """
@@ -793,13 +870,17 @@ class SolveProcess:
             self.log.process_id = self.process_id
             self.log.to_db(3, 'Setting up plate solve process', event=10)
 
-        self.log.write('Using PyPlate v{}'.format(__version__), 
+        self.log.write('Using PyPlate version {}'.format(__version__), 
+                       level=4, event=10)
+        self.log.write('Using Astropy version {}'.format(astropy_version), 
+                       level=4, event=10)
+        self.log.write('Using NumPy version {}'.format(np.__version__), 
                        level=4, event=10)
 
         # Check if FITS file exists
         if not os.path.exists(self.fn_fits):
             self.log.write('FITS file does not exist: {}'.format(self.fn_fits), 
-                           level=1, event=11)
+                           level=1, event=10)
             return
 
         # Read FITS header
@@ -812,7 +893,7 @@ class SolveProcess:
             except IOError:
                 self.log.write('Could not read FITS file {}'
                                .format(self.fn_fits), 
-                               level=1, event=11)
+                               level=1, event=10)
                 return
 
         self.imwidth = self.plate_header['NAXIS1']
@@ -844,7 +925,12 @@ class SolveProcess:
         self.scratch_dir = os.path.join(self.work_dir, 
                                         '{}_{}'.format(self.basefn,
                                                        self.timestamp_str))
-        os.makedirs(self.scratch_dir)
+
+        try:
+            os.makedirs(self.scratch_dir)
+        except OSError:
+            if not os.path.isdir(self.scratch_dir):
+                raise
 
     def finish(self):
         """
@@ -905,11 +991,7 @@ class SolveProcess:
 
         platedb.close_connection()
 
-    def db_update_process(self, sky=None, sky_sigma=None, threshold=None,
-                          num_sources=None, solved=None,
-                          num_ucac4=None, num_tycho2=None, num_apass=None,
-                          color_term=None, bright_limit=None, faint_limit=None, 
-                          mag_range=None, calibrated=None):
+    def db_update_process(self, **kwargs):
         """
         Update process in the database.
 
@@ -929,18 +1011,7 @@ class SolveProcess:
                                     user=self.output_db_user,
                                     dbname=self.output_db_name,
                                     passwd=self.output_db_passwd)
-            platedb.update_process(self.process_id, sky=sky, 
-                                   sky_sigma=sky_sigma,
-                                   threshold=threshold,
-                                   num_sources=num_sources,
-                                   solved=solved,
-                                   num_ucac4=num_ucac4, num_tycho2=num_tycho2,
-                                   num_apass=num_apass,
-                                   color_term=color_term,
-                                   bright_limit=bright_limit,
-                                   faint_limit=faint_limit, 
-                                   mag_range=mag_range,
-                                   calibrated=calibrated)
+            platedb.update_process(self.process_id, **kwargs)
             platedb.close_connection()
 
     def db_process_end(self, completed=None):
@@ -980,7 +1051,7 @@ class SolveProcess:
             fn_inverted = os.path.join(self.work_dir, fn_inverted)
         
         if not os.path.exists(fn_inverted):
-            self.log.write('Inverting image', level=3, event=20)
+            self.log.write('Inverting image', level=3, event=11)
 
             fitsfile = fits.open(self.fn_fits, do_not_scale_image_data=True, 
                                  ignore_missing_end=True)
@@ -990,7 +1061,7 @@ class SolveProcess:
             invfits.header.set('BZERO', 32768)
             invfits.header.set('BSCALE', 1.0)
             self.log.write('Writing inverted image: {}'.format(fn_inverted), 
-                           level=4, event=21)
+                           level=4, event=11)
             invfits.writeto(fn_inverted)
 
             fitsfile.close()
@@ -998,9 +1069,10 @@ class SolveProcess:
             del invfits
         else:
             self.log.write('Inverted file exists: {}'.format(fn_inverted), 
-                           level=4, event=20)
+                           level=4, event=11)
 
-    def extract_sources(self, threshold_sigma=None, use_psf=None, 
+    def extract_sources(self, threshold_sigma=None, use_filter=None,
+                        filter_path=None, use_psf=None, 
                         psf_threshold_sigma=None, psf_model_sigma=None, 
                         circular_film=None):
         """
@@ -1010,6 +1082,10 @@ class SolveProcess:
         ----------
         threshold_sigma : float
             SExtractor threshold in sigmas (default 4.0)
+        use_filter : bool
+            Use SExtractor filter for source detection (default False)
+        filter_path : string
+            Path to SExtractor filter file
         use_psf : bool
             Use PSF for bright stars (default False)
         psf_threshold_sigma : float
@@ -1020,8 +1096,29 @@ class SolveProcess:
             Assume circular film (default False)
         """
 
+        self.log.write('Extracting sources from image', level=3, event=20)
+        sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
+        self.log.write('Using {}'.format(sex_ver), level=4, event=20)
+
         if threshold_sigma is None:
             threshold_sigma = self.threshold_sigma
+
+        if use_filter is None:
+            use_filter = self.use_filter
+
+        if filter_path is None:
+            filter_path = self.filter_path
+
+        if use_filter and filter_path:
+            filter_exists = os.path.exists(filter_path)
+        else:
+            filter_exists = False
+
+        if use_filter and not filter_exists:
+            use_filter = False
+            self.log.write('Filter file does not exist: {}'
+                           ''.format(filter_path), 
+                           level=2, event=20)
 
         if use_psf is None:
             use_psf = self.use_psf
@@ -1035,12 +1132,8 @@ class SolveProcess:
         if circular_film is None:
             circular_film = self.circular_film
 
-        self.log.write('Extracting sources from image', level=3, event=30)
-        sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
-        self.log.write('Using {}'.format(sex_ver), level=4, event=30)
-
         self.log.write('Running SExtractor to get sky value', level=3, 
-                       event=31)
+                       event=21)
 
         # Create parameter file
         fn_sex_param = self.basefn + '_sextractor.param'
@@ -1065,9 +1158,9 @@ class SolveProcess:
 
         fn_sex_conf = self.basefn + '_sextractor.conf'
         self.log.write('Writing SExtractor configuration file {}'
-                       .format(fn_sex_conf), level=4, event=31)
+                       .format(fn_sex_conf), level=4, event=21)
         self.log.write('SExtractor configuration file:\n{}'
-                       .format(cnf), level=5, event=31)
+                       .format(cnf), level=5, event=21)
         fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
                      'w')
         fconf.write(cnf)
@@ -1077,7 +1170,7 @@ class SolveProcess:
         cmd += ' %s_inverted.fits' % self.basefn
         cmd += ' -c %s' % fn_sex_conf
         self.log.write('Subprocess: {}'.format(cmd), 
-                       level=4, event=31)
+                       level=5, event=21)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1089,8 +1182,8 @@ class SolveProcess:
         if root[1][4][15][11].attrib['name'] == 'Background_Mean':
             sky = float(root[1][4][15][19][0][0][8].text)
             sky_sigma = float(root[1][4][15][19][0][0][9].text)
-            self.log.write('Sky: {:f}, sigma: {:f}'.format(sky, sky_sigma), 
-                       level=4, event=31)
+            self.log.write('Sky: {:.3f}, sigma: {:.3f}'.format(sky, sky_sigma), 
+                       level=4, event=21)
             self.db_update_process(sky=sky, sky_sigma=sky_sigma)
 
             if sky < 2*sky_sigma or sky < 100:
@@ -1099,239 +1192,27 @@ class SolveProcess:
                 psf_threshold_adu = 20000
                 threshold_adu = 5000
                 self.log.write('Sky value too low, using fixed thresholds', 
-                               level=4, event=31)
-
-        if use_psf:
-            # If PSFEx input file does not exist then run SExtractor
-            fn_psfex_cat = os.path.join(self.scratch_dir, 
-                                        self.basefn + '_psfex.cat')
-
-            if not os.path.exists(fn_psfex_cat):
-                self.log.write('Running SExtractor to get sources for PSFEx', 
-                               level=3, event=32)
-
-                while True:
-                    if use_fix_threshold:
-                        self.log.write('Using threshold {:f} ADU'
-                                       .format(psf_model_threshold), 
-                                       level=4, event=32)
-                    else:
-                        self.log.write('Using threshold {:.1f}'
-                                       .format(psf_model_sigma), 
-                                       level=4, event=32)
-
-                    # Create parameter file
-                    fn_sex_param = self.basefn + '_sextractor.param'
-                    fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 
-                                 'w')
-                    fconf.write('VIGNET(120,120)\n')
-                    fconf.write('X_IMAGE\n')
-                    fconf.write('Y_IMAGE\n')
-                    fconf.write('MAG_AUTO\n')
-                    fconf.write('FLUX_AUTO\n')
-                    fconf.write('FLUXERR_AUTO\n')
-                    fconf.write('SNR_WIN\n')
-                    fconf.write('FLUX_RADIUS\n')
-                    fconf.write('ELONGATION\n')
-                    fconf.write('FLAGS')
-                    fconf.close()
-
-                    # Create configuration file
-                    if use_fix_threshold:
-                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_threshold)
-                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_threshold)
-                        cnf += 'THRESH_TYPE      ABSOLUTE\n'
-                    else:
-                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
-                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
-
-                    cnf += 'FILTER           N\n'
-                    cnf += 'SATUR_LEVEL      65000.0\n'
-                    cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-                    cnf += 'MAG_ZEROPOINT    25.0\n'
-                    cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-                    cnf += 'CATALOG_TYPE     FITS_LDAC\n'
-                    cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.basefn)
-
-                    fn_sex_conf = self.basefn + '_sextractor.conf'
-                    self.log.write('Writing SExtractor configuration file {}'
-                                   .format(fn_sex_conf), level=4, event=32)
-                    self.log.write('SExtractor configuration file:\n{}'
-                                   .format(cnf), level=5, event=32)
-                    fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
-                                 'w')
-                    fconf.write(cnf)
-                    fconf.close()
-
-                    cmd = self.sextractor_path
-                    cmd += ' %s_inverted.fits' % self.basefn
-                    cmd += ' -c %s' % fn_sex_conf
-                    self.log.write('Subprocess: {}'.format(cmd), 
-                                   level=4, event=32)
-                    sp.call(cmd, shell=True, stdout=self.log.handle, 
-                            stderr=self.log.handle, cwd=self.scratch_dir)
-                    self.log.write('', timestamp=False, double_newline=False)
-
-                    hcat = fits.getheader(fn_psfex_cat, 2)
-                    num_psf_sources = hcat['NAXIS2']
-                    self.log.write('Extracted {:d} PSF-model sources'
-                                   .format(num_psf_sources), level=4, event=32)
-                    enough_psf_sources = False
-
-                    if (num_psf_sources >= self.min_model_sources and 
-                        num_psf_sources <= self.max_model_sources):
-                        enough_psf_sources = True
-                        break
-
-                    if num_psf_sources < self.min_model_sources:
-                        # Repeat with lower threshold to get more sources
-                        if use_fix_threshold:
-                            psf_model_threshold *= 0.9
-                        else:
-                            psf_model_sigma *= 0.9
-
-                        self.log.write('Too few PSF-model sources (min {:d}), '
-                                       'repeating extraction with lower '
-                                       'threshold'
-                                       .format(self.min_model_sources), 
-                                       level=4, event=32)
-
-                    if num_psf_sources > self.max_model_sources:
-                        # Repeat with higher threshold to get less sources
-                        if use_fix_threshold:
-                            psf_model_threshold *= 1.2
-                        else:
-                            psf_model_sigma *= 1.2
-
-                        self.log.write('Too many PSF-model sources (max {:d}), '
-                                       'repeating extraction with higher '
-                                       'threshold'
-                                       .format(self.max_model_sources), 
-                                       level=4, event=32)
-
-            # Run PSFEx
-            if (enough_psf_sources and
-                not os.path.exists(os.path.join(self.scratch_dir, 
-                                                self.basefn + '_psfex.psf'))):
-                self.log.write('Running PSFEx', level=3, event=33)
-                psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
-                self.log.write('Using {}'.format(psfex_ver), level=4, event=33)
-
-                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
-                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
-                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
-                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
-                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
-                cnf += 'PSFVAR_GROUPS      1,1\n'
-                cnf += 'PSFVAR_DEGREES     3\n'
-                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
-                cnf += 'SAMPLE_VARIABILITY 3.0\n'
-                #cnf += 'PSF_SIZE           25,25\n'
-                cnf += 'PSF_SIZE           50,50\n'
-                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
-                cnf += 'CHECKPLOT_NAME     ellipticity\n'
-                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
-                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
-                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn
-                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
-                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
-                cnf += 'VERBOSE_TYPE       LOG\n'
-
-                fn_psfex_conf = self.basefn + '_psfex.conf'
-                self.log.write('Writing PSFEx configuration file {}'
-                               .format(fn_psfex_conf), level=4, event=33)
-                self.log.write('PSFEx configuration file:\n{}'
-                               .format(cnf), level=5, event=33)
-                fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
-                fconf.write(cnf)
-                fconf.close()
-
-                cmd = self.psfex_path
-                cmd += ' %s_psfex.cat' % self.basefn
-                cmd += ' -c %s' % fn_psfex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=33)
-                sp.call(cmd, shell=True, stdout=self.log.handle, 
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
-
-            # Run SExtractor with PSF
-            if (enough_psf_sources and
-                not os.path.exists(os.path.join(self.scratch_dir, 
-                                                self.basefn + '.cat-psf'))):
-                self.log.write('Running SExtractor with PSF model',
-                               level=3, event=34)
-
-                if use_fix_threshold:
-                    self.log.write('Using threshold {:f} ADU'
-                                   .format(psf_threshold_adu), 
-                                   level=4, event=34)
-                else:
-                    self.log.write('Using threshold {:.1f}'
-                                   .format(psf_threshold_sigma), 
-                                   level=4, event=34)
-
-                fn_sex_param = self.basefn + '_sextractor.param'
-                fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
-                fconf.write('XPEAK_IMAGE\n')
-                fconf.write('YPEAK_IMAGE\n')
-                fconf.write('XPSF_IMAGE\n')
-                fconf.write('YPSF_IMAGE\n')
-                fconf.write('ERRAPSF_IMAGE\n')
-                fconf.write('ERRBPSF_IMAGE\n')
-                fconf.write('ERRTHETAPSF_IMAGE\n')
-                fconf.close()
-
-                if use_fix_threshold:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_adu)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_adu)
-                    cnf += 'THRESH_TYPE      ABSOLUTE\n'
-                else:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
-
-                cnf += 'FILTER           N\n'
-                cnf += 'SATUR_LEVEL      65000.0\n'
-                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-                #cnf += 'BACKPHOTO_THICK  96\n'
-                cnf += 'MAG_ZEROPOINT    25.0\n'
-                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-                cnf += 'CATALOG_TYPE     FITS_1.0\n'
-                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.basefn)
-                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.basefn)
-                cnf += 'NTHREADS         0\n'
-
-                fn_sex_conf = self.basefn + '_sextractor.conf'
-                self.log.write('Writing SExtractor configuration file {}'
-                               .format(fn_sex_conf), level=4, event=34)
-                self.log.write('SExtractor configuration file:\n{}'
-                               .format(cnf), level=5, event=34)
-                fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
-                fconf.write(cnf)
-                fconf.close()
-
-                cmd = self.sextractor_path
-                cmd += ' %s_inverted.fits' % self.basefn
-                cmd += ' -c %s' % fn_sex_conf
-                self.log.write('Subprocess: {}'.format(cmd), level=4, event=34)
-                sp.call(cmd, shell=True, stdout=self.log.handle, 
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
+                               level=4, event=21)
 
         # If SExtractor catalog does not exist then run SExtractor
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                            self.basefn + '.cat')):
             self.log.write('Running SExtractor without PSF model',
-                           level=3, event=35)
+                           level=3, event=22)
+
+            if use_filter:
+                self.log.write('Using filter {}'.format(filter_path), 
+                               level=4, event=22)
 
             if use_fix_threshold:
                 self.log.write('Using threshold {:f} ADU'.format(threshold_adu), 
-                               level=4, event=35)
+                               level=4, event=22)
                 self.db_update_process(threshold=threshold_adu)
             else:
                 threshold_adu = sky_sigma * threshold_sigma
-                self.log.write('Using threshold {:.1f} ({:f} ADU)'
+                self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
                                .format(threshold_sigma, threshold_adu),
-                               level=4, event=35)
+                               level=4, event=22)
                 self.db_update_process(threshold=threshold_adu)
 
             fn_sex_param = self.basefn + '_sextractor.param'
@@ -1371,7 +1252,14 @@ class SolveProcess:
                 cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
                 cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
 
-            cnf += 'FILTER           N\n'
+            if use_filter:
+                cnf += 'FILTER           Y\n'
+                cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+            else:
+                cnf += 'FILTER           N\n'
+
+            cnf += 'DEBLEND_NTHRESH  64\n'
+            cnf += 'DEBLEND_MINCONT  0.0005\n'
             cnf += 'SATUR_LEVEL      65000.0\n'
             cnf += 'BACKPHOTO_TYPE   LOCAL\n'
             cnf += 'CLEAN            N\n'
@@ -1390,9 +1278,9 @@ class SolveProcess:
 
             fn_sex_conf = self.basefn + '_sextractor.conf'
             self.log.write('Writing SExtractor configuration file {}'
-                           .format(fn_sex_conf), level=4, event=35)
+                           .format(fn_sex_conf), level=4, event=22)
             self.log.write('SExtractor configuration file:\n{}'.format(cnf), 
-                           level=5, event=35)
+                           level=5, event=22)
             fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
             fconf.write(cnf)
             fconf.close()
@@ -1400,20 +1288,267 @@ class SolveProcess:
             cmd = self.sextractor_path
             cmd += ' %s_inverted.fits' % self.basefn
             cmd += ' -c %s' % fn_sex_conf
-            self.log.write('Subprocess: {}'.format(cmd), level=4, event=35)
+            self.log.write('Subprocess: {}'.format(cmd), level=5, event=22)
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
             self.log.write('', timestamp=False, double_newline=False)
 
+        if use_psf:
+            # If PSFEx input file does not exist then run SExtractor
+            fn_psfex_cat = os.path.join(self.scratch_dir, 
+                                        self.basefn + '_psfex.cat')
+
+            if not os.path.exists(fn_psfex_cat):
+                self.log.write('Running SExtractor to get sources for PSFEx', 
+                               level=3, event=23)
+
+                while True:
+                    if use_filter:
+                        self.log.write('Using filter {}'.format(filter_path), 
+                                       level=4, event=23)
+
+                    if use_fix_threshold:
+                        self.log.write('Using threshold {:f} ADU'
+                                       .format(psf_model_threshold), 
+                                       level=4, event=23)
+                    else:
+                        threshold_adu = sky_sigma * psf_model_sigma
+                        self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
+                                       .format(psf_model_sigma, threshold_adu), 
+                                       level=4, event=23)
+
+                    # Create parameter file
+                    fn_sex_param = self.basefn + '_sextractor.param'
+                    fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 
+                                 'w')
+                    fconf.write('VIGNET(120,120)\n')
+                    fconf.write('X_IMAGE\n')
+                    fconf.write('Y_IMAGE\n')
+                    fconf.write('MAG_AUTO\n')
+                    fconf.write('FLUX_AUTO\n')
+                    fconf.write('FLUXERR_AUTO\n')
+                    fconf.write('SNR_WIN\n')
+                    fconf.write('FLUX_RADIUS\n')
+                    fconf.write('ELONGATION\n')
+                    fconf.write('FLAGS')
+                    fconf.close()
+
+                    # Create configuration file
+                    if use_fix_threshold:
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_threshold)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_threshold)
+                        cnf += 'THRESH_TYPE      ABSOLUTE\n'
+                    else:
+                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
+                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
+
+                    if use_filter:
+                        cnf += 'FILTER           Y\n'
+                        cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+                    else:
+                        cnf += 'FILTER           N\n'
+
+                    cnf += 'SATUR_LEVEL      65000.0\n'
+                    cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                    cnf += 'MAG_ZEROPOINT    25.0\n'
+                    cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                    cnf += 'CATALOG_TYPE     FITS_LDAC\n'
+                    cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.basefn)
+
+                    fn_sex_conf = self.basefn + '_sextractor.conf'
+                    self.log.write('Writing SExtractor configuration file {}'
+                                   .format(fn_sex_conf), level=4, event=23)
+                    self.log.write('SExtractor configuration file:\n{}'
+                                   .format(cnf), level=5, event=23)
+                    fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 
+                                 'w')
+                    fconf.write(cnf)
+                    fconf.close()
+
+                    cmd = self.sextractor_path
+                    cmd += ' %s_inverted.fits' % self.basefn
+                    cmd += ' -c %s' % fn_sex_conf
+                    self.log.write('Subprocess: {}'.format(cmd), 
+                                   level=5, event=23)
+                    sp.call(cmd, shell=True, stdout=self.log.handle, 
+                            stderr=self.log.handle, cwd=self.scratch_dir)
+                    self.log.write('', timestamp=False, double_newline=False)
+
+                    hcat = fits.getheader(fn_psfex_cat, 2)
+                    num_psf_sources = hcat['NAXIS2']
+                    self.log.write('Extracted {:d} PSF-model sources'
+                                   .format(num_psf_sources), level=4, event=23)
+                    enough_psf_sources = False
+
+                    if (num_psf_sources >= self.min_model_sources and 
+                        num_psf_sources <= self.max_model_sources):
+                        enough_psf_sources = True
+                        break
+
+                    if num_psf_sources < self.min_model_sources:
+                        # Repeat with lower threshold to get more sources
+                        if use_fix_threshold:
+                            psf_model_threshold *= 0.9
+                        else:
+                            psf_model_sigma *= 0.9
+
+                        self.log.write('Too few PSF-model sources (min {:d}), '
+                                       'repeating extraction with lower '
+                                       'threshold'
+                                       .format(self.min_model_sources), 
+                                       level=4, event=23)
+
+                    if num_psf_sources > self.max_model_sources:
+                        # Repeat with higher threshold to get less sources
+                        if use_fix_threshold:
+                            psf_model_threshold *= 1.2
+                        else:
+                            psf_model_sigma *= 1.2
+
+                        self.log.write('Too many PSF-model sources (max {:d}), '
+                                       'repeating extraction with higher '
+                                       'threshold'
+                                       .format(self.max_model_sources), 
+                                       level=4, event=23)
+
+            # Run PSFEx
+            if (enough_psf_sources and
+                not os.path.exists(os.path.join(self.scratch_dir, 
+                                                self.basefn + '_psfex.psf'))):
+                self.log.write('Running PSFEx', level=3, event=24)
+                psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
+                self.log.write('Using {}'.format(psfex_ver), level=4, event=24)
+
+                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
+                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
+                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
+                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
+                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
+                cnf += 'PSFVAR_GROUPS      1,1\n'
+                cnf += 'PSFVAR_DEGREES     3\n'
+                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
+                cnf += 'SAMPLE_VARIABILITY 3.0\n'
+                #cnf += 'PSF_SIZE           25,25\n'
+                cnf += 'PSF_SIZE           50,50\n'
+                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
+                cnf += 'CHECKPLOT_NAME     ellipticity\n'
+                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
+                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
+                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.basefn
+                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
+                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.basefn)
+                cnf += 'VERBOSE_TYPE       LOG\n'
+                cnf += 'NTHREADS           2\n'
+
+                fn_psfex_conf = self.basefn + '_psfex.conf'
+                self.log.write('Writing PSFEx configuration file {}'
+                               .format(fn_psfex_conf), level=4, event=24)
+                self.log.write('PSFEx configuration file:\n{}'
+                               .format(cnf), level=5, event=24)
+                fconf = open(os.path.join(self.scratch_dir, fn_psfex_conf), 'w')
+                fconf.write(cnf)
+                fconf.close()
+
+                cmd = self.psfex_path
+                cmd += ' %s_psfex.cat' % self.basefn
+                cmd += ' -c %s' % fn_psfex_conf
+                self.log.write('Subprocess: {}'.format(cmd), level=5, event=24)
+                sp.call(cmd, shell=True, stdout=self.log.handle, 
+                        stderr=self.log.handle, cwd=self.scratch_dir)
+                self.log.write('', timestamp=False, double_newline=False)
+
+            # Run SExtractor with PSF
+            if (enough_psf_sources and
+                not os.path.exists(os.path.join(self.scratch_dir, 
+                                                self.basefn + '.cat-psf'))):
+                self.log.write('Running SExtractor with PSF model',
+                               level=3, event=25)
+
+                if use_filter:
+                    self.log.write('Using filter {}'.format(filter_path), 
+                                   level=4, event=25)
+
+                if use_fix_threshold:
+                    self.log.write('Using threshold {:f} ADU'
+                                   .format(psf_threshold_adu), 
+                                   level=4, event=25)
+                else:
+                    threshold_adu = sky_sigma * psf_threshold_sigma
+                    self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
+                                   .format(psf_threshold_sigma, threshold_adu), 
+                                   level=4, event=25)
+
+                fn_sex_param = self.basefn + '_sextractor.param'
+                fconf = open(os.path.join(self.scratch_dir, fn_sex_param), 'w')
+                fconf.write('XPEAK_IMAGE\n')
+                fconf.write('YPEAK_IMAGE\n')
+                fconf.write('XPSF_IMAGE\n')
+                fconf.write('YPSF_IMAGE\n')
+                fconf.write('ERRAPSF_IMAGE\n')
+                fconf.write('ERRBPSF_IMAGE\n')
+                fconf.write('ERRTHETAPSF_IMAGE\n')
+                fconf.close()
+
+                if use_fix_threshold:
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_adu)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_adu)
+                    cnf += 'THRESH_TYPE      ABSOLUTE\n'
+                else:
+                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
+                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
+
+                if use_filter:
+                    cnf += 'FILTER           Y\n'
+                    cnf += 'FILTER_NAME      {}\n'.format(filter_path)
+                else:
+                    cnf += 'FILTER           N\n'
+
+                cnf += 'SATUR_LEVEL      65000.0\n'
+                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
+                #cnf += 'BACKPHOTO_THICK  96\n'
+                cnf += 'MAG_ZEROPOINT    25.0\n'
+                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
+                cnf += 'CATALOG_TYPE     FITS_1.0\n'
+                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.basefn)
+                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.basefn)
+                cnf += 'NTHREADS         0\n'
+
+                fn_sex_conf = self.basefn + '_sextractor.conf'
+                self.log.write('Writing SExtractor configuration file {}'
+                               .format(fn_sex_conf), level=4, event=25)
+                self.log.write('SExtractor configuration file:\n{}'
+                               .format(cnf), level=5, event=25)
+                fconf = open(os.path.join(self.scratch_dir, fn_sex_conf), 'w')
+                fconf.write(cnf)
+                fconf.close()
+
+                cmd = self.sextractor_path
+                cmd += ' %s_inverted.fits' % self.basefn
+                cmd += ' -c %s' % fn_sex_conf
+                self.log.write('Subprocess: {}'.format(cmd), level=5, event=25)
+                sp.call(cmd, shell=True, stdout=self.log.handle, 
+                        stderr=self.log.handle, cwd=self.scratch_dir)
+                self.log.write('', timestamp=False, double_newline=False)
+
         # Read the SExtractor output catalog
+        self.log.write('Reading sources from the SExtractor output file', 
+                       level=3, event=26)
         xycat = fits.open(os.path.join(self.scratch_dir, self.basefn + '.cat'))
         self.num_sources = len(xycat[1].data)
         self.db_update_process(num_sources=self.num_sources)
+        self.log.write('Extracted {:d} sources'
+                       .format(self.num_sources), level=4, event=26)
 
         self.sources = np.zeros(self.num_sources,
                                 dtype=[(k,_source_meta[k][0]) 
                                        for k in _source_meta])
 
+        self.sources['flag_usepsf'] = 0
+        self.sources['x_psf'] = np.nan
+        self.sources['y_psf'] = np.nan
+        self.sources['erra_psf'] = np.nan
+        self.sources['errb_psf'] = np.nan
+        self.sources['errtheta_psf'] = np.nan
         self.sources['raj2000'] = np.nan
         self.sources['dej2000'] = np.nan
         self.sources['raj2000_wcs'] = np.nan
@@ -1427,6 +1562,8 @@ class SolveProcess:
         self.sources['z_sphere'] = np.nan
         self.sources['healpix256'] = -1
         self.sources['nn_dist'] = np.nan
+        self.sources['zenith_angle'] = np.nan
+        self.sources['airmass'] = np.nan
         self.sources['ucac4_ra'] = np.nan
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
@@ -1460,11 +1597,18 @@ class SolveProcess:
         self.sources['bmagerr'] = np.nan
         self.sources['vmag'] = np.nan
         self.sources['vmagerr'] = np.nan
+        self.sources['natmag_plate'] = np.nan
+        self.sources['natmagerr_plate'] = np.nan
+        self.sources['natmag_residual'] = np.nan
+        self.sources['natmag_correction'] = np.nan
+        self.sources['natmag_sub'] = np.nan
+        self.sources['natmagerr_sub'] = np.nan
         self.sources['color_term'] = np.nan
         self.sources['color_bv'] = np.nan
         self.sources['cat_natmag'] = np.nan
-        self.sources['flag_calib_star'] = 0
-        self.sources['flag_calib_outlier'] = 0
+        self.sources['phot_calib_flags'] = 0
+        self.sources['phot_plate_flags'] = 0
+        self.sources['phot_sub_flags'] = 0
         
         # Copy values from the SExtractor catalog, xycat
         for k,v in [(n,_source_meta[n][2]) for n in _source_meta 
@@ -1499,7 +1643,7 @@ class SolveProcess:
         self.sources['dist_edge'] = np.amin(distarr, 1)
         
         # Define 8 concentric annular bins + bin9 for edges
-        self.log.write('Flagging sources', level=3, event=36)
+        self.log.write('Flagging sources', level=3, event=27)
         sampling = 100
         imwidth_s = int(self.imwidth / sampling)
         imheight_s = int(self.imheight / sampling)
@@ -1512,7 +1656,7 @@ class SolveProcess:
                                  (y*sampling - self.imheight/2.)**2)
 
         # Define bin9 as 1/10 of min_halfwidth at all edges
-        bin9_width_s = 0.1 * min_halfwidth / sampling
+        bin9_width_s = int(0.1 * min_halfwidth / sampling)
         dist_s[:bin9_width_s,:] = -100.
         dist_s[imheight_s-bin9_width_s:,:] = -100.
         dist_s[:,:bin9_width_s] = -100.
@@ -1540,7 +1684,7 @@ class SolveProcess:
             nbin = bbin.sum()
             self.log.write('Annular bin {:d} (radius {:8.2f} pixels): '
                            '{:6d} sources'.format(b, bin_dist[b], nbin), 
-                           double_newline=False, level=4, event=36)
+                           double_newline=False, level=4, event=27)
 
             if nbin > 0:
                 indbin = np.where(bbin)
@@ -1551,7 +1695,7 @@ class SolveProcess:
         nbin = bbin.sum()
         self.log.write('Annular bin 9 (radius {:8.2f} pixels): '
                        '{:6d} sources'.format(bin9_corner_dist, nbin), 
-                       level=4, event=36)
+                       level=4, event=27)
 
         if nbin > 0:
             indbin = np.where(bbin)
@@ -1588,27 +1732,28 @@ class SolveProcess:
 
         bclean = ((self.sources['flux_radius'] > 0) & 
                   (self.sources['elongation'] < 5) & 
+                  (self.sources['magerr_auto'] < 5) &
                   (borderbg < 100))
         indclean = np.where(bclean)[0]
         self.sources['flag_clean'][indclean] = 1
         self.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
-                       double_newline=False, level=4, event=36)
+                       double_newline=False, level=4, event=27)
 
         indrim = np.where(borderbg >= 100)[0]
         self.sources['flag_rim'][indrim] = 1
         self.log.write('Flagged {:d} sources at the plate rim'
                        ''.format(len(indrim)), double_newline=False, 
-                       level=4, event=36)
+                       level=4, event=27)
 
         indnegrad = np.where(self.sources['flux_radius'] <= 0)[0]
         self.sources['flag_negradius'][indnegrad] = 1
         self.log.write('Flagged {:d} sources with negative FLUX_RADIUS'
-                       ''.format(len(indnegrad)), level=4, event=36)
+                       ''.format(len(indnegrad)), level=4, event=27)
 
         # For bright stars, update coordinates with PSF coordinates
         if use_psf and enough_psf_sources:
             self.log.write('Updating coordinates with PSF coordinates '
-                           'for bright sources', level=3, event=37)
+                           'for bright sources', level=3, event=28)
 
             fn_psfcat = os.path.join(self.scratch_dir, self.basefn + '.cat-psf')
 
@@ -1618,7 +1763,7 @@ class SolveProcess:
                 except IOError:
                     self.log.write('Could not read PSF coordinates, file {} '
                                    'is corrupt'.format(fn_psfcat), 
-                                   level=2, event=37)
+                                   level=2, event=28)
                     psfcat = None
 
                 if psfcat is not None and psfcat[1].header['NAXIS2'] > 0:
@@ -1645,36 +1790,41 @@ class SolveProcess:
                     #                                     ypeakpsf,
                     #                                     tol=1.)
 
+                    num_psf_sources = len(ind1)
                     self.log.write('Replacing x,y values from PSF photometry '
-                                   'for {:d} sources'.format(len(ind1)), 
-                                   level=3, event=37)
-                    self.sources[ind1]['x_psf'] = \
+                                   'for {:d} sources'.format(num_psf_sources),
+                                   level=4, event=28)
+                    self.sources['x_psf'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                    self.sources[ind1]['y_psf'] = \
+                    self.sources['y_psf'][ind1] = \
                             psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                    self.sources[ind1]['erra_psf'] = \
+                    self.sources['erra_psf'][ind1] = \
                             psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errb_psf'] = \
+                    self.sources['errb_psf'][ind1] = \
                             psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errtheta_psf'] = \
+                    self.sources['errtheta_psf'][ind1] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                    self.sources[ind1]['x_source'] = \
+                    self.sources['x_source'][ind1] = \
                             psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                    self.sources[ind1]['y_source'] = \
+                    self.sources['y_source'][ind1] = \
                             psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                    self.sources[ind1]['erra_source'] = \
+                    self.sources['erra_source'][ind1] = \
                             psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errb_source'] = \
+                    self.sources['errb_source'][ind1] = \
                             psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                    self.sources[ind1]['errtheta_source'] = \
+                    self.sources['errtheta_source'][ind1] = \
                             psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+                    self.sources['flag_usepsf'][ind1] = 1
+                    self.db_update_process(num_psf_sources=num_psf_sources)
                 elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
                     self.log.write('There are no sources with PSF coordinates!',
-                                   level=2, event=37)
+                                   level=2, event=28)
+                    self.db_update_process(num_psf_sources=0)
             else:
                 self.log.write('Could not read PSF coordinates, '
                                'file {} does not exist!'.format(fn_psfcat), 
-                               level=2, event=37)
+                               level=2, event=28)
+                self.db_update_process(num_psf_sources=0)
 
         # Keep clean xy data for later use
         #self.xyclean = xycat[1].copy()
@@ -1706,7 +1856,7 @@ class SolveProcess:
 
         """
 
-        self.log.write('Solving astrometry', level=3, event=40)
+        self.log.write('Solving astrometry', level=3, event=30)
 
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
@@ -1720,7 +1870,7 @@ class SolveProcess:
                 plate_year = self.plate_year
 
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
-                       level=4, event=40)
+                       level=4, event=30)
 
         if sip is None:
             sip = self.sip
@@ -1784,7 +1934,6 @@ class SolveProcess:
         # Construct the solve-field call
         cmd = self.solve_field_path
         cmd += ' {}'.format(fnxy_short)
-        cmd += ' --no-fits2fits'
         cmd += ' --width {:d}'.format(self.imwidth)
         cmd += ' --height {:d}'.format(self.imheight)
         cmd += ' --x-column X_IMAGE'
@@ -1799,20 +1948,16 @@ class SolveProcess:
             cmd += ' --no-tweak'
             
         cmd += ' --crpix-center'
-        #cmd += ' --pixel-error 3'
         cmd += ' --scamp {}_scamp.cat'.format(self.basefn)
         cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
         cmd += ' --no-plots'
         cmd += ' --out {}'.format(self.basefn)
-        #cmd += ' --solved none'
         cmd += ' --match none'
         cmd += ' --rdls none'
         cmd += ' --corr none'
         cmd += ' --overwrite'
-        #cmd += ' --timestamp'
-        #cmd += ' --verbose'
         cmd += ' --cpulimit 120'
-        self.log.write('Subprocess: {}'.format(cmd), level=4, event=40)
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=30)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1823,16 +1968,16 @@ class SolveProcess:
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
-            self.log.write('Astrometry solved', level=3, event=41)
+            self.log.write('Astrometry solved', level=3, event=31)
             self.db_update_process(solved=1)
         else:
             self.log.write('Could not solve astrometry for the plate', 
-                           level=2, event=40)
+                           level=2, event=31)
             self.db_update_process(solved=0)
             return
 
         self.log.write('Calculating plate-solution related parameters', 
-                       level=3, event=42)
+                       level=3, event=32)
 
         # Read the .wcs file and calculate star density
         self.wcshead = fits.getheader(fn_wcs)
@@ -1966,7 +2111,7 @@ class SolveProcess:
             rotation_angle = None
             plate_mirrored = None
             self.log.write('Could not calculate plate rotation angle', 
-                           level=2, event=42)
+                           level=2, event=32)
 
         # Prepare WCS header for output
         wcshead_strip = fits.Header()
@@ -2036,26 +2181,6 @@ class SolveProcess:
                 self.min_ra = min_above180
                 self.max_ra = max_below180
 
-    def output_wcs_header(self):
-        """
-        Write WCS header to an ASCII file.
-
-        """
-
-        if self.plate_solved:
-            self.log.write('Writing WCS header to a file', level=3, event=46)
-
-            # Create output directory, if missing
-            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
-                self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir), level=4, event=46)
-                os.makedirs(self.write_wcs_dir)
-
-            fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
-            self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
-                           level=4, event=46)
-            self.wcshead.tofile(fn_wcshead, clobber=True)
-
     def output_solution_db(self):
         """
         Write plate solution to the database.
@@ -2063,11 +2188,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing astrometric solution to the database', 
-                       event=45)
+                       event=35)
 
         if self.solution is None:
             self.log.write('No plate solution to write to the database', 
-                           level=2, event=45)
+                           level=2, event=35)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -2088,7 +2213,387 @@ class SolveProcess:
         platedb.close_connection()
         self.log.write('Closed database connection')
 
-    def solve_recursive(self, plate_epoch=None, sip=None, skip_bright=None, 
+    def output_wcs_header(self):
+        """
+        Write WCS header to an ASCII file.
+
+        """
+
+        if self.plate_solved:
+            self.log.write('Writing WCS header to a file', level=3, event=36)
+
+            # Create output directory, if missing
+            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
+                self.log.write('Creating WCS output directory {}'
+                               ''.format(self.write_wcs_dir), level=4, event=36)
+                os.makedirs(self.write_wcs_dir)
+
+            fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
+            self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
+                           level=4, event=36)
+            self.wcshead.tofile(fn_wcshead, overwrite=True)
+
+    def get_reference_catalogs(self):
+        """
+        Get reference catalogs for astrometric and photometric calibration.
+
+        """
+
+        self.log.write('Getting reference catalogs', level=3, event=40)
+
+        if not self.plate_solved:
+            self.log.write('Missing initial solution, '
+                           'cannot get reference catalogs!', 
+                           level=2, event=40)
+            return
+
+        # Read the Tycho-2 catalogue
+        if self.use_tycho2_fits:
+            self.log.write('Reading the Tycho-2 catalogue', level=3, event=41)
+            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+
+            try:
+                tycho2 = fits.open(fn_tycho2)
+                tycho2_available = True
+            except IOError:
+                self.log.write('Missing Tycho-2 data', level=2, event=41)
+                tycho2_available = False
+
+            if tycho2_available:
+                ra_tyc = tycho2[1].data.field(0)
+                dec_tyc = tycho2[1].data.field(1)
+                pmra_tyc = tycho2[1].data.field(2)
+                pmdec_tyc = tycho2[1].data.field(3)
+                btmag_tyc = tycho2[1].data.field(4)
+                vtmag_tyc = tycho2[1].data.field(5)
+                ebtmag_tyc = tycho2[1].data.field(6)
+                evtmag_tyc = tycho2[1].data.field(7)
+                tyc1 = tycho2[1].data.field(8)
+                tyc2 = tycho2[1].data.field(9)
+                tyc3 = tycho2[1].data.field(10)
+                hip_tyc = tycho2[1].data.field(11)
+                ind_nullhip = np.where(hip_tyc == -2147483648)[0]
+
+                if len(ind_nullhip) > 0:
+                    hip_tyc[ind_nullhip] = 0
+
+                # For stars that have proper motion data, calculate RA, Dec
+                # for the plate epoch
+                indpm = np.where(np.isfinite(pmra_tyc) & 
+                                  np.isfinite(pmdec_tyc))[0]
+                ra_tyc[indpm] = (ra_tyc[indpm] 
+                                 + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
+                                 / np.cos(dec_tyc[indpm] * np.pi / 180.) 
+                                 / 3600000.)
+                dec_tyc[indpm] = (dec_tyc[indpm] 
+                                  + (self.plate_epoch - 2000.) 
+                                  * pmdec_tyc[indpm] / 3600000.)
+
+                if self.ncp_close:
+                    btyc = (dec_tyc > self.min_dec)
+                elif self.scp_close:
+                    btyc = (dec_tyc < self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    btyc = (((ra_tyc < self.max_ra) |
+                            (ra_tyc > self.min_ra)) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+                else:
+                    btyc = ((ra_tyc > self.min_ra) & 
+                            (ra_tyc < self.max_ra) &
+                            (dec_tyc > self.min_dec) & 
+                            (dec_tyc < self.max_dec))
+
+                indtyc = np.where(btyc)[0]
+                numtyc = btyc.sum()
+
+                self.ra_tyc = ra_tyc[indtyc] 
+                self.dec_tyc = dec_tyc[indtyc] 
+                self.btmag_tyc = btmag_tyc[indtyc]
+                self.vtmag_tyc = vtmag_tyc[indtyc]
+                self.btmagerr_tyc = ebtmag_tyc[indtyc]
+                self.vtmagerr_tyc = evtmag_tyc[indtyc]
+                self.id_tyc = np.array(['{:d}-{:d}-{:d}'
+                                        .format(tyc1[i], tyc2[i], tyc3[i])
+                                        for i in indtyc])
+                self.id_tyc_pad = np.array(['{:04d}-{:05d}-{:1d}'
+                                            .format(tyc1[i], tyc2[i], tyc3[i])
+                                            for i in indtyc])
+                self.hip_tyc = hip_tyc[indtyc]
+                self.num_tyc = numtyc
+
+                self.log.write('Fetched {:d} entries from Tycho-2'
+                               ''.format(numtyc), level=4, event=41)
+
+        query_combined = False
+        query_healpix = False
+
+        # Query the UCAC4 catalog
+        if self.use_ucac4_db:
+            self.log.write('Querying the UCAC4 catalogue', level=3, event=42)
+            query_ucac4 = True
+
+            # Check UCAC4 database name and table name
+            if self.ucac4_db_name == '':
+                self.log.write('UCAC4 database name missing!', 
+                               level=2, event=42)
+                query_ucac4 = False
+
+            if self.ucac4_db_table == '':
+                self.log.write('UCAC4 database table name missing!', 
+                               level=2, event=42)
+                query_ucac4 = False
+
+            ucac4_cols = [col.strip() 
+                          for col,typ in self.ucac4_columns.values()]
+            ucac4_types = [typ.strip() 
+                           for col,typ in self.ucac4_columns.values()]
+
+            # Check if all columns are specified
+            if '' in ucac4_cols:
+                self.log.write('One ore more UCAC4 database column '
+                               'names missing!', level=2, event=42)
+                query_ucac4 = False
+
+            # Check if APASS and UCAC4 data are in the same table
+            if (query_ucac4 and self.use_apass_db and 
+                    (self.ucac4_db_name == self.apass_db_name) and 
+                    (self.ucac4_db_table == self.apass_db_table)):
+                apass_cols = [col.strip() 
+                              for col,typ in self.apass_columns.values()]
+                apass_types = [typ.strip() 
+                               for col,typ in self.apass_columns.values()]
+
+                # Check if all columns are specified
+                if '' in apass_cols:
+                    self.log.write('One ore more APASS database column '
+                                   'names missing!', level=2, event=42)
+                    query_combined = False
+                else:
+                    ucac4_cols.extend(apass_cols)
+                    ucac4_types.extend(apass_types)
+                    query_combined = True
+
+                    if self.conf.has_section(self.ucac4_db_table):
+                        try:
+                            colstr = self.conf.get(self.ucac4_db_table, 
+                                                   'healpix')
+
+                            if colstr != '':
+                                ucac4_cols.append(colstr)
+                                ucac4_types.append('i')
+                                query_healpix = True
+                        except ConfigParser.Error:
+                            pass
+
+            if query_ucac4:
+                ucac4_ra_col = self.ucac4_columns['ucac4_ra'][0]
+                ucac4_dec_col = self.ucac4_columns['ucac4_dec'][0]
+
+                # Query MySQL database
+                db = MySQLdb.connect(host=self.ucac4_db_host, 
+                                     user=self.ucac4_db_user, 
+                                     passwd=self.ucac4_db_passwd,
+                                     db=self.ucac4_db_name)
+                cur = db.cursor()
+
+                sql = 'SELECT {} FROM {} '.format(','.join(ucac4_cols),
+                                                  self.ucac4_db_table)
+
+                if self.ncp_close:
+                    sql += 'WHERE {} > {}'.format(ucac4_dec_col, self.min_dec)
+                elif self.scp_close:
+                    sql += 'WHERE {} < {}'.format(ucac4_dec_col, self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
+                            ''.format(ucac4_ra_col, self.max_ra, 
+                                      ucac4_ra_col, self.min_ra,
+                                      ucac4_dec_col, self.min_dec, self.max_dec))
+                else:
+                    sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                            ''.format(ucac4_ra_col, self.min_ra, self.max_ra, 
+                                      ucac4_dec_col, self.min_dec, self.max_dec))
+
+                sql += ';'
+                self.log.write('Query: {}'.format(sql), level=5, event=43)
+                numrows = cur.execute(sql)
+                self.log.write('Fetched {:d} rows from UCAC4'.format(numrows), 
+                               level=4, event=42)
+
+                res = np.fromiter(cur.fetchall(), dtype=','.join(ucac4_types))
+
+                cur.close()
+                db.commit()
+                db.close()
+
+                ra_ucac = res['f0']
+                dec_ucac = res['f1']
+                pmra_ucac = res['f6']
+                pmdec_ucac = res['f7']
+
+                self.raerr_ucac = res['f2']
+                self.decerr_ucac = res['f3']
+                self.mag_ucac = res['f4']
+                self.magerr_ucac = res['f5']
+                self.id_ucac = res['f8']
+                self.bmag_ucac = res['f9']
+                self.vmag_ucac = res['f10']
+                self.bmagerr_ucac = res['f11']
+                self.vmagerr_ucac = res['f12']
+                self.num_ucac = numrows
+
+                # Use proper motions to calculate RA/Dec for the plate epoch
+                bpm = ((pmra_ucac != 0) & (pmdec_ucac != 0))
+                num_pm = bpm.sum()
+
+                if num_pm > 0:
+                    ind_pm = np.where(bpm)
+                    ra_ucac[ind_pm] = (ra_ucac[ind_pm] + (self.plate_epoch - 2000.)
+                                       * pmra_ucac[ind_pm]
+                                       / np.cos(dec_ucac[ind_pm] * np.pi / 180.) 
+                                       / 3600000.)
+                    dec_ucac[ind_pm] = (dec_ucac[ind_pm] + 
+                                        (self.plate_epoch - 2000.)
+                                        * pmdec_ucac[ind_pm] / 3600000.)
+
+                self.ra_ucac = ra_ucac
+                self.dec_ucac = dec_ucac
+
+                if query_combined:
+                    self.ra_apass = res['f13']
+                    self.dec_apass = res['f14']
+                    self.bmag_apass = res['f15']
+                    self.vmag_apass = res['f16']
+                    self.berr_apass = res['f17']
+                    self.verr_apass = res['f18']
+                    self.num_apass = numrows
+                    self.combined_ucac_apass = True
+
+                    # Use UCAC4 magnitudes to fill gaps in APASS
+                    if query_healpix:
+                        self.log.write('Filling gaps in the APASS data', 
+                                       level=3, event=43)
+                        healpix_ucac = res['f19']
+                        uhp = np.unique(healpix_ucac)
+                        indsort = np.argsort(healpix_ucac)
+                        healpix_ucac_sort = healpix_ucac[indsort]
+                        bmag_ucac_sort = self.bmag_ucac[indsort]
+                        vmag_ucac_sort = self.vmag_ucac[indsort]
+                        bmag_apass_sort = self.bmag_apass[indsort]
+                        vmag_apass_sort = self.vmag_apass[indsort]
+
+                        bgoodapass = (np.isfinite(bmag_apass_sort) &
+                                      np.isfinite(vmag_apass_sort))
+
+                        if bgoodapass.sum() > 0:
+                            indgood = np.where(bgoodapass)[0]
+                            bbright = ((bmag_apass_sort[indgood] <= 10) &
+                                       (vmag_apass_sort[indgood] <= 10))
+
+                            if bbright.sum() > 0:
+                                bgoodapass[indgood[np.where(bbright)]] = False
+                            
+                        nfill = 0L
+
+                        # Go through all unique HEALPix in the plate area
+                        for hp in uhp:
+                            bapass = ((healpix_ucac_sort == hp) & bgoodapass)
+
+                            # If there are more than 10 APASS stars in HEALPix,
+                            # then do not do anything
+                            if bapass.sum() > 10:
+                                continue
+
+                            bucac = ((healpix_ucac_sort == hp) &
+                                     (bmag_ucac_sort > 10) &
+                                     (vmag_ucac_sort > 10))
+
+                            # There is a HEALPix with 10 or less valid 
+                            # APASS magnitudes, but available magnitudes 
+                            # in UCAC4
+                            if (bucac.sum() - bapass.sum() > 0):
+                                ind1 = indsort[np.where(bucac)]
+                                ind2 = indsort[np.where(bapass)]
+                                ind = np.setdiff1d(ind1, ind2)
+                                self.bmag_apass[ind] = self.bmag_ucac[ind]
+                                self.vmag_apass[ind] = self.vmag_ucac[ind]
+                                self.berr_apass[ind] = self.bmagerr_ucac[ind]
+                                self.verr_apass[ind] = self.vmagerr_ucac[ind]
+                                nfill += ind.size
+
+                        self.log.write('Added UCAC4 magnitudes to {:d} stars '
+                                       'to fill gaps in the APASS data'
+                                       ''.format(nfill), level=4, event=43)
+
+        # Query the APASS catalog
+        if self.use_apass_db and not query_combined:
+            self.log.write('Querying the APASS catalogue', level=3, event=44)
+            query_apass = True
+
+            # Check UCAC4 database name
+            if self.apass_db_name == '':
+                self.log.write('APASS database name missing!', 
+                               level=2, event=44)
+                query_apass = False
+
+            apass_cols = [col.strip() 
+                          for col,typ in self.apass_columns.values()]
+            apass_types = [typ.strip() 
+                           for col,typ in self.apass_columns.values()]
+
+            # Check if all columns are specified
+            if '' in apass_cols:
+                self.log.write('One ore more APASS database column '
+                               'names missing!', level=2, event=44)
+                query_apass = False
+
+            if query_apass:
+                apass_ra_col = self.apass_columns['apass_ra'][0]
+                apass_dec_col = self.apass_columns['apass_dec'][0]
+
+                # Query MySQL database
+                db = MySQLdb.connect(host=self.apass_db_host, 
+                                     user=self.apass_db_user, 
+                                     passwd=self.apass_db_passwd,
+                                     db=self.apass_db_name)
+                cur = db.cursor()
+
+                sql = 'SELECT {} FROM {} '.format(','.join(apass_cols),
+                                                  self.apass_db_table)
+
+                if self.ncp_close:
+                    sql += 'WHERE {} > {}'.format(apass_dec_col, self.min_dec)
+                elif self.scp_close:
+                    sql += 'WHERE {} < {}'.format(apass_dec_col, self.max_dec)
+                elif self.max_ra < self.min_ra:
+                    sql += ('WHERE ({} < {} OR {} > {}) AND {} BETWEEN {} AND {}'
+                            ''.format(apass_ra_col, self.max_ra, 
+                                      apass_ra_col, self.min_ra,
+                                      apass_dec_col, self.min_dec, self.max_dec))
+                else:
+                    sql += ('WHERE {} BETWEEN {} AND {} AND {} BETWEEN {} AND {}'
+                            ''.format(apass_ra_col, self.min_ra, self.max_ra, 
+                                      apass_dec_col, self.min_dec, self.max_dec))
+
+                sql += ';'
+                self.log.write('Query: {}'.format(sql), level=5, event=44)
+                num_apass = cur.execute(sql)
+                self.log.write('Fetched {:d} rows from APASS'.format(num_apass),
+                               level=4, event=44)
+                res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
+                cur.close()
+                db.commit()
+                db.close()
+
+                self.ra_apass = res['f0']
+                self.dec_apass = res['f1']
+                self.bmag_apass = res['f2']
+                self.vmag_apass = res['f3']
+                self.berr_apass = res['f4']
+                self.verr_apass = res['f5']
+                self.num_apass = num_apass
+
+    def solve_recursive(self, plate_epoch=None, distort=None, skip_bright=None, 
                         max_recursion_depth=None, force_recursion_depth=None):
         """
         Solve astrometry in a FITS file.
@@ -2097,8 +2602,8 @@ class SolveProcess:
         ----------
         plate_epoch : float
             Epoch of plate in decimal years (default 1950.0)
-        sip : int
-            SIP distortion order (default 3)
+        distort : int
+            SCAMP distortion order (default 1)
         skip_bright : int
             Number of brightest stars to skip when solving with Astrometry.net
             (default 10).
@@ -2133,8 +2638,8 @@ class SolveProcess:
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch), 
                        level=4, event=50)
 
-        if sip is None:
-            sip = self.sip
+        if distort is None:
+            distort = self.distort
 
         if skip_bright is None:
             skip_bright = self.skip_bright
@@ -2150,11 +2655,6 @@ class SolveProcess:
         except ValueError:
             skip_bright = 10
 
-        # Check UCAC4 database name
-        if self.use_ucac4_db and (self.ucac4_db_name == ''):
-            self.use_ucac4_db = False
-            self.log.write('UCAC-4 database name missing!', level=2, event=50)
-
         # Read the SCAMP input catalog
         self.scampcat = fits.open(os.path.join(self.scratch_dir,
                                                self.basefn + '_scamp.cat'))
@@ -2162,61 +2662,64 @@ class SolveProcess:
         # Create or download the SCAMP reference catalog
         if not os.path.exists(os.path.join(self.scratch_dir, 
                                             self.basefn + '_scampref.cat')):
-            if self.stars_sqdeg > 1000:
-                astref_catalog = 'UCAC-4'
-            else:
-                astref_catalog = 'PPMX'
-                #astref_catalog = 'Tycho-2'
+            self.log.write('Creating or downloading the SCAMP reference '
+                           'catalogue', level=3, event=51)
 
-            if self.use_ucac4_db:
+            # Default astrometric catalog
+            astref_catalog = 'UCAC-4'
+
+            if self.astref_catalog:
+                astref_catalog = self.astref_catalog.upper()
+
+            if astref_catalog == 'UCAC4':
                 astref_catalog = 'UCAC-4'
 
-            if self.use_tycho2_astrometry:
-                astref_catalog = 'TYCHO-2'
+            self.log.write('Astrometric reference catalogue specified: {}'
+                           ''.format(astref_catalog),
+                           level=4, event=51)
+
+            # List of astrometric catalogs recognized by SCAMP
+            known_catalogs = ['USNO-A1', 'USNO-A2', 'USNO-B1', 
+                              'GSC-1.3', 'GSC-2.2', 'GSC-2.3', 'TYCHO-2',
+                              'UCAC-1', 'UCAC-2', 'UCAC-3', 'UCAC-4', 
+                              'NOMAD-1', 'PPMX', 'CMC-14', '2MASS', 'DENIS-3', 
+                              'SDSS-R3', 'SDSS-R5', 'SDSS-R6', 'SDSS-R7', 
+                              'SDSS-R8', 'SDSS-R9']
+
+            if astref_catalog not in known_catalogs:
+                self.log.write('Unknown astrometric reference catalogue ({}), '
+                               'recursive solving not possible!'
+                               ''.format(astref_catalog),
+                               level=2, event=51)
+                return
 
             if (astref_catalog == 'TYCHO-2') and self.use_tycho2_fits:
-                # Build custom SCAMP reference catalog from Tycho-2 FITS file
-                fn_tycho = os.path.join(self.tycho2_dir, 'tycho2_{:d}.fits'
-                                        .format(plate_year))
-                tycho = fits.open(fn_tycho)
-                ra_tyc = tycho[1].data.field(0)
-                dec_tyc = tycho[1].data.field(1)
-                mag_tyc = tycho[1].data.field(2)
+                self.log.write('Building the SCAMP reference catalogue from '
+                               'the Tycho-2 data', level=4, event=51)
 
-                if self.ncp_close:
-                    btyc = (dec_tyc > self.min_dec)
-                elif self.scp_close:
-                    btyc = (dec_tyc < self.max_dec)
-                elif self.max_ra < self.min_ra:
-                    btyc = (((ra_tyc < self.max_ra) |
-                            (ra_tyc > self.min_ra)) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
-                else:
-                    btyc = ((ra_tyc > self.min_ra) & 
-                            (ra_tyc < self.max_ra) &
-                            (dec_tyc > self.min_dec) & 
-                            (dec_tyc < self.max_dec))
+                # Check if we have Tycho-2 data
+                if self.num_tyc == 0:
+                    self.log.write('No Tycho-2 sources available, '
+                                   'recursive solving not possible!', 
+                                   level=2, event=51)
+                    return
 
-                indtyc = np.where(btyc)
-                numtyc = btyc.sum()
-
-                self.log.write('Fetched {:d} entries from Tycho-2'
-                               ''.format(numtyc))
-
+                # Build custom SCAMP reference catalog from Tycho-2 data
+                numtyc = self.num_tyc
                 self.scampref = new_scampref()
 
                 try:
-                    hduref = fits.BinTableHDU.from_columns(scampref[2].columns, 
+                    hduref = fits.BinTableHDU.from_columns(self.scampref[2].columns, 
                                                            nrows=numtyc)
                 except AttributeError:
-                    hduref = fits.new_table(scampref[2].columns, nrows=numtyc)
+                    hduref = fits.new_table(self.scampref[2].columns, 
+                                            nrows=numtyc)
 
-                hduref.data.field('X_WORLD')[:] = ra_tyc[indtyc]
-                hduref.data.field('Y_WORLD')[:] = dec_tyc[indtyc]
+                hduref.data.field('X_WORLD')[:] = self.ra_tyc
+                hduref.data.field('Y_WORLD')[:] = self.dec_tyc
                 hduref.data.field('ERRA_WORLD')[:] = np.zeros(numtyc) + 1./3600.
                 hduref.data.field('ERRB_WORLD')[:] = np.zeros(numtyc) + 1./3600.
-                hduref.data.field('MAG')[:] = mag_tyc[indtyc]
+                hduref.data.field('MAG')[:] = self.btmag_tyc
                 hduref.data.field('MAGERR')[:] = np.zeros(numtyc) + 0.1
                 hduref.data.field('OBSDATE')[:] = np.zeros(numtyc) + 2000.
                 self.scampref[2].data = hduref.data
@@ -2228,83 +2731,36 @@ class SolveProcess:
                     os.remove(scampref_file)
 
                 self.scampref.writeto(scampref_file)
-                tycho.close()
             elif (astref_catalog == 'UCAC-4') and self.use_ucac4_db:
-                # Query MySQL database
-                db = MySQLdb.connect(host=self.ucac4_db_host, 
-                                     user=self.ucac4_db_user, 
-                                     passwd=self.ucac4_db_passwd,
-                                     db=self.ucac4_db_name)
-                cur = db.cursor()
+                self.log.write('Building the SCAMP reference catalogue from '
+                               'the UCAC4 data', level=4, event=51)
 
-                sql1 = 'SELECT RAJ2000,DEJ2000,e_RAJ2000,e_DEJ2000,amag,e_amag,'
-                sql1 += 'pmRA,pmDE,e_pmRA,e_pmDE,UCAC4,Bmag,Vmag,e_Bmag,e_Vmag'
-                sql2 = ' FROM {}'.format(self.ucac4_db_table)
-                sql2 += ' FORCE INDEX (idx_radecmag)'
+                # Check if we have UCAC4 data
+                if self.num_ucac == 0:
+                    self.log.write('No UCAC4 sources available, '
+                                   'recursive solving not possible!', 
+                                   level=2, event=51)
+                    return
 
-                if self.ncp_close:
-                    sql2 += ' WHERE DEJ2000 > {}'.format(self.min_dec)
-                elif self.scp_close:
-                    sql2 += ' WHERE DEJ2000 < {}'.format(self.max_dec)
-                elif self.max_ra < self.min_ra:
-                    sql2 += (' WHERE (RAJ2000 < {} OR RAJ2000 > {})'
-                             ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(self.max_ra, self.min_ra,
-                                       self.min_dec, self.max_dec))
-                else:
-                    sql2 += (' WHERE RAJ2000 BETWEEN {} AND {}'
-                             ' AND DEJ2000 BETWEEN {} AND {}'
-                             ''.format(self.min_ra, self.max_ra, 
-                                       self.min_dec, self.max_dec))
-
-                sql3 = ''
-
-                #if self.stars_sqdeg < 200:
-                #    sql3 += ' AND amag < 13'
-                #elif self.stars_sqdeg < 1000:
-                #    sql3 += ' AND amag < 15'
-
-                sql = sql1 + sql2 + sql3 + ';'
-                self.log.write(sql)
-                numrows = cur.execute(sql)
-                self.log.write('Fetched {:d} rows'.format(numrows))
-
-                res = np.fromiter(cur.fetchall(), 
-                                  dtype='f8,f8,i,i,f8,f8,f8,f8,f8,f8,a10,'
-                                  'f8,f8,f8,f8')
-
-                cur.close()
-                db.commit()
-                db.close()
-
-                self.ra_ucac = (res['f0'] + (plate_epoch - 2000.) * res['f6']
-                                / np.cos(res['f1'] * np.pi / 180.) / 3600000.)
-                self.dec_ucac = (res['f1'] + (plate_epoch - 2000.) * res['f7'] 
-                                 / 3600000.)
-
-                self.id_ucac = res['f10']
-                self.bmag_ucac = res['f11']
-                self.vmag_ucac = res['f12']
-                self.berr_ucac = res['f13']
-                self.verr_ucac = res['f14']
-
+                # Create reference catalog for SCAMP
                 self.scampref = new_scampref()
 
                 try:
                     hduref = fits.BinTableHDU.from_columns(self.scampref[2]
                                                            .columns,
-                                                           nrows=numrows)
+                                                           nrows=self.num_ucac)
                 except AttributeError:
                     hduref = fits.new_table(self.scampref[2].columns, 
-                                            nrows=numrows)
+                                            nrows=self.num_ucac)
 
                 hduref.data.field('X_WORLD')[:] = self.ra_ucac
                 hduref.data.field('Y_WORLD')[:] = self.dec_ucac
-                hduref.data.field('ERRA_WORLD')[:] = res['f2']
-                hduref.data.field('ERRB_WORLD')[:] = res['f3']
-                hduref.data.field('MAG')[:] = res['f4']
-                hduref.data.field('MAGERR')[:] = res['f5']
-                hduref.data.field('OBSDATE')[:] = np.zeros(numrows) + 2000.
+                hduref.data.field('ERRA_WORLD')[:] = self.raerr_ucac
+                hduref.data.field('ERRB_WORLD')[:] = self.decerr_ucac
+                hduref.data.field('MAG')[:] = self.mag_ucac
+                hduref.data.field('MAGERR')[:] = self.magerr_ucac
+                hduref.data.field('OBSDATE')[:] = (np.zeros(self.num_ucac) 
+                                                   + 2000.)
                 self.scampref[2].data = hduref.data
 
                 scampref_file = os.path.join(self.scratch_dir, 
@@ -2316,6 +2772,8 @@ class SolveProcess:
                 self.scampref.writeto(scampref_file)
             else:
                 # Let SCAMP download a reference catalog
+                self.log.write('Letting SCAMP download the reference catalogue',
+                               level=4, event=51)
                 cmd = self.scamp_path
                 cmd += ' -c %s_scamp.conf %s_scamp.cat' % (self.basefn, 
                                                            self.basefn)
@@ -2326,7 +2784,7 @@ class SolveProcess:
                 cmd += ' -SOLVE_PHOTOM N'
                 cmd += ' -VERBOSE_TYPE LOG'
                 cmd += ' -CHECKPLOT_TYPE NONE'
-                self.log.write('Subprocess: {}'.format(cmd), level=4)
+                self.log.write('Subprocess: {}'.format(cmd), level=5, event=51)
                 sp.call(cmd, shell=True, stdout=self.log.handle, 
                         stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2344,22 +2802,33 @@ class SolveProcess:
                                                            '_scampref.cat'))
 
         # Improve astrometry in sub-fields (recursively)
+        self.log.write('Begin recursive solving in sub-fields', 
+                       level=3, event=52)
         self.wcshead.set('XMIN', 0)
         self.wcshead.set('XMAX', self.imwidth)
         self.wcshead.set('YMIN', 0)
         self.wcshead.set('YMAX', self.imheight)
 
-        radec,gridsize = \
-                self._solverec(self.wcshead, np.array([99.,99.]), distort=3,
+        radec,gridsize,subid = \
+                self._solverec(self.wcshead, np.array([99.,99.]), 
+                               distort=distort,
                                max_recursion_depth=max_recursion_depth,
                                force_recursion_depth=force_recursion_depth)
         self.sources['raj2000_sub'] = radec[:,0]
         self.sources['dej2000_sub'] = radec[:,1]
         self.sources['raerr_sub'] = radec[:,2]
         self.sources['decerr_sub'] = radec[:,3]
-        self.sources['gridsize_sub'] = gridsize
+        self.sources['astrom_sub_grid'] = gridsize
+        self.sources['astrom_sub_id'] = subid
 
-    def _solverec(self, in_head, in_astromsigma, distort=3, 
+        # Write statistics into the process table
+        astrom_sub_total = len(self.astrom_sub)
+        astrom_sub_eff = np.array([asub['apply_astrometry']==1 
+                                   for asub in self.astrom_sub]).sum()
+        self.db_update_process(astrom_sub_total=astrom_sub_total, 
+                               astrom_sub_eff=astrom_sub_eff)
+
+    def _solverec(self, in_head, in_astromsigma, distort=1, 
                   max_recursion_depth=None, force_recursion_depth=None):
         """
         Improve astrometry of a FITS file recursively in sub-fields.
@@ -2381,25 +2850,17 @@ class SolveProcess:
         else:
             recdepth = 1
 
+        if 'SUB-ID' in in_head:
+            parent_sub_id = in_head['SUB-ID']
+        else:
+            parent_sub_id = 0
+
         # Read SCAMP reference catalog for this plate
-        #ref = fits.open(os.path.join(self.scratch_dir, 
-        #                             self.basefn + '_scampref.cat'))
         ra_ref = self.scampref[2].data.field(0)
         dec_ref = self.scampref[2].data.field(1)
         mag_ref = self.scampref[2].data.field(4)
-        reftmp = fits.HDUList()
-        reftmp.append(self.scampref[0].copy())
-        reftmp.append(self.scampref[1].copy())
-        reftmp.append(self.scampref[2].copy())
-        #reftmp = fits.open(os.path.join(self.scratch_dir, 
-        #                                self.basefn + '_scampref.cat'))
 
         # Get the list of stars in the scan
-        #xyfits = fits.open(os.path.join(self.scratch_dir,
-        #                                self.basefn + '.xy'))
-        #x = xyfits[1].data.field(0)
-        #y = xyfits[1].data.field(1)
-        #erra_arcsec = xyfits[1].data.field('ERRA_IMAGE') * self.mean_pixscale
         x = self.sources['x_source']
         y = self.sources['y_source']
         erra_arcsec = (self.sources['erra_source'] * self.mean_pixscale)
@@ -2408,6 +2869,7 @@ class SolveProcess:
         sigma_ra = np.zeros(len(x)) * np.nan
         sigma_dec = np.zeros(len(x)) * np.nan
         gridsize = np.zeros(len(x))
+        subid = np.zeros(len(x))
 
         xsize = (in_head['XMAX'] - in_head['XMIN']) / 2.
         ysize = (in_head['YMAX'] - in_head['YMIN']) / 2.
@@ -2417,6 +2879,7 @@ class SolveProcess:
         yoffset = np.array([0., 0., 1., 1.])
 
         for sub in subrange:
+            current_sub_id = parent_sub_id * 10 + sub + 1
             xmin = in_head['XMIN'] + xoffset[sub] * xsize
             ymin = in_head['YMIN'] + yoffset[sub] * ysize
             xmax = xmin + xsize
@@ -2425,8 +2888,9 @@ class SolveProcess:
             width = xmax - xmin
             height = ymax - ymin
 
-            self.log.write('Sub-field ({:d}x{:d}) {:.2f} : {:.2f}, '
-                           '{:.2f} : {:.2f}'.format(2**recdepth, 2**recdepth, 
+            self.log.write('Sub-field {:d} ({:d}x{:d}) {:.2f} : {:.2f}, '
+                           '{:.2f} : {:.2f}'.format(current_sub_id,
+                                                    2**recdepth, 2**recdepth, 
                                                     xmin, xmax, ymin, ymax))
             
             xmin_ext = xmin - 0.1 * xsize
@@ -2441,25 +2905,44 @@ class SolveProcess:
                     (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
                     (self.sources['flag_clean'] == 1))
             nsubstars = bsub.sum()
-
-            db_log_msg = ('Sub-field: {:d}x{:d}, '
-                          'X: {:.2f} {:.2f}, Y: {:.2f} {:.2f}, '
-                          'X_ext: {:.2f} {:.2f}, Y_ext: {:.2f} {:.2f}, '
-                          '#stars: {:d}'
-                          .format(2**recdepth, 2**recdepth, 
-                                  xmin, xmax, ymin, ymax, 
-                                  xmin_ext, xmax_ext, ymin_ext, ymax_ext, 
-                                  nsubstars))
-
             self.log.write('Found {:d} stars in the sub-field'
                            .format(nsubstars), double_newline=False)
 
+            # Store statistics about current sub-field
+            asub = OrderedDict([('astrom_sub_id', current_sub_id), 
+                                ('astrom_sub_grid', 2**recdepth), 
+                                ('parent_sub_id', parent_sub_id), 
+                                ('x_min', xmin), 
+                                ('x_max', xmax), 
+                                ('y_min', ymin), 
+                                ('y_max', ymax), 
+                                ('x_min_ext', xmin_ext), 
+                                ('x_max_ext', xmax_ext), 
+                                ('y_min_ext', ymin_ext), 
+                                ('y_max_ext', ymax_ext), 
+                                ('num_sub_stars', nsubstars), 
+                                ('num_ref_stars', None), 
+                                ('above_threshold', None), 
+                                ('num_selected_ref_stars', None), 
+                                ('scamp_crossid_radius', None), 
+                                ('num_scamp_stars', None), 
+                                ('scamp_sigma_axis1', None), 
+                                ('scamp_sigma_axis2', None), 
+                                ('scamp_sigma_mean', None), 
+                                ('scamp_sigma_prev_axis1', None), 
+                                ('scamp_sigma_prev_axis2', None), 
+                                ('scamp_sigma_prev_mean', None), 
+                                ('scamp_sigma_diff', None), 
+                                ('apply_astrometry', None), 
+                                ('num_applied_stars', None)])
+
             if nsubstars < 50:
                 self.log.write('Fewer stars than the threshold (50)')
-                db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(4, db_log_msg, event=51)
+                asub['above_threshold'] = 0
+                self.astrom_sub.append(asub)
                 continue
 
+            asub['above_threshold'] = 1
             indsub = np.where(bsub)
 
             # Create a SCAMP catalog for the sub-field
@@ -2499,15 +2982,15 @@ class SolveProcess:
                     (dec_ref < corners[:,1].max()))
             nrefstars = bref.sum()
             nrefset = nrefstars
+            asub['num_ref_stars'] = nrefstars
 
             self.log.write('Found {:d} reference stars in the sub-field'
                            .format(nrefstars), double_newline=False)
-            db_log_msg = '{}, #reference: {:d}'.format(db_log_msg, nrefstars)
 
             if nrefstars < 50:
                 self.log.write('Fewer reference stars than the threshold (50)')
-                db_log_msg = '{} (<50)'.format(db_log_msg)
-                self.log.to_db(4, db_log_msg, event=51)
+                asub['above_threshold'] = 0
+                self.astrom_sub.append(asub)
                 continue
 
             indref = np.where(bref)[0]
@@ -2519,35 +3002,30 @@ class SolveProcess:
                 self.log.write('Selected {:d} brighter reference stars in the '
                                'sub-field'
                                .format(nrefset), double_newline=False)
-                db_log_msg = '{}, #ref-selected: {:d}'.format(db_log_msg, 
-                                                              nrefset)
+                asub['num_selected_ref_stars'] = nrefset
 
-            self.log.to_db(4, db_log_msg, event=51)
             self.log.write('', timestamp=False, double_newline=False)
 
-            reftmp[2].data = self.scampref[2].data[indref]
+            reftmp = fits.HDUList()
+            reftmp.append(self.scampref[0].copy())
+            reftmp.append(self.scampref[1].copy())
+            hdu = fits.BinTableHDU(data=self.scampref[2].data[indref],
+                                   header=self.scampref[2].header)
+            reftmp.append(hdu)
             scampref_file = os.path.join(self.scratch_dir, 
                                          fnsub + '_scampref.cat')
 
             if os.path.exists(scampref_file):
                 os.remove(scampref_file)
 
-            #reftmp[1].header.set('NAXIS1', 2880)
-            #reftmp[1].header.set('TFORM1', '2880A')
-            #reftmp[1].data.field(0)[0] = reftmp[1].data.field(0)[0].ljust(2880)
             reftmp[1].header.set('TDIM1', '(80, 21)')
             reftmp.writeto(scampref_file, output_verify='ignore')
+            reftmp.close()
+            del reftmp
 
             # Find a TAN solution for the sub-scan
             cmd = self.wcs_to_tan_path
             cmd += ' -w %s.wcs' % self.basefn
-
-            # If .wcs file does not exist for the sub-scan, use global .wcs
-            #if os.path.exists(os.path.join(self.scratch_dir, fnsub + '.wcs')):
-            #    cmd += ' -w %s.wcs' % fnsub
-            #else:
-            #    cmd += ' -w %s.wcs' % self.basefn
-
             cmd += ' -x %f' % xmin_ext
             cmd += ' -y %f' % ymin_ext
             cmd += ' -W %f' % xmax_ext
@@ -2583,7 +3061,7 @@ class SolveProcess:
             if os.path.exists(aheadfile):
                 os.remove(aheadfile)
 
-            ahead.totextfile(aheadfile, endcard=True, clobber=True)
+            ahead.totextfile(aheadfile, endcard=True, overwrite=True)
 
             crossid_radius = 20.
             
@@ -2611,7 +3089,6 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            db_log_msg = 'SCAMP: CROSSID_RADIUS: {:.2f}'.format(crossid_radius)
             self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
@@ -2644,7 +3121,7 @@ class SolveProcess:
             if os.path.exists(aheadfile):
                 os.remove(aheadfile)
 
-            head.totextfile(aheadfile, endcard=True, clobber=True)
+            head.totextfile(aheadfile, endcard=True, overwrite=True)
 
             #prev_crossid_radius = crossid_radius
             crossid_radius = 3. * in_astromsigma.max()
@@ -2657,6 +3134,8 @@ class SolveProcess:
 
             if crossid_radius < 5:
                 crossid_radius = 5.
+
+            asub['scamp_crossid_radius'] = crossid_radius
 
             # Run SCAMP 
             cmd = self.scamp_path
@@ -2682,7 +3161,6 @@ class SolveProcess:
             #cmd += ' -CHECKPLOT_NAME %s_fgroups,%s_distort,%s_astr_referror2d,%s_astr_referror1d' % \
             #    (fnsub, fnsub, fnsub, fnsub)
             self.log.write('CROSSID_RADIUS: {:.2f}'.format(crossid_radius))
-            db_log_msg = '{} {:.2f}'.format(db_log_msg, crossid_radius)
             self.log.write('Subprocess: {}'.format(cmd))
             sp.call(cmd, shell=True, stdout=self.log.handle, 
                     stderr=self.log.handle, cwd=self.scratch_dir)
@@ -2708,14 +3186,14 @@ class SolveProcess:
             self.log.write('Mean astrometric sigma difference: '
                            '{:.3f} ({:+.1f}%)'
                            ''.format(mean_diff, mean_diff_ratio*100.))
-            db_log_msg = ('{}, #detections: {:d}, sigmas: {:.3f} {:.3f}, '
-                          'previous: {:.3f} {:.3f}, '
-                          'mean difference: {:.3f} ({:+.1f}%)'
-                          .format(db_log_msg, ndetect, 
-                                  astromsigma[0], astromsigma[1], 
-                                  in_astromsigma[0], in_astromsigma[1], 
-                                  mean_diff, mean_diff_ratio*100.))
-            self.log.to_db(5, db_log_msg, event=52)
+            asub['num_scamp_stars'] = ndetect
+            asub['scamp_sigma_axis1'] = astromsigma[0]
+            asub['scamp_sigma_axis2'] = astromsigma[1]
+            asub['scamp_sigma_mean'] = astromsigma.mean()
+            asub['scamp_sigma_prev_axis1'] = in_astromsigma[0]
+            asub['scamp_sigma_prev_axis2'] = in_astromsigma[1]
+            asub['scamp_sigma_prev_mean'] = in_astromsigma.mean()
+            asub['scamp_sigma_diff'] = mean_diff
 
             # Use decreasing threshold for astrometric sigmas
             astrom_threshold = 2. - (recdepth - 1) * 0.2
@@ -2746,8 +3224,11 @@ class SolveProcess:
                 # Select stars for coordinate conversion
                 bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
                         (y >= ymin + 0.5) & (y < ymax + 0.5))
+                nout = bout.sum()
+                asub['apply_astrometry'] = 1
+                asub['num_applied_stars'] = nout
 
-                if bout.sum() == 0:
+                if nout == 0:
                     continue
                 
                 indout = np.where(bout)
@@ -2791,6 +3272,8 @@ class SolveProcess:
                 sigma_ra[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[0]**2)
                 sigma_dec[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[1]**2)
                 gridsize[indout] = 2**recdepth
+                subid[indout] = current_sub_id
+                self.astrom_sub.append(asub)
 
                 # Solve sub-fields recursively if recursion depth is less
                 # than maximum.
@@ -2800,8 +3283,9 @@ class SolveProcess:
                     head.set('YMIN', ymin)
                     head.set('YMAX', ymax)
                     head.set('DEPTH', recdepth)
+                    head.set('SUB-ID', current_sub_id)
 
-                    new_radec,new_gridsize = \
+                    new_radec,new_gridsize,new_subid = \
                             self._solverec(head, astromsigma, 
                                            distort=distort,
                                            max_recursion_depth=max_recursion_depth,
@@ -2817,7 +3301,11 @@ class SolveProcess:
                         sigma_ra[indnew] = new_radec[indnew,2]
                         sigma_dec[indnew] = new_radec[indnew,3]
                         gridsize[indnew] = new_gridsize[indnew]
+                        subid[indnew] = new_subid[indnew]
             elif recdepth < force_recursion_depth:
+                asub['apply_astrometry'] = 0
+                self.astrom_sub.append(asub)
+
                 # Solve sub-fields recursively if recursion depth is less
                 # than the required minimum.
                 head.set('XMIN', xmin)
@@ -2825,8 +3313,9 @@ class SolveProcess:
                 head.set('YMIN', ymin)
                 head.set('YMAX', ymax)
                 head.set('DEPTH', recdepth)
+                head.set('SUB-ID', current_sub_id)
 
-                new_radec,new_gridsize = \
+                new_radec,new_gridsize,new_subid = \
                         self._solverec(head, astromsigma,
                                        distort=distort,
                                        max_recursion_depth=max_recursion_depth,
@@ -2842,12 +3331,13 @@ class SolveProcess:
                     sigma_ra[indnew] = new_radec[indnew,2]
                     sigma_dec[indnew] = new_radec[indnew,3]
                     gridsize[indnew] = new_gridsize[indnew]
-
-        #ref.close()
-        #reftmp.close()
+                    subid[indnew] = new_subid[indnew]
+            else:
+                asub['apply_astrometry'] = 0
+                self.astrom_sub.append(asub)
 
         return (np.column_stack((ra, dec, sigma_ra, sigma_dec)), 
-                gridsize)
+                gridsize, subid)
 
     def process_source_coordinates(self):
         """
@@ -2886,7 +3376,7 @@ class SolveProcess:
                 hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
                 self.sources['healpix256'][ind] = hp256.astype(np.int32)
 
-        # Cross-match source coordinates with the UCAC4 and Tycho-2 catalogues
+        # Prepare for cross-match with the UCAC4, Tycho-2 and APASS catalogues
 
         bool_finite = (np.isfinite(self.sources['raj2000']) &
                        np.isfinite(self.sources['dej2000']))
@@ -2903,6 +3393,48 @@ class SolveProcess:
         dec_finite = self.sources['dej2000'][ind_finite]
         coorderr_finite = np.sqrt(self.sources['raerr_sub'][ind_finite]**2 +
                                   self.sources['decerr_sub'][ind_finite]**2)
+        logarea_finite = np.log10(self.sources['isoarea'][ind_finite])
+
+        # Assign default coordinate errors to sources with no error estimates 
+        # from sub-fields
+        bool_nanerr = np.isnan(coorderr_finite)
+        num_nanerr = bool_nanerr.sum()
+
+        if num_nanerr > 0:
+            coorderr_finite[np.where(bool_nanerr)] = 20.
+
+        # Combine cross-match criteria
+        if self.crossmatch_radius is not None:
+            self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
+                           ''.format(float(self.crossmatch_radius)), 
+                           level=4, event=60)
+            matchrad_arcsec = float(self.crossmatch_radius)*units.arcsec
+        else:
+            self.log.write('Using scaled cross-match radius of '
+                           '{:.2f} astrometric sigmas'
+                           ''.format(float(self.crossmatch_nsigma)), 
+                           level=4, event=60)
+            matchrad_arcsec = (coorderr_finite * float(self.crossmatch_nsigma)
+                               * units.arcsec)
+
+        if self.crossmatch_nlogarea is not None:
+            self.log.write('Using scaled cross-match radius of '
+                           '{:.2f} times log10(isoarea)'
+                           ''.format(float(self.crossmatch_nlogarea)), 
+                           level=4, event=60)
+            logarea_arcsec = (logarea_finite * self.mean_pixscale
+                              * float(self.crossmatch_nlogarea) * units.arcsec)
+            matchrad_arcsec = np.maximum(matchrad_arcsec, logarea_arcsec)
+
+        if self.crossmatch_maxradius is not None:
+            self.log.write('Using maximum cross-match radius of {:.2f} arcsec'
+                           ''.format(float(self.crossmatch_maxradius)), 
+                           level=4, event=60)
+            maxradius_arcsec = (float(self.crossmatch_maxradius) 
+                                * units.arcsec)
+            matchrad_arcsec = np.minimum(matchrad_arcsec, maxradius_arcsec)
+
+        self.sources['match_radius'][ind_finite] = matchrad_arcsec
 
         # Find nearest neighbours
         if have_match_coord:
@@ -2917,23 +3449,40 @@ class SolveProcess:
             matchdist = ds * 3600.
             self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
+        # Calculate zenith angle and air mass for each source
+        # Check for location and single exposure
+        if (have_match_coord and self.platemeta and 
+            self.platemeta['site_latitude'] and 
+            self.platemeta['site_longitude'] and 
+            (self.platemeta['numexp'] == 1) and
+            self.platemeta['date_avg']):
+            self.log.write('Calculating zenith angle and air mass for sources', 
+                           level=3, event=61)
+            lon = self.platemeta['site_longitude']
+            lat = self.platemeta['site_latitude']
+            height = 0.
+
+            if self.platemeta['site_elevation']:
+                height = self.platemeta['site_elevation']
+
+            loc = EarthLocation.from_geodetic(lon, lat, height)
+            date_avg = Time(self.platemeta['date_avg'][0], 
+                            format='isot', scale='ut1')
+            c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
+            self.sources['zenith_angle'] = c_altaz.zen.deg
+            coszt = np.cos(c_altaz.zen)
+            airmass = ((1.002432 * coszt**2 + 0.148386 * coszt + 0.0096467) 
+                       / (coszt**3 + 0.149864 * coszt**2 + 0.0102963 * coszt 
+                          + 0.000303978))
+            self.sources['airmass'] = airmass
+
         # Match sources with the UCAC4 catalogue
         self.log.write('Cross-matching sources with the UCAC4 catalogue', 
-                       level=3, event=61)
+                       level=3, event=62)
 
         if self.ra_ucac is None or self.dec_ucac is None:
-            self.log.write('Missing UCAC4 data', level=2, event=61)
+            self.log.write('Missing UCAC4 data', level=2, event=62)
         else:
-            if self.crossmatch_radius is not None:
-                self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
-                               ''.format(float(self.crossmatch_radius)), 
-                               level=4, event=61)
-            else:
-                self.log.write('Using scaled cross-match radius of '
-                               '{:.2f} astrometric sigmas'
-                               ''.format(float(self.crossmatch_nsigma)), 
-                               level=4, event=61)
-
             if have_match_coord:
                 coords = ICRS(ra_finite, dec_finite, 
                               unit=(units.degree, units.degree))
@@ -2942,17 +3491,7 @@ class SolveProcess:
                 ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                              nthneighbor=1)
                 ind_plate = np.arange(ind_ucac.size)
-
-                if self.crossmatch_radius is not None:
-                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                else:
-                    indmask = (ds2d/coorderr_finite 
-                               < float(self.crossmatch_nsigma)*units.arcsec)
-
-                    if self.crossmatch_maxradius is not None:
-                        maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                            * units.arcsec)
-                        indmask = indmask & (ds2d < maxradius_arcsec)
+                indmask = ds2d < matchrad_arcsec
 
                 ind_plate = ind_plate[indmask]
                 ind_ucac = ind_ucac[indmask]
@@ -2982,7 +3521,7 @@ class SolveProcess:
                                     nnearest=1)
                 matchdist = ds * 3600.
 
-                _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
+                _,_,ds2 = spherematch(ra_finite, dec_finite,
                                       self.ra_ucac, self.dec_ucac, nnearest=2)
                 matchdist2 = ds2[ind_plate] * 3600.
                 _,_,nnds = spherematch(self.ra_ucac, self.dec_ucac,
@@ -3000,8 +3539,8 @@ class SolveProcess:
                     self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
                     self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
                     self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
-                    self.sources['ucac4_bmagerr'][ind] = self.berr_ucac[ind_ucac]
-                    self.sources['ucac4_vmagerr'][ind] = self.verr_ucac[ind_ucac]
+                    self.sources['ucac4_bmagerr'][ind] = self.bmagerr_ucac[ind_ucac]
+                    self.sources['ucac4_vmagerr'][ind] = self.vmagerr_ucac[ind_ucac]
                     self.sources['ucac4_dist'][ind] = (matchdist
                                                        .astype(np.float32))
                     self.sources['ucac4_dist2'][ind] = (matchdist2
@@ -3009,256 +3548,125 @@ class SolveProcess:
                     self.sources['ucac4_nn_dist'][ind] = (nndist
                                                           .astype(np.float32))
 
+                    if self.combined_ucac_apass:
+                        self.sources['apass_ra'][ind] = self.ra_apass[ind_ucac]
+                        self.sources['apass_dec'][ind] = self.dec_apass[ind_ucac]
+                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_ucac]
+                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_ucac]
+                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_ucac]
+                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_ucac]
+
         # Match sources with the Tycho-2 catalogue
         if self.use_tycho2_fits:
             self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
-                           level=3, event=62)
-            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+                           level=3, event=63)
 
-            try:
-                tycho2 = fits.open(fn_tycho2)
-                tycho2_available = True
-            except IOError:
-                self.log.write('Missing Tycho-2 data', level=2, event=62)
-                tycho2_available = False
-        else:
-            tycho2_available = False
-
-        if tycho2_available:
-            ra_tyc = tycho2[1].data.field(0)
-            dec_tyc = tycho2[1].data.field(1)
-            pmra_tyc = tycho2[1].data.field(2)
-            pmdec_tyc = tycho2[1].data.field(3)
-            btmag_tyc = tycho2[1].data.field(4)
-            vtmag_tyc = tycho2[1].data.field(5)
-            ebtmag_tyc = tycho2[1].data.field(6)
-            evtmag_tyc = tycho2[1].data.field(7)
-            tyc1 = tycho2[1].data.field(8)
-            tyc2 = tycho2[1].data.field(9)
-            tyc3 = tycho2[1].data.field(10)
-            hip_tyc = tycho2[1].data.field(11)
-            ind_nullhip = np.where(hip_tyc == -2147483648)[0]
-
-            if len(ind_nullhip) > 0:
-                hip_tyc[ind_nullhip] = 0
-
-            # For stars that have proper motion data, calculate RA, Dec
-            # for the plate epoch
-            indpm = np.where(np.isfinite(pmra_tyc) & 
-                              np.isfinite(pmdec_tyc))[0]
-            ra_tyc[indpm] = (ra_tyc[indpm] 
-                             + (self.plate_epoch - 2000.) * pmra_tyc[indpm]
-                             / np.cos(dec_tyc[indpm] * np.pi / 180.) 
-                             / 3600000.)
-            dec_tyc[indpm] = (dec_tyc[indpm] 
-                              + (self.plate_epoch - 2000.) 
-                              * pmdec_tyc[indpm] / 3600000.)
-
-            if self.ncp_close:
-                btyc = (dec_tyc > self.min_dec)
-            elif self.scp_close:
-                btyc = (dec_tyc < self.max_dec)
-            elif self.max_ra < self.min_ra:
-                btyc = (((ra_tyc < self.max_ra) |
-                        (ra_tyc > self.min_ra)) &
-                        (dec_tyc > self.min_dec) & 
-                        (dec_tyc < self.max_dec))
+            if self.num_tyc == 0:
+                self.log.write('Missing Tycho-2 data', level=2, event=63)
             else:
-                btyc = ((ra_tyc > self.min_ra) & 
-                        (ra_tyc < self.max_ra) &
-                        (dec_tyc > self.min_dec) & 
-                        (dec_tyc < self.max_dec))
+                if have_match_coord:
+                    coords = ICRS(ra_finite, dec_finite, 
+                                  unit=(units.degree, units.degree))
+                    catalog = ICRS(self.ra_tyc, self.dec_tyc, 
+                                  unit=(units.degree, units.degree))
+                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
+                                                                nthneighbor=1)
+                    ind_plate = np.arange(ind_tyc.size)
+                    indmask = ds2d < matchrad_arcsec
 
-            indtyc = np.where(btyc)[0]
-            numtyc = btyc.sum()
+                    ind_plate = ind_plate[indmask]
+                    ind_tyc = ind_tyc[indmask]
+                    matchdist = ds2d[indmask].to(units.arcsec).value
 
-            ra_tyc = ra_tyc[indtyc] 
-            dec_tyc = dec_tyc[indtyc] 
-            btmag_tyc = btmag_tyc[indtyc]
-            vtmag_tyc = vtmag_tyc[indtyc]
-            ebtmag_tyc = ebtmag_tyc[indtyc]
-            evtmag_tyc = evtmag_tyc[indtyc]
-            id_tyc = np.array(['{:04d}-{:05d}-{:1d}'
-                               .format(tyc1[i], tyc2[i], tyc3[i]) 
-                               for i in indtyc])
-            hip_tyc = hip_tyc[indtyc]
+                    _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                                      nthneighbor=2)
+                    matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                    _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                        nthneighbor=2)
+                    nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
+                elif have_pyspherematch:
+                    if self.crossmatch_radius is not None:
+                        crossmatch_radius = float(self.crossmatch_radius)
+                    else:
+                        crossmatch_radius = (float(self.crossmatch_nsigma) 
+                                             * np.mean(coorderr_finite))
 
-            self.log.write('Fetched {:d} entries from Tycho-2'
-                           ''.format(numtyc))
+                        if self.crossmatch_maxradius is not None:
+                            if crossmatch_radius > self.crossmatch_maxradius:
+                                crossmatch_radius = float(self.crossmatch_maxradius)
 
-            if self.crossmatch_radius is not None:
-                self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
-                               ''.format(float(self.crossmatch_radius)), 
-                               level=4, event=62)
-            else:
-                self.log.write('Using scaled cross-match radius of '
-                               '{:.2f} astrometric sigmas'
-                               ''.format(float(self.crossmatch_nsigma)), 
-                               level=4, event=62)
+                    ind_plate,ind_tyc,ds = \
+                        spherematch(ra_finite, dec_finite, 
+                                    self.ra_tyc, self.dec_tyc,
+                                    tol=crossmatch_radius/3600., 
+                                    nnearest=1)
+                    matchdist = ds * 3600.
 
-            if have_match_coord:
-                coords = ICRS(ra_finite, dec_finite, 
-                              unit=(units.degree, units.degree))
-                catalog = ICRS(ra_tyc, dec_tyc, 
-                              unit=(units.degree, units.degree))
-                ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
-                                                            nthneighbor=1)
-                ind_plate = np.arange(ind_tyc.size)
+                    _,_,ds2 = spherematch(ra_finite, dec_finite,
+                                          self.ra_tyc, self.dec_tyc, nnearest=2)
+                    matchdist2 = ds2[ind_plate] * 3600.
+                    _,_,nnds = spherematch(self.ra_tyc, self.dec_tyc,
+                                           self.ra_tyc, self.dec_tyc, nnearest=2)
+                    nndist = nnds[ind_tyc] * 3600.
 
-                if self.crossmatch_radius is not None:
-                    indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                else:
-                    indmask = (ds2d/coorderr_finite 
-                               < float(self.crossmatch_nsigma)*units.arcsec)
+                if have_match_coord or have_pyspherematch:
+                    num_match = len(ind_plate)
+                    self.db_update_process(num_tycho2=num_match)
 
-                    if self.crossmatch_maxradius is not None:
-                        maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                            * units.arcsec)
-                        indmask = indmask & (ds2d < maxradius_arcsec)
-
-                ind_plate = ind_plate[indmask]
-                ind_tyc = ind_tyc[indmask]
-                matchdist = ds2d[indmask].to(units.arcsec).value
-
-                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                                  nthneighbor=2)
-                matchdist2 = ds2d2[indmask].to(units.arcsec).value
-                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                    nthneighbor=2)
-                nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
-            elif have_pyspherematch:
-                if self.crossmatch_radius is not None:
-                    crossmatch_radius = float(self.crossmatch_radius)
-                else:
-                    crossmatch_radius = (float(self.crossmatch_nsigma) 
-                                         * np.mean(coorderr_finite))
-
-                    if self.crossmatch_maxradius is not None:
-                        if crossmatch_radius > self.crossmatch_maxradius:
-                            crossmatch_radius = float(self.crossmatch_maxradius)
-
-                ind_plate,ind_tyc,ds = \
-                    spherematch(ra_finite, dec_finite, ra_tyc, dec_tyc,
-                                tol=crossmatch_radius/3600., 
-                                nnearest=1)
-                matchdist = ds * 3600.
-
-                _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
-                                      self.ra_tyc, self.dec_tyc, nnearest=2)
-                matchdist2 = ds2[ind_plate] * 3600.
-                _,_,nnds = spherematch(self.ra_tyc, self.dec_tyc,
-                                       self.ra_tyc, self.dec_tyc, nnearest=2)
-                nndist = nnds[ind_tyc] * 3600.
-
-            if have_match_coord or have_pyspherematch:
-                num_match = len(ind_plate)
-                self.db_update_process(num_tycho2=num_match)
-
-                if num_match > 0:
-                    ind = ind_finite[ind_plate]
-                    self.sources['tycho2_id'][ind] = id_tyc[ind_tyc]
-                    self.sources['tycho2_ra'][ind] = ra_tyc[ind_tyc]
-                    self.sources['tycho2_dec'][ind] = dec_tyc[ind_tyc]
-                    self.sources['tycho2_btmag'][ind] = btmag_tyc[ind_tyc]
-                    self.sources['tycho2_vtmag'][ind] = vtmag_tyc[ind_tyc]
-                    self.sources['tycho2_btmagerr'][ind] = ebtmag_tyc[ind_tyc]
-                    self.sources['tycho2_vtmagerr'][ind] = evtmag_tyc[ind_tyc]
-                    self.sources['tycho2_hip'][ind] = hip_tyc[ind_tyc]
-                    self.sources['tycho2_dist'][ind] = (matchdist
-                                                        .astype(np.float32))
-                    self.sources['tycho2_dist2'][ind] = (matchdist2
-                                                         .astype(np.float32))
-                    self.sources['tycho2_nn_dist'][ind] = (nndist
-                                                           .astype(np.float32))
+                    if num_match > 0:
+                        ind = ind_finite[ind_plate]
+                        self.sources['tycho2_id'][ind] = self.id_tyc[ind_tyc]
+                        self.sources['tycho2_id_pad'][ind] = self.id_tyc_pad[ind_tyc]
+                        self.sources['tycho2_ra'][ind] = self.ra_tyc[ind_tyc]
+                        self.sources['tycho2_dec'][ind] = self.dec_tyc[ind_tyc]
+                        self.sources['tycho2_btmag'][ind] = self.btmag_tyc[ind_tyc]
+                        self.sources['tycho2_vtmag'][ind] = self.vtmag_tyc[ind_tyc]
+                        self.sources['tycho2_btmagerr'][ind] = self.btmagerr_tyc[ind_tyc]
+                        self.sources['tycho2_vtmagerr'][ind] = self.vtmagerr_tyc[ind_tyc]
+                        self.sources['tycho2_hip'][ind] = self.hip_tyc[ind_tyc]
+                        self.sources['tycho2_dist'][ind] = (matchdist
+                                                            .astype(np.float32))
+                        self.sources['tycho2_dist2'][ind] = (matchdist2
+                                                             .astype(np.float32))
+                        self.sources['tycho2_nn_dist'][ind] = (nndist
+                                                               .astype(np.float32))
 
         # Match sources with the APASS catalogue
         if self.use_apass_db:
             self.log.write('Cross-matching sources with the APASS catalogue', 
-                           level=3, event=63)
-
-            # Query MySQL database
-            db = MySQLdb.connect(host=self.apass_db_host, 
-                                 user=self.apass_db_user, 
-                                 passwd=self.apass_db_passwd,
-                                 db=self.apass_db_name)
-            cur = db.cursor()
-
-            sql1 = 'SELECT RAdeg,DEdeg,B,V,e_B,e_V'
-            sql2 = ' FROM {}'.format(self.apass_db_table)
-            #sql2 += ' FORCE INDEX (idx_radecmag)'
-
-            if self.ncp_close:
-                sql2 += ' WHERE DEdeg > {}'.format(self.min_dec)
-            elif self.scp_close:
-                sql2 += ' WHERE DEdeg < {}'.format(self.max_dec)
-            elif self.max_ra < self.min_ra:
-                sql2 += (' WHERE (RAdeg < {} OR RAdeg > {})'
-                         ' AND DEdeg BETWEEN {} AND {}'
-                         ''.format(self.max_ra, self.min_ra,
-                                   self.min_dec, self.max_dec))
-            else:
-                sql2 += (' WHERE RAdeg BETWEEN {} AND {}'
-                         ' AND DEdeg BETWEEN {} AND {}'
-                         ''.format(self.min_ra, self.max_ra, 
-                                   self.min_dec, self.max_dec))
-
-            sql3 = ''
-
-            #if self.stars_sqdeg < 200:
-            #    sql3 += ' AND V < 13'
-            #elif self.stars_sqdeg < 1000:
-            #    sql3 += ' AND V < 15'
-
-            sql = sql1 + sql2 + sql3 + ';'
-            self.log.write(sql)
-            num_apass = cur.execute(sql)
-            self.log.write('Fetched {:d} rows from APASS'.format(num_apass))
-            res = np.fromiter(cur.fetchall(), dtype='f8,f8,f8,f8,f8,f8')
-            cur.close()
-            db.commit()
-            db.close()
-
-            self.ra_apass = res['f0']
-            self.dec_apass = res['f1']
-            self.bmag_apass = res['f2']
-            self.vmag_apass = res['f3']
-            self.berr_apass = res['f4']
-            self.verr_apass = res['f5']
+                           level=3, event=64)
 
             # Begin cross-match
-            if num_apass == 0:
-                self.log.write('Missing APASS data', level=2, event=63)
+            if self.num_apass == 0:
+                self.log.write('Missing APASS data', level=2, event=64)
             else:
-                if self.crossmatch_radius is not None:
-                    self.log.write('Using fixed cross-match radius of '
-                                   '{:.2f} arcsec'
-                                   ''.format(float(self.crossmatch_radius)), 
-                                   level=4, event=61)
+                if self.combined_ucac_apass:
+                    bool_finite_apass = (np.isfinite(self.ra_apass) &
+                                         np.isfinite(self.dec_apass))
+                    num_finite_apass = bool_finite_apass.sum()
+
+                    if num_finite_apass == 0:
+                        self.log.write('No APASS sources with usable '
+                                       'coordinates for cross-matching', 
+                                       level=2, event=64)
+                        return
+
+                    ind_finite_apass = np.where(bool_finite_apass)[0]
+                    ra_apass = self.ra_apass[ind_finite_apass]
+                    dec_apass = self.dec_apass[ind_finite_apass]
                 else:
-                    self.log.write('Using scaled cross-match radius of '
-                                   '{:.2f} astrometric sigmas'
-                                   ''.format(float(self.crossmatch_nsigma)), 
-                                   level=4, event=61)
+                    ra_apass = self.ra_apass
+                    dec_apass = self.dec_apass
 
                 if have_match_coord:
                     coords = ICRS(ra_finite, dec_finite, 
                                   unit=(units.degree, units.degree))
-                    catalog = ICRS(self.ra_apass, self.dec_apass, 
+                    catalog = ICRS(ra_apass, dec_apass, 
                                    unit=(units.degree, units.degree))
                     ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                                   nthneighbor=1)
                     ind_plate = np.arange(ind_apass.size)
-
-                    if self.crossmatch_radius is not None:
-                        indmask = ds2d < float(self.crossmatch_radius)*units.arcsec
-                    else:
-                        indmask = (ds2d/coorderr_finite 
-                                   < float(self.crossmatch_nsigma)*units.arcsec)
-
-                        if self.crossmatch_maxradius is not None:
-                            maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                                * units.arcsec)
-                            indmask = indmask & (ds2d < maxradius_arcsec)
+                    indmask = ds2d < matchrad_arcsec
 
                     ind_plate = ind_plate[indmask]
                     ind_apass = ind_apass[indmask]
@@ -3283,17 +3691,17 @@ class SolveProcess:
 
                     ind_plate,ind_apass,ds = \
                             spherematch(ra_finite, dec_finite, 
-                                        self.ra_apass, self.dec_apass,
+                                        ra_apass, dec_apass,
                                         tol=crossmatch_radius/3600., 
                                         nnearest=1)
                     matchdist = ds * 3600.
 
-                    _,_,ds2 = spherematch(self.ra_finite, self.dec_finite,
-                                          self.ra_apass, self.dec_apass, 
+                    _,_,ds2 = spherematch(ra_finite, dec_finite,
+                                          ra_apass, dec_apass, 
                                           nnearest=2)
                     matchdist2 = ds2[ind_plate] * 3600.
-                    _,_,nnds = spherematch(self.ra_apass, self.dec_apass,
-                                           self.ra_apass, self.dec_apass, 
+                    _,_,nnds = spherematch(ra_apass, dec_apass,
+                                           ra_apass, dec_apass, 
                                            nnearest=2)
                     nndist = nnds[ind_apass] * 3600.
 
@@ -3304,101 +3712,21 @@ class SolveProcess:
 
                     if num_match > 0:
                         ind = ind_finite[ind_plate]
-                        self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
-                        self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
-                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
-                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
-                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
-                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
+
+                        if not self.combined_ucac_apass:
+                            self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
+                            self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
+                            self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
+                            self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
+                            self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
+                            self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
+
                         self.sources['apass_dist'][ind] = (matchdist
                                                            .astype(np.float32))
                         self.sources['apass_dist2'][ind] = (matchdist2
                                                             .astype(np.float32))
                         self.sources['apass_nn_dist'][ind] = (nndist
                                                               .astype(np.float32))
-
-    def output_sources_csv(self, filename=None):
-        """
-        Write source list with calibrated RA and Dec to an ASCII file.
-
-        """
-
-        self.log.to_db(3, 'Writing sources to a file', event=81)
-
-        # Create output directory, if missing
-        if self.write_source_dir and not os.path.isdir(self.write_source_dir):
-            self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4, event=81)
-            os.makedirs(self.write_source_dir)
-
-        if filename:
-            fn_world = os.path.join(self.write_source_dir, 
-                                    os.path.basename(filename))
-        else:
-            fn_world = os.path.join(self.write_source_dir, 
-                                    '{}_sources.csv'.format(self.basefn))
-
-        outfields = ['source_num', 'x_source', 'y_source', 
-                     'erra_source', 'errb_source', 'errtheta_source',
-                     'a_source', 'b_source', 'theta_source',
-                     'elongation',
-                     'raj2000_wcs', 'dej2000_wcs',
-                     'raj2000_sub', 'dej2000_sub', 
-                     'raerr_sub', 'decerr_sub',
-                     'gridsize_sub',
-                     'mag_auto', 'magerr_auto', 
-                     'flux_auto', 'fluxerr_auto',
-                     'mag_iso', 'magerr_iso', 
-                     'flux_iso', 'fluxerr_iso',
-                     'flux_max', 'flux_radius',
-                     'isoarea', 'sqrt_isoarea', 'background',
-                     'sextractor_flags', 
-                     'dist_center', 'dist_edge', 'annular_bin',
-                     'flag_rim', 'flag_negradius', 'flag_clean',
-                     'natmag', 'natmagerr',
-                     'bmag', 'bmagerr', 'vmag', 'vmagerr',
-                     'flag_calib_star', 'flag_calib_outlier',
-                     'color_term', 'color_bv', 'cat_natmag',
-                     'ucac4_id', 'ucac4_ra', 'ucac4_dec',
-                     'ucac4_bmag', 'ucac4_vmag', 'ucac4_dist',
-                     'tycho2_id', 'tycho2_ra', 'tycho2_dec',
-                     'tycho2_btmag', 'tycho2_vtmag', 'tycho2_dist',
-                     'apass_ra', 'apass_dec', 'apass_bmag', 'apass_vmag', 
-                     'apass_dist']
-        outfmt = [_source_meta[f][1] for f in outfields]
-        outhdr = ','.join(outfields)
-        #outhdr = ','.join(['"{}"'.format(f) for f in outfields])
-        delimiter = ','
-
-        # Output ascii file with refined coordinates
-        self.log.write('Writing output file {}'.format(fn_world), level=4, 
-                       event=81)
-        np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
-                   delimiter=delimiter, header=outhdr, comments='')
-
-    def output_sources_db(self):
-        """
-        Write source list with calibrated RA and Dec to the database.
-
-        """
-
-        self.log.to_db(3, 'Writing sources to the database', event=80)
-        self.log.write('Open database connection for writing to the '
-                       'source and source_calib tables.')
-        platedb = PlateDB()
-        platedb.open_connection(host=self.output_db_host,
-                                user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
-
-        if (self.scan_id is not None and self.plate_id is not None and 
-            self.archive_id is not None and self.process_id is not None):
-            platedb.write_sources(self.sources, process_id=self.process_id,
-                                  scan_id=self.scan_id, plate_id=self.plate_id,
-                                  archive_id=self.archive_id)
-            
-        platedb.close_connection()
-        self.log.write('Closed database connection.')
 
     def calibrate_photometry(self):
         """
@@ -3420,6 +3748,36 @@ class SolveProcess:
                                level=2, event=70)
                 self.db_update_process(calibrated=0)
                 return
+
+        # Default photometric catalog
+        photref_catalog = 'UCAC4'
+
+        if self.photref_catalog:
+            photref_catalog = self.photref_catalog.upper()
+
+        if photref_catalog == 'UCAC-4':
+            photref_catalog = 'UCAC4'
+
+        known_catalogs = ['APASS', 'UCAC4']
+
+        if photref_catalog not in known_catalogs:
+            self.log.write('Unknown photometric reference catalogue ({}), '
+                           'photometric calibration not possible!'
+                           ''.format(photref_catalog), 
+                           level=2, event=70)
+            return
+
+        if (photref_catalog == 'UCAC4') and (self.num_ucac == 0):
+            self.log.write('Missing UCAC4 data, '
+                           'photometric calibration not possible!',
+                           level=2, event=70)
+            return
+
+        if (photref_catalog == 'APASS') and (self.num_apass == 0):
+            self.log.write('Missing APASS data, '
+                           'photometric calibration not possible!',
+                           level=2, event=70)
+            return
 
         # Create output directory, if missing
         if self.write_phot_dir and not os.path.isdir(self.write_phot_dir):
@@ -3443,15 +3801,14 @@ class SolveProcess:
             #fn_cutcurve = os.path.join(self.write_phot_dir, 
             #                           '{}_cutcurve.txt'.format(self.basefn))
             #fcutcurve = open(fn_cutcurve, 'wb')
-            fn_rmse = os.path.join(self.write_phot_dir, 
-                                      '{}_rmse.txt'.format(self.basefn))
-            frmse = open(fn_rmse, 'wb')
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
                        level=3, event=71)
         ind_cal = np.where((self.sources['mag_auto'] > 0) & 
                            (self.sources['mag_auto'] < 90) &
+                           ((self.sources['sextractor_flags'] == 0) |
+                           (self.sources['sextractor_flags'] == 2)) &
                            (self.sources['flag_clean'] == 1))[0]
 
         if len(ind_cal) == 0:
@@ -3463,17 +3820,21 @@ class SolveProcess:
         src_cal = self.sources[ind_cal]
         ind_calibstar = ind_cal
 
-        if self.use_apass_db and self.use_apass_photometry:
+        if photref_catalog == 'APASS':
             # Use APASS magnitudes
-            ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
-                                   (src_cal['apass_vmag'] > 10) &
-                                   (src_cal['apass_bmagerr'] > 0) &
-                                   (src_cal['apass_bmagerr'] < 0.1) &
-                                   (src_cal['apass_verr'] > 0) &
-                                   (src_cal['apass_verr'] < 0.1) &
-                                   (src_cal['apass_nn_dist'] > 10) &
-                                   (src_cal['apass_dist2'] >
-                                    2. * src_cal['apass_dist']))[0]
+            if self.combined_ucac_apass:
+                ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
+                                       (src_cal['apass_vmag'] > 10) &
+                                       (src_cal['ucac4_nn_dist'] > 10) &
+                                       (src_cal['ucac4_dist2'] >
+                                        2. * src_cal['ucac4_dist']))[0]
+            else:
+                ind_ucacmag = np.where((src_cal['apass_bmag'] > 10) &
+                                       (src_cal['apass_vmag'] > 10) &
+                                       (src_cal['apass_nn_dist'] > 10) &
+                                       (src_cal['apass_dist2'] >
+                                        2. * src_cal['apass_dist']))[0]
+
             ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
             self.log.write('Found {:d} usable APASS stars'
                            ''.format(len(ind_ucacmag)), level=4, event=71)
@@ -3496,10 +3857,6 @@ class SolveProcess:
             # Use UCAC4 magnitudes
             ind_ucacmag = np.where((src_cal['ucac4_bmag'] > 10) &
                                    (src_cal['ucac4_vmag'] > 10) &
-                                   (src_cal['ucac4_bmagerr'] > 0) &
-                                   (src_cal['ucac4_bmagerr'] < 0.09) &
-                                   (src_cal['ucac4_vmagerr'] > 0) &
-                                   (src_cal['ucac4_vmagerr'] < 0.09) & 
                                    (src_cal['ucac4_nn_dist'] > 10) &
                                    (src_cal['ucac4_dist2'] >
                                     src_cal['ucac4_dist']+10.))[0]
@@ -3528,8 +3885,8 @@ class SolveProcess:
             src_nomag = src_cal[ind_noucacmag]
             ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
                                   np.isfinite(src_nomag['tycho2_vtmag']) & 
-                                  (src_nomag['tycho2_btmagerr'] < 0.1) & 
-                                  (src_nomag['tycho2_vtmagerr'] < 0.1) &
+                                  #(src_nomag['tycho2_btmagerr'] < 0.1) & 
+                                  #(src_nomag['tycho2_vtmagerr'] < 0.1) &
                                   (src_nomag['tycho2_nn_dist'] > 10) &
                                   (src_nomag['tycho2_dist2'] > 
                                    src_nomag['tycho2_dist']+10.))[0]
@@ -3568,11 +3925,11 @@ class SolveProcess:
 
         num_calstars = len(plate_mag)
         
-        self.log.write('Found {:d} calibration stars in total'
+        self.log.write('Found {:d} calibration stars on the plate'
                        ''.format(num_calstars), level=4, event=71)
 
         if num_calstars < 10:
-            self.log.write('Too few calibration stars!'
+            self.log.write('Too few calibration stars on the plate!'
                            ''.format(num_calstars), level=2, event=71)
             self.db_update_process(calibrated=0)
             return
@@ -3582,16 +3939,17 @@ class SolveProcess:
         #cat_vmag_u = cat_vmag[uind]
 
         # Evaluate color term in 3 iterations
-        self.log.write('Finding color term', level=3, event=72)
+        self.log.write('Determining color term using annular bins 1-3', 
+                       level=3, event=72)
         ind_bin = np.where(plate_bin <= 3)[0]
         num_calstars = len(ind_bin)
         
-        self.log.write('Finding color term: {:d} stars'
+        self.log.write('Determining color term: {:d} stars'
                        ''.format(num_calstars), 
                        double_newline=False, level=4, event=72)
 
         if num_calstars < 10:
-            self.log.write('Finding color term: too few stars!',
+            self.log.write('Determininging color term: too few stars!',
                            level=2, event=72)
             self.db_update_process(calibrated=0)
             return
@@ -3613,12 +3971,13 @@ class SolveProcess:
         ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 1.)[0]
         num_nofaint = len(ind_nofaint)
 
-        self.log.write('Finding color term: {:d} stars after discarding faint sources'
-                       ''.format(num_nofaint), 
+        self.log.write('Determining color term: {:d} stars after discarding '
+                       'faint sources'.format(num_nofaint), 
                        double_newline=False, level=4, event=72)
 
         if num_nofaint < 10:
-            self.log.write('Finding color term: too few stars after discarding faint sources!',
+            self.log.write('Determining color term: too few stars after '
+                           'discarding faint sources!',
                            level=2, event=72)
             self.db_update_process(calibrated=0)
             return
@@ -3874,40 +4233,53 @@ class SolveProcess:
                        ''.format(cterm, cterm_err), level=4, event=72)
         self.db_update_process(color_term=cterm)
 
-        self.log.write('Photometric calibration in annular bins', 
+        self.log.write('Photometric calibration using annular bins 1-8', 
                        level=3, event=73)
 
+        num_calib = 0  # counter for calibration stars
+
         # Loop over annular bins
-        for b in np.arange(10):
+        #for b in np.arange(10):
+        # Currently, use bin 0, which means all bins together
+        for b in np.arange(1):
             if b == 0:
                 ind_bin = np.where(plate_bin < 9)[0]
+                bintxt = 'Bins 1-8'
             else:
                 ind_bin = np.where(plate_bin == b)[0]
 
             num_calstars = len(ind_bin)
-            self.log.write('Annular bin {:d}: {:d} calibration-star candidates'
-                           ''.format(b, num_calstars), 
+            self.log.write('{}: {:d} calibration-star candidates'
+                           ''.format(bintxt, num_calstars), 
                            double_newline=False, level=4, event=73)
 
             if num_calstars < 20:
-                self.log.write('Annular bin {:d}: too few calibration-star '
-                               'candidates!'.format(b), double_newline=False,
+                self.log.write('{}: too few calibration-star candidates!'
+                               ''.format(bintxt), double_newline=False,
                                level=2, event=73)
                 continue
 
-            _,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
-            plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
-                                          return_index=True)
+            #_,uind1 = np.unique(cat_bmag[ind_bin], return_index=True)
+            #plate_mag_u,uind2 = np.unique(plate_mag[ind_bin[uind1]], 
+            #                              return_index=True)
+            plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
+
+            self.log.write('{}: {:d} stars with unique magnitude'
+                           ''.format(bintxt, len(plate_mag_u)), 
+                           double_newline=False, level=4, event=73)
 
             if len(plate_mag_u) < 20:
-                self.log.write('Annular bin {:d}: too few unique calibration '
-                               'stars ({:d})!'.format(b, len(plate_mag_u)), 
+                self.log.write('{}: too few stars with unique magnitude '
+                               '({:d})!'.format(bintxt, len(plate_mag_u)),
                                double_newline=False, level=2, event=73)
                 continue
 
-            cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
-            cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
-            ind_calibstar_u = ind_calibstar[ind_bin[uind1[uind2]]]
+            #cat_bmag_u = cat_bmag[ind_bin[uind1[uind2]]]
+            #cat_vmag_u = cat_vmag[ind_bin[uind1[uind2]]]
+            #ind_calibstar_u = ind_calibstar[ind_bin[uind1[uind2]]]
+            cat_bmag_u = cat_bmag[ind_bin[uind2]]
+            cat_vmag_u = cat_vmag[ind_bin[uind2]]
+            ind_calibstar_u = ind_calibstar[ind_bin[uind2]]
             cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
             self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
@@ -4146,36 +4518,40 @@ class SolveProcess:
                             ind_outliers = np.unique(ind_outliers)
                             ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
                                                     ind_outliers)
-                            self.log.write('Annular bin {:d}: {:d} faint stars '
+                            self.log.write('{}: {:d} faint stars '
                                            'eliminated as outliers'
-                                           ''.format(b, len(ind_faintout)),
+                                           ''.format(bintxt, len(ind_faintout)),
                                            double_newline=False,
                                            level=4, event=73)
 
-                        self.log.write('Annular bin {:d}: outlier elimination '
+                        self.log.write('{}: outlier elimination '
                                        'stopped due to a long gap in '
-                                       'magnitudes!'.format(b), 
+                                       'magnitudes!'.format(bintxt), 
                                         double_newline=False,
                                        level=2, event=73)
                         break
 
                     if len(ind_good) < 10:
-                        self.log.write('Annular bin {:d}: outlier elimination stopped '
-                                       'due to insufficient stars left!'.format(b), 
+                        self.log.write('{}: outlier elimination stopped '
+                                       'due to insufficient stars left!'
+                                       ''.format(bintxt), 
                                         double_newline=False, level=2, event=73)
                         break
 
                 num_outliers = len(ind_outliers)
-                self.log.write('Annular bin {:d}: {:d} outliers eliminated'
-                               ''.format(b, num_outliers), 
+                self.log.write('{}: {:d} outliers eliminated'
+                               ''.format(bintxt, num_outliers), 
                                double_newline=False, level=4, event=73)
                 ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
                                         ind_outliers)
+                self.log.write('{}: {:d} stars after outlier '
+                               'elimination'.format(bintxt, len(ind_good)), 
+                               double_newline=False, level=4, event=73)
 
                 if len(ind_good) < 20:
-                    self.log.write('Annular bin {:d}: too few calibration '
+                    self.log.write('{}: too few calibration '
                                    'stars ({:d}) after outlier elimination!'
-                                   ''.format(b, len(ind_good)), 
+                                   ''.format(bintxt, len(ind_good)), 
                                    double_newline=False, level=2, event=73)
                     continue
 
@@ -4191,17 +4567,19 @@ class SolveProcess:
                 plate_mag_lim = kde.support[ind_dense[-1]]
                 ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
                 num_valid = len(ind_valid)
+                num_calib += num_valid
 
-                self.log.write('Annular bin {:d}: {:d} good calibration stars'
-                               ''.format(b, num_valid), 
+                self.log.write('{}: {:d} calibration stars '
+                               'brighter than limiting magnitude'
+                               ''.format(bintxt, num_valid), 
                                double_newline=False, level=4, event=73)
 
                 ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
-                self.sources['flag_calib_star'][ind_calibstar_valid] = 1
+                self.sources['phot_calib_flags'][ind_calibstar_valid] = 1
 
                 if num_outliers > 0:
                     ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
-                    self.sources['flag_calib_outlier'][ind_calibstar_outlier] = 1
+                    self.sources['phot_calib_flags'][ind_calibstar_outlier] = 2
 
                 cat_natmag = cat_natmag[ind_good[ind_valid]]
                 plate_mag_u = plate_mag_u[ind_good[ind_valid]]
@@ -4251,47 +4629,17 @@ class SolveProcess:
 
                 # Interpolate lowess-smoothed calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
+                # Calculate residuals
                 residuals = cat_natmag-s(plate_mag_u)
 
-                # Evaluate RMS error from the spread around the calibration curve
-                pmag = np.array([])
-                rmse = np.array([])
-
-                for mag_loc in np.linspace(plate_mag_brightest, plate_mag_lim, 100):
-                    wnd = 0.5
-                    ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                                       (plate_mag_u < mag_loc+wnd))[0]
-
-                    if len(ind_loc) < 5:
-                        wnd = 1.0
-                        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                                           (plate_mag_u < mag_loc+wnd))[0]
-
-                    if len(ind_loc) < 5:
-                        wnd = 2.0
-                        ind_loc = np.where((plate_mag_u > mag_loc-wnd) &
-                                           (plate_mag_u < mag_loc+wnd))[0]
-
-                    if len(ind_loc) >= 5:
-                        pmag = np.append(pmag, mag_loc)
-                        rmse_loc = np.sqrt(np.mean(residuals[ind_loc]**2))
-                        rmse = np.append(rmse, rmse_loc)
-
-                        # Store RMSE data
-                        self.phot_rmse.append(OrderedDict([
-                            ('annular_bin', b),
-                            ('plate_mag', mag_loc),
-                            ('rmse', rmse_loc),
-                            ('mag_window', wnd),
-                            ('num_stars', len(ind_loc))
-                        ]))
-
-                if self.write_phot_dir:
-                    np.savetxt(frmse, np.column_stack((pmag, rmse)))
-                    frmse.write('\n\n')
-
-                # Interpolate rms error values
-                s_rmse = InterpolatedUnivariateSpline(pmag, rmse, k=1)
+                # Evaluate RMS errors from the calibration residuals
+                rmse_list = generic_filter(residuals, _rmse, size=10)
+                rmse_lowess = sm.nonparametric.lowess(rmse_list, plate_mag_u, 
+                                                      frac=0.5, it=3, delta=0.1)
+                s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
+                                                      rmse_lowess[:,1], k=1)
+                rmse = s_rmse(plate_mag_u)
 
             #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
 
@@ -4322,13 +4670,47 @@ class SolveProcess:
 
             # Apply photometric calibration to sources in the annular bin
             if b == 0:
-                ind_bin = np.where(self.sources['annular_bin'] <= 9)[0]
+                ind_bin = np.where((self.sources['annular_bin'] <= 9) &
+                                   (self.sources['mag_auto'] < 90.))[0]
+                self.log.write('Applying photometric calibration to sources '
+                               'in annular bins 1-9', 
+                               level=3, event=74)
             else:
-                ind_bin = np.where(self.sources['annular_bin'] == b)[0]
+                ind_bin = np.where((self.sources['annular_bin'] == b) &
+                                   (self.sources['mag_auto'] < 90.))[0]
+                self.log.write('Applying photometric calibration to sources '
+                               'in annular bin {:d}'.format(b), 
+                               level=3, event=74)
 
             src_bin = self.sources[ind_bin]
 
-            if self.use_apass_db and self.use_apass_photometry:
+            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
+            self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
+            self.sources['color_term'][ind_bin] = cterm
+            self.sources['natmag_residual'][ind_calibstar_u] = \
+                    (self.sources['cat_natmag'][ind_calibstar_u] - 
+                     self.sources['natmag'][ind_calibstar_u])
+
+            # Apply flags and errors to sources outside the magnitude range 
+            # of calibration stars
+            brange = (self.sources['mag_auto'][ind_bin] < plate_mag_brightest)
+
+            if brange.sum() > 0:
+                ind_range = ind_bin[np.where(brange)]
+                self.sources['phot_plate_flags'][ind_range] = 1
+                self.sources['natmagerr'][ind_bin] = s_rmse(plate_mag_brightest)
+                self.sources['natmagerr_plate'][ind_bin] = s_rmse(plate_mag_brightest)
+
+            brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
+
+            if brange.sum() > 0:
+                ind_range = ind_bin[np.where(brange)]
+                self.sources['phot_plate_flags'][ind_range] = 2
+
+            # Select stars with known UCAC4/APASS/Tycho-2 photometry    
+            if photref_catalog == 'APASS':
                 ind_ucacmag = np.where((src_bin['apass_bmag'] > 10) &
                                        (src_bin['apass_vmag'] > 10))[0]
             else:
@@ -4342,14 +4724,10 @@ class SolveProcess:
                 ind_tycmag = np.where(np.isfinite(src_nomag['tycho2_btmag']) &
                                       np.isfinite(src_nomag['tycho2_vtmag']))[0]
 
-            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
-            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
-            self.sources['color_term'][ind_bin] = cterm
-
             if len(ind_ucacmag) > 0:
                 ind = ind_bin[ind_ucacmag]
 
-                if self.use_apass_db and self.use_apass_photometry:
+                if photref_catalog == 'APASS':
                     b_v = (self.sources[ind]['apass_bmag']
                            - self.sources[ind]['apass_vmag'])
                     b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
@@ -4361,6 +4739,7 @@ class SolveProcess:
                                       self.sources[ind]['ucac4_vmagerr']**2)
 
                 self.sources['color_bv'][ind] = b_v
+                self.sources['color_bv_err'][ind] = b_v_err
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
@@ -4381,6 +4760,7 @@ class SolveProcess:
                 b_v_err = 0.85 * np.sqrt(self.sources[ind]['tycho2_btmagerr']**2 + 
                                          self.sources[ind]['tycho2_vtmagerr']**2)
                 self.sources['color_bv'][ind] = b_v
+                self.sources['color_bv_err'][ind] = b_v_err
                 self.sources['vmag'][ind] = (self.sources['natmag'][ind]
                                              - cterm * b_v)
                 self.sources['bmag'][ind] = (self.sources['natmag'][ind]
@@ -4405,15 +4785,337 @@ class SolveProcess:
             faintlim = None
             mag_range = None
 
-        self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
-                               mag_range=mag_range, calibrated=1)
+        if num_calib > 0:
+            self.phot_calibrated = True
+            self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
+                                   mag_range=mag_range, num_calib=num_calib, 
+                                   calibrated=1)
+        else:
+            self.db_update_process(num_calib=0, calibrated=0)
 
         if self.write_phot_dir:
             fcaldata.close()
             #fcalcurve.close()
             #fcutdata.close()
             #fcutcurve.close()
-            frmse.close()
+
+    def improve_photometry_recursive(self, max_recursion_depth=None):
+        """
+        Improve photometric calibration recursively in sub-fields.
+
+        """
+
+        self.log.write('Recursive improvement of photometry', level=3, event=75)
+
+        if self.phot_calibrated == False:
+            self.log.write('Cannot improve photometric calibration due to '
+                           'missing global calibration',
+                           level=2, event=75)
+            return
+
+        if max_recursion_depth is None:
+            max_recursion_depth = self.max_recursion_depth
+
+        self.wcshead.set('XMIN', 0)
+        self.wcshead.set('XMAX', self.imwidth)
+        self.wcshead.set('YMIN', 0)
+        self.wcshead.set('YMAX', self.imheight)
+        self._photrec(self.wcshead, max_recursion_depth=max_recursion_depth)
+
+        # Write statistics into the process table
+        phot_sub_total = len(self.phot_sub)
+        phot_sub_eff = np.array([psub['above_threshold']==1
+                                 for psub in self.phot_sub]).sum()
+        self.db_update_process(phot_sub_total=phot_sub_total, 
+                               phot_sub_eff=phot_sub_eff)
+
+    def _photrec(self, in_head, max_recursion_depth=None):
+        """
+        Improve photometric calibration in one sub-field.
+
+        """
+
+        if max_recursion_depth is None:
+            max_recursion_depth = self.max_recursion_depth
+
+        if 'DEPTH' in in_head:
+            recdepth = in_head['DEPTH'] + 1
+        else:
+            recdepth = 1
+
+        if 'SUB-ID' in in_head:
+            parent_sub_id = in_head['SUB-ID']
+        else:
+            parent_sub_id = 0
+
+        x = self.sources['x_source']
+        y = self.sources['y_source']
+        natmag = np.zeros(len(x)) * np.nan
+        natmagerr = np.zeros(len(x)) * np.nan
+        bmag = np.zeros(len(x)) * np.nan
+        bmagerr = np.zeros(len(x)) * np.nan
+        vmag = np.zeros(len(x)) * np.nan
+        vmagerr = np.zeros(len(x)) * np.nan
+        gridsize = np.zeros(len(x))
+        subid = np.zeros(len(x))
+
+        xsize = (in_head['XMAX'] - in_head['XMIN']) / 2.
+        ysize = (in_head['YMAX'] - in_head['YMIN']) / 2.
+
+        subrange = np.arange(4)
+        xoffset = np.array([0., 1., 0., 1.])
+        yoffset = np.array([0., 0., 1., 1.])
+
+        for sub in subrange:
+            current_sub_id = parent_sub_id * 10 + sub + 1
+            xmin = in_head['XMIN'] + xoffset[sub] * xsize
+            ymin = in_head['YMIN'] + yoffset[sub] * ysize
+            xmax = xmin + xsize
+            ymax = ymin + ysize
+
+            width = xmax - xmin
+            height = ymax - ymin
+
+            self.log.write('Sub-field {:d} ({:d}x{:d}) {:.2f} : {:.2f}, '
+                           '{:.2f} : {:.2f}'.format(current_sub_id,
+                                                    2**recdepth, 2**recdepth, 
+                                                    xmin, xmax, ymin, ymax))
+            
+            xmin_ext = xmin #- 0.1 * xsize
+            xmax_ext = xmax #+ 0.1 * xsize
+            ymin_ext = ymin #- 0.1 * ysize
+            ymax_ext = ymax #+ 0.1 * ysize
+
+            width_ext = xmax_ext - xmin_ext
+            height_ext = ymax_ext - ymin_ext
+
+            bsub = ((x >= xmin_ext + 0.5) & (x < xmax_ext + 0.5) &
+                    (y >= ymin_ext + 0.5) & (y < ymax_ext + 0.5) &
+                    (self.sources['phot_calib_flags'] < 2) &
+                    (self.sources['sextractor_flags'] == 0) &
+                    np.isfinite(self.sources['natmag_residual']))
+            nsubstars = bsub.sum()
+            self.log.write('Found {:d} stars in the sub-field'
+                           .format(nsubstars), double_newline=False)
+
+            # Store statistics about current sub-field
+            psub = OrderedDict([('phot_sub_id', current_sub_id), 
+                                ('phot_sub_grid', 2**recdepth), 
+                                ('parent_sub_id', parent_sub_id), 
+                                ('x_min', xmin), 
+                                ('x_max', xmax), 
+                                ('y_min', ymin), 
+                                ('y_max', ymax), 
+                                ('num_selected_stars', nsubstars), 
+                                ('above_threshold', None), 
+                                ('num_fit_stars', None), 
+                                ('correction_min', None), 
+                                ('correction_max', None), 
+                                ('num_applied_stars', None), 
+                                ('rmse_min', None), 
+                                ('rmse_median', None), 
+                                ('rmse_max', None)])
+
+            if nsubstars < 50:
+                self.log.write('Fewer stars than the threshold (50)')
+                psub['above_threshold'] = 0
+                self.phot_sub.append(psub)
+                continue
+
+            psub['above_threshold'] = 1
+            indsub = np.where(bsub)
+
+            self.log.write('', timestamp=False, double_newline=False)
+
+            # Improvement of calibration
+            platemag = self.sources['mag_auto'][indsub]
+            residuals = self.sources['natmag_residual'][indsub]
+
+            flt = sigma_clip(residuals)
+            ind_remain = ~flt.mask
+            platemag_remain = platemag[ind_remain]
+            nremain = ind_remain.size
+            psub['num_fit_stars'] = nremain
+
+            frac = 0.7
+
+            #if nremain < 500:
+            #    frac = 0.4 + 0.3 * (500 - nremain) / 500.
+
+            z = sm.nonparametric.lowess(residuals[ind_remain], 
+                                        platemag_remain, 
+                                        frac=frac, it=3, delta=0.1, 
+                                        return_sorted=True)
+            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
+            kde = sm.nonparametric.KDEUnivariate(platemag_remain.astype(np.double))
+            kde.fit()
+            kde_density = kde.density
+            kde_density_max = kde.density.max()
+
+            # Check for negative density values and replace them with zeros
+            bneg = kde_density < 0
+
+            if bneg.sum() > 0:
+                ind_neg = np.where(bneg)
+                kde_density[ind_neg] = 0.
+
+            normden = (kde_density / kde_density_max)**(1./3.)
+            sden = InterpolatedUnivariateSpline(kde.support, normden, k=1)
+            #weights = sden(platemag_remain) / kde.density.max()
+
+            #p3 = np.poly1d(np.polyfit(platemag_remain, s(platemag_remain), 3))
+
+            #weights = np.sqrt(sden(platemag))/(np.absolute(residuals)+0.2)
+            #oldweights = 1./(np.absolute(residuals)+0.2)
+
+            #p3 = np.poly1d(np.polyfit(platemag, residuals, 3, w=weights))
+            #p3old = np.poly1d(np.polyfit(platemag, residuals, 3, w=oldweights))
+            #vals = p3(platemag)
+
+            weights = sden(platemag)
+            self.sources['natmag_residual'][indsub] -= s(platemag) * weights
+
+            psub['correction_min'] = np.min(s(platemag) * weights)
+            psub['correction_max'] = np.max(s(platemag) * weights)
+
+            # Output of calibration improvement for inspection
+            #if self.write_phot_dir:
+            #    fn_sub = os.path.join(self.write_phot_dir,
+            #                          '{}_sub_{:<05d}.txt'.format(self.basefn,
+            #                                                      current_sub_id))
+            #    fsub = open(fn_sub, 'wb')
+            #    np.savetxt(fsub, np.column_stack((platemag, residuals, 
+            #                                      s(platemag)*weights, s(platemag))))
+            #    fsub.write('\n\n')
+            #    fsub.close
+
+            # Evaluate RMS error from the calibration residuals
+            residuals = self.sources['natmag_residual'][indsub]
+            indsort = np.argsort(platemag)
+            rmse_list = generic_filter(residuals[indsort], _rmse, size=10)
+            rmse_lowess = sm.nonparametric.lowess(rmse_list, platemag[indsort], 
+                                                  frac=0.5, it=3, delta=0.1)
+            s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
+                                                  rmse_lowess[:,1], k=1)
+
+            # Select stars for application of magnitude corrections
+            bout = ((x >= xmin + 0.5) & (x < xmax + 0.5) & 
+                    (y >= ymin + 0.5) & (y < ymax + 0.5) &
+                    (self.sources['mag_auto'] < 90.))
+            nout = bout.sum()
+            psub['num_applied_stars'] = nout
+
+            if nout == 0:
+                self.phot_sub.append(psub)
+                continue
+            
+            indout = np.where(bout)
+
+            # Replace natmag_correction nan values with zeros
+            bnan = (bout & np.logical_not(np.isfinite(self.sources['natmag_correction'])))
+
+            if bnan.sum() > 0:
+                self.sources['natmag_correction'][np.where(bnan)] = 0.
+
+            # Apply flags to sources outside the magnitude range 
+            # of calibration stars
+            brange = (bout & (self.sources['mag_auto'] < np.min(platemag)))
+
+            if brange.sum() > 0:
+                self.sources['phot_sub_flags'][np.where(brange)] = 1
+
+            brange = (bout & (self.sources['mag_auto'] > np.max(platemag)))
+
+            if brange.sum() > 0:
+                self.sources['phot_sub_flags'][np.where(brange)] = 2
+
+            # Apply sub-field photometry
+            weights = sden(self.sources['mag_auto'][indout])
+            self.sources['natmag_correction'][indout] += \
+                    s(self.sources['mag_auto'][indout]) * weights
+            self.sources['phot_sub_grid'][indout] = 2**recdepth
+            self.sources['phot_sub_id'][indout] = current_sub_id
+            natmagsub = (self.sources['natmag_plate'][indout] + 
+                         self.sources['natmag_correction'][indout])
+            natmagerrsub = s_rmse(self.sources['mag_auto'][indout])
+
+            # Do not extrapolate magnitude errors
+            brange = (self.sources['mag_auto'][indout] < np.min(platemag))
+            
+            if brange.sum() > 0:
+                ind_range = np.where(brange)
+                natmagerrsub[ind_range] = s_rmse(np.min(platemag))
+
+            self.sources['natmag_sub'][indout] = natmagsub 
+            self.sources['natmagerr_sub'][indout] = natmagerrsub
+            self.sources['natmag'][indout] = natmagsub 
+            self.sources['natmagerr'][indout] = natmagerrsub
+
+            cterm = self.phot_color['color_term']
+            cterm_err = self.phot_color['color_term_err']
+            b_v = self.sources['color_bv'][indout]
+            b_v_err = self.sources['color_bv_err'][indout]
+
+            self.sources['vmag'][indout] = natmagsub - cterm * b_v
+            self.sources['bmag'][indout] = natmagsub - (cterm - 1.) * b_v
+            vmagerr = np.sqrt(natmagerrsub**2 + 
+                              (cterm_err * b_v)**2 + (cterm * b_v_err)**2)
+            bmagerr = np.sqrt(natmagerrsub**2 + 
+                              (cterm_err * b_v)**2 + ((cterm - 1.) * b_v_err)**2)
+            self.sources['vmagerr'][indout] = vmagerr
+            self.sources['bmagerr'][indout] = bmagerr
+
+            # Store statistics about calibration
+            psub['rmse_min'] = np.min(natmagerrsub)
+            psub['rmse_median'] = np.median(natmagerrsub)
+            psub['rmse_max'] = np.max(natmagerrsub)
+            self.phot_sub.append(psub)
+
+            # Solve sub-fields recursively if recursion depth is less
+            # than maximum.
+            if recdepth < max_recursion_depth:
+                head = fits.PrimaryHDU().header
+                head.set('XMIN', xmin)
+                head.set('XMAX', xmax)
+                head.set('YMIN', ymin)
+                head.set('YMAX', ymax)
+                head.set('DEPTH', recdepth)
+                head.set('SUB-ID', current_sub_id)
+                self._photrec(head, max_recursion_depth=max_recursion_depth)
+
+    def output_astrom_sub_db(self):
+        """
+        Write astrometric sub-field calibration to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing astrometric sub-field calibration '
+                       'to the database', event=55)
+
+        if self.astrom_sub == []:
+            self.log.write('No astrometric sub-field calibration to write '
+                           'to the database', level=2, event=55)
+            return
+
+        self.log.write('Open database connection for writing to the '
+                       'astrom_sub table')
+        platedb = PlateDB()
+        platedb.open_connection(host=self.output_db_host,
+                                user=self.output_db_user,
+                                dbname=self.output_db_name,
+                                passwd=self.output_db_passwd)
+
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            for asub in self.astrom_sub:
+                platedb.write_astrom_sub(asub, process_id=self.process_id,
+                                         scan_id=self.scan_id,
+                                         plate_id=self.plate_id,
+                                         archive_id=self.archive_id)
+            
+        platedb.close_connection()
+        self.log.write('Closed database connection')
 
     def output_cterm_db(self):
         """
@@ -4422,11 +5124,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric color term data to the database', 
-                       event=74)
+                       event=76)
 
         if self.phot_cterm == []:
             self.log.write('No photometric color term data to write to the database', 
-                           level=2, event=74)
+                           level=2, event=76)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -4455,11 +5157,11 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric color term result to the database', 
-                       event=75)
+                       event=77)
 
         if self.phot_color is None:
             self.log.write('No photometric color term result to write to the database', 
-                           level=2, event=75)
+                           level=2, event=77)
             return
 
         self.log.write('Open database connection for writing to the '
@@ -4488,15 +5190,15 @@ class SolveProcess:
         """
 
         self.log.to_db(3, 'Writing photometric calibration to the database', 
-                       event=76)
+                       event=78)
 
         if self.phot_calib == []:
             self.log.write('No photometric calibration to write to the database', 
-                           level=2, event=76)
+                           level=2, event=78)
             return
 
         self.log.write('Open database connection for writing to the '
-                       'phot_calib table')
+                       'phot_calib and phot_sub tables')
         platedb = PlateDB()
         platedb.open_connection(host=self.output_db_host,
                                 user=self.output_db_user,
@@ -4511,40 +5213,102 @@ class SolveProcess:
                                          plate_id=self.plate_id,
                                          archive_id=self.archive_id)
             
-        platedb.close_connection()
-        self.log.write('Closed database connection')
-
-    def output_rmse_db(self):
-        """
-        Write photometric calibration errors to the database.
-
-        """
-
-        self.log.to_db(3, 'Writing photometric calibration errors to the '
-                       'database', event=77)
-
-        if self.phot_rmse == []:
-            self.log.write('No photometric calibration errors to write '
-                           'to the database', level=2, event=77)
-            return
-
-        self.log.write('Open database connection for writing to the '
-                       'phot_rmse table')
-        platedb = PlateDB()
-        platedb.open_connection(host=self.output_db_host,
-                                user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
-
-        if (self.scan_id is not None and self.plate_id is not None and 
-            self.archive_id is not None and self.process_id is not None):
-            for rmse in self.phot_rmse:
-                platedb.write_phot_rmse(rmse, process_id=self.process_id,
-                                        scan_id=self.scan_id,
-                                        plate_id=self.plate_id,
-                                        archive_id=self.archive_id)
+            for psub in self.phot_sub:
+                platedb.write_phot_sub(psub, process_id=self.process_id,
+                                       scan_id=self.scan_id,
+                                       plate_id=self.plate_id,
+                                       archive_id=self.archive_id)
             
         platedb.close_connection()
         self.log.write('Closed database connection')
 
+    def output_sources_db(self, write_csv=None):
+        """
+        Write extracted sources to the database.
+
+        """
+
+        if write_csv is None:
+            write_csv = self.write_sources_csv
+
+        if write_csv:
+            self.log.to_db(3, 'Writing sources to database files', event=80)
+        else:
+            self.log.to_db(3, 'Writing sources to the database', event=80)
+
+        platedb = PlateDB()
+        platedb.assign_conf(self.conf)
+
+        if write_csv:
+            # Create output directories, if missing
+            if (self.write_db_source_dir and 
+                not os.path.isdir(self.write_db_source_dir)):
+                self.log.write('Creating output directory {}'
+                               .format(self.write_db_source_dir), 
+                               level=4, event=80)
+                os.makedirs(self.write_db_source_dir)
+
+            if (self.write_db_source_calib_dir and 
+                not os.path.isdir(self.write_db_source_calib_dir)):
+                self.log.write('Creating output directory {}'
+                               .format(self.write_db_source_calib_dir), 
+                               level=4, event=80)
+                os.makedirs(self.write_db_source_calib_dir)
+        else:
+            # Open database connection
+            self.log.write('Open database connection for writing to the '
+                           'source and source_calib tables.')
+            platedb.open_connection(host=self.output_db_host,
+                                    user=self.output_db_user,
+                                    dbname=self.output_db_name,
+                                    passwd=self.output_db_passwd)
+
+        # Check for identification numbers and write data
+        if (self.scan_id is not None and self.plate_id is not None and 
+            self.archive_id is not None and self.process_id is not None):
+            platedb.write_sources(self.sources, process_id=self.process_id,
+                                  scan_id=self.scan_id, plate_id=self.plate_id,
+                                  archive_id=self.archive_id, 
+                                  write_csv=write_csv)
+        else:
+            self.log.write('Cannot write source data due to missing '
+                           'plate identification number(s).', 
+                           level=2, event=80)
+
+        # Close database connection
+        if not write_csv:
+            platedb.close_connection()
+            self.log.write('Closed database connection.')
+
+    def output_sources_csv(self, filename=None):
+        """
+        Write extracted sources to a CSV file.
+
+        """
+
+        self.log.to_db(3, 'Writing sources to a file', event=81)
+
+        # Create output directory, if missing
+        if self.write_source_dir and not os.path.isdir(self.write_source_dir):
+            self.log.write('Creating output directory {}'
+                           .format(self.write_source_dir), level=4, event=81)
+            os.makedirs(self.write_source_dir)
+
+        if filename:
+            fn_world = os.path.join(self.write_source_dir, 
+                                    os.path.basename(filename))
+        else:
+            fn_world = os.path.join(self.write_source_dir, 
+                                    '{}_sources.csv'.format(self.basefn))
+
+        outfields = _source_meta.keys()
+        outfmt = [_source_meta[f][1] for f in outfields]
+        outhdr = ','.join(outfields)
+        delimiter = ','
+
+        # Output CSV file with extracted sources
+        self.log.write('Writing output file {}'.format(fn_world), level=4, 
+                       event=81)
+        np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
+                   delimiter=delimiter, header=outhdr, comments='')
 
