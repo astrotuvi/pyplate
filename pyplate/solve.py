@@ -3452,10 +3452,11 @@ class SolveProcess:
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
         if (have_match_coord and self.platemeta and 
-            self.platemeta['site_latitude'] and 
-            self.platemeta['site_longitude'] and 
-            (self.platemeta['numexp'] == 1) and
-            self.platemeta['date_avg']):
+                self.platemeta['site_latitude'] and 
+                self.platemeta['site_longitude'] and 
+                (self.platemeta['numexp'] == 1) and
+                self.platemeta['date_avg'] and
+                self.platemeta['date_avg'][0]):
             self.log.write('Calculating zenith angle and air mass for sources', 
                            level=3, event=61)
             lon = self.platemeta['site_longitude']
