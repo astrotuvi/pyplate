@@ -23,6 +23,8 @@ setup(
                         'ephem',
                         'pytimeparse',
                         'pytz',
+                        'unicodecsv',
+                        'unidecode',
                         'healpy',
                         'esutil',
                         'Pillow'
