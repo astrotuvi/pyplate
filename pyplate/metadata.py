@@ -7,7 +7,8 @@ import copy
 import re
 import textwrap
 import ConfigParser
-import csv
+import unicodecsv as csv
+import unidecode
 import math
 import datetime as dt
 import numpy as np
@@ -279,6 +280,9 @@ def _split_orig_times(combined_str):
     Split string of combined original observation times.
 
     """
+
+    if isinstance(combined_str, unicode):
+        combined_str = unidecode.unidecode(combined_str)
 
     if not isinstance(combined_str, str):
         return None
@@ -1543,6 +1547,9 @@ class PlateMeta(OrderedDict):
         """
         
         for k,v in self.iteritems():
+            if isinstance(v, unicode):
+                v = v.encode('utf-8')
+
             print '{:15}: {}'.format(k, v)
 
     def parse_maindata(self, maindata_entry):
@@ -2035,11 +2042,11 @@ class PlateMeta(OrderedDict):
             for iexp in np.arange(ntimes):
                 if (isinstance(self['date_orig'], list) and 
                     len(self['date_orig']) > 1):
-                    date_orig = self['date_orig'][iexp]
+                    date_orig = unidecode.unidecode(self['date_orig'][iexp])
                 elif isinstance(self['date_orig'], list):
-                    date_orig = self['date_orig'][0]
+                    date_orig = unidecode.unidecode(self['date_orig'][0])
                 else:
-                    date_orig = self['date_orig']
+                    date_orig = unidecode.unidecode(self['date_orig'])
 
                 try:
                     date_test = Time(date_orig, scale='tai')
@@ -2380,9 +2387,9 @@ class PlateMeta(OrderedDict):
                     date_orig = self['date_orig'][0]
 
                 pointing = ephem.FixedBody()
-                pointing._ra = ephem.hours(self['ra_orig'][iexp])
-                pointing._dec = ephem.degrees(self['dec_orig'][iexp])
-                pointing._epoch = date_orig
+                pointing._ra = ephem.hours(str(self['ra_orig'][iexp]))
+                pointing._dec = ephem.degrees(str(self['dec_orig'][iexp]))
+                pointing._epoch = str(date_orig)
                 pointing.compute(ephem.J2000)
 
                 try:
@@ -2470,6 +2477,7 @@ class PlateHeader(fits.Header):
         self.fits_size = None
         self.fits_checksum = None
         self.fits_datasum = None
+        self.german_transliteration = False
         
     _default_comments = {'SIMPLE':   'file conforms to FITS standard',
         'BITPIX':   'number of bits per data pixel',
@@ -2782,6 +2790,12 @@ class PlateHeader(fits.Header):
             except ConfigParser.Error:
                 pass
 
+        for attr in ['german_transliteration']:
+            try:
+                setattr(self, attr, conf.getboolean('Metadata', attr))
+            except ConfigParser.Error:
+                pass
+
     def assign_platemeta(self, platemeta):
         """
         Assign plate metadata.
@@ -2824,11 +2838,26 @@ class PlateHeader(fits.Header):
         """
 
         if value or (valtype is int and value == 0):
+            if isinstance(value, unicode):
+                if self.german_transliteration:
+                    value = (value.replace(u'\xc4','Ae').replace(u'\xe4','ae')
+                             .replace(u'\xd6','Oe').replace(u'\xf6','oe')
+                             .replace(u'\xdc','Ue').replace(u'\xfc','ue'))
+
+                value = unidecode.unidecode(value)
+
             if isinstance(value, str):
-                value = (value.replace('ä','ae').replace('Ä','AE')
-                         .replace('ö','oe').replace('Ö','OE')
-                         .replace('ü','ue').replace('Ü','UE')
+                if self.german_transliteration:
+                    value = (value.replace('ä','ae').replace('Ä','Ae')
+                             .replace('ö','oe').replace('Ö','Oe')
+                             .replace('ü','ue').replace('Ü','Ue')
+                             .replace('ß','ss'))
+
+                value = (value.replace('ä','a').replace('Ä','A')
+                         .replace('ö','o').replace('Ö','O')
+                         .replace('ü','u').replace('Ü','U')
                          .replace('õ','o').replace('Õ','O')
+                         .replace('š','s').replace('Š','S')
                          .replace('ž','z').replace('Ž','Z'))
 
                 # Workaround for Astropy treating colon in string as assignment
