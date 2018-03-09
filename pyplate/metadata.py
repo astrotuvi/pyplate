@@ -2837,7 +2837,7 @@ class PlateHeader(fits.Header):
 
         """
 
-        if value or (valtype is int and value == 0):
+        if value or ((valtype is int or valtype is float) and value == 0):
             if isinstance(value, unicode):
                 if self.german_transliteration:
                     value = (value.replace(u'\xc4','Ae').replace(u'\xe4','ae')
