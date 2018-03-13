@@ -2042,11 +2042,14 @@ class PlateMeta(OrderedDict):
             for iexp in np.arange(ntimes):
                 if (isinstance(self['date_orig'], list) and 
                     len(self['date_orig']) > 1):
-                    date_orig = unidecode.unidecode(self['date_orig'][iexp])
+                    date_orig = self['date_orig'][iexp]
                 elif isinstance(self['date_orig'], list):
-                    date_orig = unidecode.unidecode(self['date_orig'][0])
+                    date_orig = self['date_orig'][0]
                 else:
-                    date_orig = unidecode.unidecode(self['date_orig'])
+                    date_orig = self['date_orig']
+
+                if isinstance(date_orig, unicode):
+                    date_orig = unidecode.unidecode(date_orig)
 
                 try:
                     date_test = Time(date_orig, scale='tai')
