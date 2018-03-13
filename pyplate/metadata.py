@@ -2061,27 +2061,51 @@ class PlateMeta(OrderedDict):
                 if self['tms_orig']:
                     tms_orig = self['tms_orig'][iexp]
                     tms_orig, uts_orig, sts_orig = _split_orig_times(tms_orig)
+
+                    if not tms_orig and uts_orig:
+                        tms_orig = uts_orig
+                        tz_orig = 'UT'
+
+                    if not tms_orig and sts_orig:
+                        tms_orig = sts_orig
+                        tz_orig = 'ST'
                 else:
                     tms_orig = None
 
                 if self['tme_orig']:
                     tme_orig = self['tme_orig'][iexp]
                     tme_orig, ute_orig, ste_orig = _split_orig_times(tme_orig)
+
+                    if not tme_orig and ute_orig:
+                        tme_orig = ute_orig
+                        tz_orig = 'UT'
+
+                    if not tme_orig and ste_orig:
+                        tme_orig = ste_orig
+                        tz_orig = 'ST'
                 else:
                     tme_orig = None
 
                 # If UT times are given separately
                 if (not tms_orig and not tme_orig and 
                         (self['ut_start_orig'] or self['ut_end_orig'])):
-                    tms_orig = self['ut_start_orig'][iexp]
-                    tme_orig = self['ut_end_orig'][iexp]
+                    if self['ut_start_orig']:
+                        tms_orig = self['ut_start_orig'][iexp]
+
+                    if self['ut_end_orig']:
+                        tme_orig = self['ut_end_orig'][iexp]
+
                     tz_orig = 'UT'
 
                 # If ST times are given separately
                 if (not tms_orig and not tme_orig and 
                         (self['st_start_orig'] or self['st_end_orig'])):
-                    tms_orig = self['st_start_orig'][iexp]
-                    tme_orig = self['st_end_orig'][iexp]
+                    if self['st_start_orig']:
+                        tms_orig = self['st_start_orig'][iexp]
+
+                    if self['st_end_orig']:
+                        tme_orig = self['st_end_orig'][iexp]
+
                     tz_orig = 'ST'
 
                 if tms_orig and '|' in tms_orig:
