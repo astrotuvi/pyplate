@@ -1520,6 +1520,10 @@ class PlateMeta(OrderedDict):
 
         """
 
+        exp_kw_list = ['date_obs', 'date_avg', 'date_weighted', 'date_end', 
+                       'jd', 'jd_avg', 'jd_weighted', 'jd_end', 
+                       'hjd_avg', 'hjd_weighted',
+                       'year', 'year_avg', 'year_weighted', 'year_end']
         kwmeta = _keyword_meta[key]
 
         if kwmeta[1] and self[key]:
@@ -1529,7 +1533,13 @@ class PlateMeta(OrderedDict):
                 if len(self[key]) > exp:
                     val = self[key][exp]
                 elif len(self[key]) == 1:
-                    val = self[key][0]
+                    # Check for exposure-specific keywords and do not
+                    # use values of the first exposure for subsequent
+                    # exposures.
+                    if key in exp_kw_list:
+                        val = None
+                    else:
+                        val = self[key][0]
                 else:
                     val = None
         else:
@@ -2016,10 +2026,20 @@ class PlateMeta(OrderedDict):
                 ntimes = 1
 
             # Update number of exposures if the number of timestamps is 
-            # different
+            # different and larger than one
             if (ntimes > self['numexp'] or (ntimes < self['numexp'] and 
-                                            not tms_missing)):
+                                            ntimes > 1)):
                 self['numexp'] = ntimes
+
+            # If only one timestamp is given for multiple-exposure plate,
+            # then make sure that subsequent exposures have None values
+            # for relevant keywords
+            if self['numexp'] > 1:
+                kwlist = ['tms_orig', 'tme_orig', 'exptime']
+
+                for kw in kwlist:
+                    if len(self[kw]) == 1:
+                        self[kw].extend((self['numexp'] - 1) * [None])
                 
             self['numsub'] = []
             self['date_obs'] = []
