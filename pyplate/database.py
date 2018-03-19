@@ -5,6 +5,7 @@ import socket
 import os
 import csv
 from collections import OrderedDict
+from astropy.time import Time
 from .conf import read_conf
 from ._version import __version__
 
@@ -901,8 +902,21 @@ class PlateDB:
         for k,v in _schema['plate'].items():
             if v[1]:
                 col_list.append(k)
-                val_tuple = val_tuple \
-                        + (platemeta.get_value(v[1]), )
+
+                # Validate date type and insert NULL instead of invalid value
+                if v[0] == 'DATE':
+                    try:
+                        d = Time(platemeta.get_value(v[1]), scale='tai')
+
+                        if d >= Time('1000-01-01', scale='tai'):
+                            val_tuple = (val_tuple 
+                                         + (platemeta.get_value(v[1]),))
+                        else:
+                            val_tuple = val_tuple + (None,)
+                    except ValueError:
+                        val_tuple = val_tuple + (None,)
+                else:
+                    val_tuple = val_tuple + (platemeta.get_value(v[1]),)
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
