@@ -1771,7 +1771,7 @@ class PlateMeta(OrderedDict):
             elif key.lower() == 'prism angle':
                 self['prism_angle'] = val.strip()
             elif key.lower() == 'sky conditions':
-                self['skycond'] = val.strip()
+                self['sky_conditions'] = val.strip()
             elif key.lower() == 'original plate number':
                 self['plate_num_orig'] = val.strip()
             elif key.lower() == 'bibcode':
@@ -1795,7 +1795,7 @@ class PlateMeta(OrderedDict):
 
         # Create a string from individual notes
         if obsnotes:
-            self['obsnotes'] = '; '.join(obsnotes)
+            self['observer_notes'] = '; '.join(obsnotes)
 
         if notes:
             self['notes'] = '; '.join(notes)
@@ -1818,17 +1818,17 @@ class PlateMeta(OrderedDict):
 
             if key.lower() == 'temperature':
                 try:
-                    self['temperature'] = float(val.strip())
+                    self['air_temperature'] = float(val.strip())
                 except ValueError:
-                    self['temperature'] = None
+                    self['air_temperature'] = None
             elif key.lower() == 'calmness':
-                self['calmness'] = val.strip()
+                self['sky_calmness'] = val.strip()
             elif key.lower() == 'sharpness':
-                self['sharpness'] = val.strip()
+                self['sky_sharpness'] = val.strip()
             elif key.lower() == 'transparency':
-                self['transparency'] = val.strip()
+                self['sky_transparency'] = val.strip()
             elif key.lower() == 'sky conditions':
-                self['skycond'] = val.strip()
+                self['sky_conditions'] = val.strip()
             else:
                 notes.append('{}: {}'.format(key.strip(), val.strip()))
 
