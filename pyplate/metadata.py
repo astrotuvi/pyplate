@@ -6,7 +6,7 @@ import shutil
 import copy
 import re
 import textwrap
-import ConfigParser
+from configparser import ConfigParser
 import unicodecsv as csv
 import unidecode
 import math
@@ -358,8 +358,8 @@ class ArchiveMeta:
             try:
                 setattr(self, attr, conf.getint('Archive', attr))
             except ValueError:
-                print ('Error: Value in configuration file must be '
-                       'integer ([{}], {})'.format('Archive', attr))
+                print('Error: Value in configuration file must be '
+                      'integer ([{}], {})'.format('Archive', attr))
             except ConfigParser.Error:
                 pass
 
@@ -393,8 +393,8 @@ class ArchiveMeta:
                     try:
                         lbmeta[k] = conf.getint(lb, k)
                     except ValueError:
-                        print ('Error: Value in configuration file must be '
-                               'integer ([{}], {})'.format(lb, k))
+                        print('Error: Value in configuration file must be '
+                              'integer ([{}], {})'.format(lb, k))
                         lbmeta[k] = None
                     except ConfigParser.Error:
                         lbmeta[k] = None
@@ -469,7 +469,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.maindata_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB maindata file!'
+                print('Could not read the WFPDB maindata file!')
 
         if fn_quality:
             try:
@@ -478,7 +478,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.quality_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB quality file!'
+                print('Could not read the WFPDB quality file!')
 
         if fn_notes:
             try:
@@ -487,7 +487,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.notes_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB notes file!'
+                print('Could not read the WFPDB notes file!')
 
         if fn_observer:
             try:
@@ -496,7 +496,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.observer_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB observer file!'
+                print('Could not read the WFPDB observer file!')
 
     def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
                  fn_preview_csv=None, fn_logbook_csv=None, fn_logpage_csv=None):
@@ -916,7 +916,7 @@ class ArchiveMeta:
                                                do_not_scale_image_data=True,
                                                ignore_missing_end=True)
             except Exception:
-                print 'Error reading {}'.format(filename)
+                print('Error reading {}'.format(filename))
                 fitsdata = None
                 header = None
 
@@ -1560,7 +1560,7 @@ class PlateMeta(OrderedDict):
             if isinstance(v, unicode):
                 v = v.encode('utf-8')
 
-            print '{:15}: {}'.format(k, v)
+            print('{:15}: {}'.format(k, v))
 
     def parse_maindata(self, maindata_entry):
         """
@@ -3048,7 +3048,7 @@ class PlateHeader(fits.Header):
         try:
             h = fits.getheader(fn_fits)
         except IOError:
-            print 'Error reading file {}'.format(fn_fits)
+            print('Error reading file {}'.format(fn_fits))
             return
 
         for k,v,c in h.cards:
@@ -3439,7 +3439,7 @@ class PlateHeader(fits.Header):
             fitsfile.flush()
         else:
             if not os.path.exists(fn_fits):
-                print 'File does not exist: {}'.format(fn_fits)
+                print('File does not exist: {}'.format(fn_fits))
 
             fitsfile = fits.open(fn_fits, do_not_scale_image_data=True, 
                                  ignore_missing_end=True)
@@ -3449,13 +3449,13 @@ class PlateHeader(fits.Header):
                 os.makedirs(self.write_fits_dir)
             except OSError:
                 if not os.path.isdir(self.write_fits_dir):
-                    print ('Could not create directory {}'
-                           .format(self.write_fits_dir))
+                    print('Could not create directory {}'
+                          .format(self.write_fits_dir))
         
             try:
                 fitsfile.writeto(fn_out, checksum=checksum)
             except IOError:
-                print 'Could not write to {}'.format(fn_out)
+                print('Could not write to {}'.format(fn_out))
             
         fitsfile.close()
         del fitsfile
@@ -3484,8 +3484,8 @@ class PlateHeader(fits.Header):
             os.makedirs(self.write_header_dir)
         except OSError:
             if not os.path.isdir(self.write_header_dir):
-                print ('Could not create directory {}'
-                       .format(self.write_header_dir))
+                print('Could not create directory {}'
+                      .format(self.write_header_dir))
 
         fn_out = os.path.join(self.write_header_dir, filename)
 
@@ -3495,6 +3495,6 @@ class PlateHeader(fits.Header):
         try:
             self.tofile(fn_out, sep='', endcard=True, padding=True)
         except IOError:
-            print 'Error writing {}'.format(fn_out)
+            print('Error writing {}'.format(fn_out))
 
 

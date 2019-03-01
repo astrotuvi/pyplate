@@ -1,4 +1,4 @@
-import ConfigParser
+from configparser import ConfigParser
 
 def read_conf(conf_file):
     """
@@ -15,7 +15,7 @@ def read_conf(conf_file):
     
     """
 
-    conf = ConfigParser.ConfigParser()
+    conf = ConfigParser()
     conf.read(conf_file)
 
     if (conf.has_section('Files') and 

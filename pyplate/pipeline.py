@@ -1,7 +1,7 @@
 import os
 import multiprocessing as mp
 import time
-import ConfigParser
+from configparser import ConfigParser
 from .metadata import ArchiveMeta, PlateMeta, PlateHeader, read_conf
 from .solve import SolveProcess
 from .database import PlateDB
@@ -74,8 +74,8 @@ class PlateImagePipeline:
             try:
                 setattr(self, attr, conf.getboolean('Pipeline', attr))
             except ValueError:
-                print ('Error in configuration file: not a boolean value '
-                       '([{}], {})'.format('Pipeline', attr))
+                print('Error in configuration file: not a boolean value '
+                      '([{}], {})'.format('Pipeline', attr))
             except ConfigParser.Error:
                 pass
 
@@ -83,8 +83,8 @@ class PlateImagePipeline:
             try:
                 setattr(self, attr, conf.getint('Pipeline', attr))
             except ValueError:
-                print ('Error in configuration file: not an integer value '
-                       '([{}], {})'.format('Pipeline', attr))
+                print('Error in configuration file: not an integer value '
+                      '([{}], {})'.format('Pipeline', attr))
             except ConfigParser.Error:
                 pass
 
@@ -92,8 +92,8 @@ class PlateImagePipeline:
             try:
                 setattr(self, attr, conf.getfloat('Pipeline', attr))
             except ValueError:
-                print ('Error in configuration file: not a float value '
-                       '([{}], {})'.format('Pipeline', attr))
+                print('Error in configuration file: not a float value '
+                      '([{}], {})'.format('Pipeline', attr))
             except ConfigParser.Error:
                 pass
 

@@ -6,7 +6,7 @@ import math
 import datetime as dt
 import subprocess as sp
 import numpy as np
-import ConfigParser
+from configparser import ConfigParser
 import warnings
 import xml.etree.ElementTree as ET
 from astropy import __version__ as astropy_version
@@ -269,12 +269,12 @@ class SolveProcessLog:
                 os.makedirs(log_dir)
             except OSError:
                 if not os.path.isdir(log_dir):
-                    print ('Could not create directory {}'.format(log_dir))
+                    print('Could not create directory {}'.format(log_dir))
 
             try:
                 self.handle = open(self.path, 'w', 1)
             except IOError:
-                print 'Could not open log file {}'.format(self.path)
+                print('Could not open log file {}'.format(self.path))
                 self.handle = sys.stdout
         else:
             self.handle = sys.stdout
@@ -705,8 +705,8 @@ class SolveProcess:
         try:
             self.archive_id = conf.getint('Archive', 'archive_id')
         except ValueError:
-            print ('Error in configuration file '
-                   '([{}], {})'.format('Archive', attr))
+            print('Error in configuration file '
+                  '([{}], {})'.format('Archive', attr))
         except ConfigParser.Error:
             pass
 
@@ -734,8 +734,8 @@ class SolveProcess:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
             except ValueError:
-                print ('Error in configuration file '
-                       '([{}], {})'.format('Database', attr))
+                print('Error in configuration file '
+                      '([{}], {})'.format('Database', attr))
             except ConfigParser.Error:
                 pass
 
@@ -754,8 +754,8 @@ class SolveProcess:
             try:
                 setattr(self, attr, conf.getboolean('Solve', attr))
             except ValueError:
-                print ('Error in configuration file '
-                       '([{}], {})'.format('Solve', attr))
+                print('Error in configuration file '
+                      '([{}], {})'.format('Solve', attr))
             except ConfigParser.Error:
                 pass
 
@@ -766,8 +766,8 @@ class SolveProcess:
             try:
                 setattr(self, attr, conf.getfloat('Solve', attr))
             except ValueError:
-                print ('Error in configuration file '
-                       '([{}], {})'.format('Solve', attr))
+                print('Error in configuration file '
+                      '([{}], {})'.format('Solve', attr))
             except ConfigParser.Error:
                 pass
 
@@ -777,8 +777,8 @@ class SolveProcess:
             try:
                 setattr(self, attr, conf.getint('Solve', attr))
             except ValueError:
-                print ('Error in configuration file '
-                       '([{}], {})'.format('Solve', attr))
+                print('Error in configuration file '
+                      '([{}], {})'.format('Solve', attr))
             except ConfigParser.Error:
                 pass
 
@@ -1039,8 +1039,9 @@ class SolveProcess:
 
     def invert_plate(self):
         """
-        Invert FITS image and save the result (*_inverted.fits) in the scratch 
+        Invert FITS image and save the result (\*_inverted.fits) in the scratch 
         or work directory.
+
         """
 
         fn_inverted = '{}_inverted.fits'.format(self.basefn)
@@ -2493,7 +2494,7 @@ class SolveProcess:
                             if bbright.sum() > 0:
                                 bgoodapass[indgood[np.where(bbright)]] = False
                             
-                        nfill = 0L
+                        nfill = 0
 
                         # Go through all unique HEALPix in the plate area
                         for hp in uhp:
@@ -4308,7 +4309,6 @@ class SolveProcess:
 
                 # Check the number of stars in the bright end
                 nb = (plate_mag_u <= plate_mag_mid).sum()
-                #print self.filename, b, nb
 
                 if nb < 10:
                     plate_mag_mid = plate_mag_u[9]
@@ -4399,7 +4399,6 @@ class SolveProcess:
                                                      return_sorted=True)
                         vals = z1[:,1]
 
-                    #print b, mag_cut_prev, mag_cut, len(ind_cut), len(ind_good), brightmag, nbright, z1.shape[0]
                     weight2 = np.arange(nbright, dtype=float) / nbright
                     weight1 = 1. - weight2
                     z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
@@ -4505,7 +4504,6 @@ class SolveProcess:
                     ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
                                             ind_outliers)
 
-                    #print b, mag_cut, len(ind_cut), len(ind_good), len(ind_outliers)
                     #flt = sigma_clip(residuals, iters=None)
                     #ind_good = ~flt.mask
                     #ind_good = np.where(np.absolute(residuals) < 3*residuals.std())[0]
@@ -4641,8 +4639,6 @@ class SolveProcess:
                 s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
                                                       rmse_lowess[:,1], k=1)
                 rmse = s_rmse(plate_mag_u)
-
-            #print b, len(plate_mag_u), len(cat_natmag), len(z[:,1]), brightmag, plate_mag_lim, s(plate_mag_lim)
 
             if self.write_phot_dir:
                 np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
