@@ -9,4 +9,4 @@ A Python package for processing astronomical photographic plates
 
 ## Documentation
 
-[PyPlate documentation](http://pythonhosted.org/pyplate/)
+[PyPlate documentation](https://pyplate.readthedocs.io/)
