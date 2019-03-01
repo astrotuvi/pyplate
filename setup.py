@@ -17,7 +17,7 @@ setup(
                   ],
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
-                        'astropy>=1.0',
+                        'astropy>=1.0,<3',
                         'scipy',
                         'statsmodels',
                         'ephem',
