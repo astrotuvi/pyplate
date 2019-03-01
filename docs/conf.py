@@ -25,9 +25,12 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary', 'sphinx.ext.viewcode']
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary', 
+              'sphinx.ext.viewcode', 'sphinx.ext.napoleon']
 autosummary_generate = True
-numpydoc_show_class_members = False
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+#numpydoc_show_class_members = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -173,10 +176,10 @@ htmlhelp_basename = 'pyplatedoc'
 
 latex_elements = {
 # The paper size ('letterpaper' or 'a4paper').
-#'papersize': 'letterpaper',
+'papersize': 'a4paper',
 
 # The font size ('10pt', '11pt' or '12pt').
-#'pointsize': '10pt',
+'pointsize': '11pt',
 
 # Additional stuff for the LaTeX preamble.
 #'preamble': '',
@@ -229,8 +232,9 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'pyplate', u'pyplate Documentation',
-   u'Author', 'pyplate', 'One line description of project.',
+  ('index', 'PyPlate', u'PyPlate Documentation',
+   u'Taavi Tuvikene', 'pyplate', 
+   'A Python package for processing astronomical photographic plates',
    'Miscellaneous'),
 ]
 
