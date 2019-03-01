@@ -1,4 +1,4 @@
-Using pyplate
+Using PyPlate
 =============
 
 Working with metadata
