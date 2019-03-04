@@ -14,6 +14,10 @@ Initialise an archive::
     import pyplate
     archive = pyplate.metadata.Archive()
 
+Optionally, specify a configuration file::
+
+    archive.assign_conf('/path/to/conf.cfg')
+
 Importing metadata from files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -95,7 +99,7 @@ configuration::
 
     proc.assign_conf('/path/to/conf_file.cfg')
     
-    # Use ArchiveMeta configuration instead
+    # Use Archive configuration instead
     proc.assign_conf(archive.conf)
 
 Set up process::
