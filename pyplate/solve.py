@@ -6,7 +6,6 @@ import math
 import datetime as dt
 import subprocess as sp
 import numpy as np
-from configparser import ConfigParser
 import warnings
 import xml.etree.ElementTree as ET
 from astropy import __version__ as astropy_version
@@ -22,6 +21,11 @@ from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
 from ._version import __version__
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     from astropy.coordinates import SkyCoord as ICRS
@@ -707,14 +711,14 @@ class SolveProcess:
         except ValueError:
             print('Error in configuration file '
                   '([{}], {})'.format('Archive', attr))
-        except ConfigParser.Error:
+        except configparser.Error:
             pass
 
         for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
                      'solve_field_path', 'wcs_to_tan_path', 'xy2sky_path']:
             try:
                 setattr(self, attr, conf.get('Programs', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['fits_dir', 'tycho2_dir', 
@@ -723,7 +727,7 @@ class SolveProcess:
                      'write_db_source_dir', 'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if self.write_log_dir:
@@ -736,7 +740,7 @@ class SolveProcess:
             except ValueError:
                 print('Error in configuration file '
                       '([{}], {})'.format('Database', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
@@ -747,7 +751,7 @@ class SolveProcess:
                      'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['use_filter', 'use_psf', 'circular_film']:
@@ -756,7 +760,7 @@ class SolveProcess:
             except ValueError:
                 print('Error in configuration file '
                       '([{}], {})'.format('Solve', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['plate_epoch', 'threshold_sigma', 
@@ -768,7 +772,7 @@ class SolveProcess:
             except ValueError:
                 print('Error in configuration file '
                       '([{}], {})'.format('Solve', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['sip', 'skip_bright', 'distort', 'max_recursion_depth', 
@@ -779,13 +783,13 @@ class SolveProcess:
             except ValueError:
                 print('Error in configuration file '
                       '([{}], {})'.format('Solve', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
             try:
                 setattr(self, attr, conf.get('Solve', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         # Read UCAC4 and APASS table column names from the dedicated sections,
@@ -796,7 +800,7 @@ class SolveProcess:
                     colstr = conf.get(self.ucac4_db_table, attr)
                     _,typ = self.ucac4_columns[attr]
                     self.ucac4_columns[attr] = (colstr, typ)
-                except ConfigParser.Error:
+                except configparser.Error:
                     pass
 
         if conf.has_section(self.apass_db_table):
@@ -805,7 +809,7 @@ class SolveProcess:
                     colstr = conf.get(self.apass_db_table, attr)
                     _,typ = self.apass_columns[attr]
                     self.apass_columns[attr] = (colstr, typ)
-                except ConfigParser.Error:
+                except configparser.Error:
                     pass
 
     def assign_header(self, header):
@@ -2384,7 +2388,7 @@ class SolveProcess:
                                 ucac4_cols.append(colstr)
                                 ucac4_types.append('i')
                                 query_healpix = True
-                        except ConfigParser.Error:
+                        except configparser.Error:
                             pass
 
             if query_ucac4:

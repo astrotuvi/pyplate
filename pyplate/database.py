@@ -1,6 +1,5 @@
 import numpy as np
 import time
-from configparser import ConfigParser
 import socket
 import os
 import csv
@@ -8,6 +7,11 @@ from collections import OrderedDict
 from astropy.time import Time
 from .conf import read_conf
 from ._version import __version__
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     import MySQLdb
@@ -752,7 +756,7 @@ class PlateDB:
                      'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in zip(['host', 'user', 'dbname', 'passwd'],
@@ -760,7 +764,7 @@ class PlateDB:
                          'output_db_name', 'output_db_passwd']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def open_connection(self, host=None, user=None, passwd=None, dbname=None):

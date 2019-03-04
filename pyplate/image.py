@@ -1,11 +1,15 @@
 import os
 import glob
 import numpy as np
-from configparser import ConfigParser
 from datetime import datetime
 from astropy.io import fits
 from .conf import read_conf
 from ._version import __version__
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     from PIL import Image
@@ -53,25 +57,25 @@ class PlateConverter:
         for attr in ['tiff_dir', 'write_fits_dir', 'write_wedge_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['scan_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['wedge_height']:
             try:
                 setattr(self, attr, conf.getint('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['cut_wedge']:
             try:
                 setattr(self, attr, conf.getboolean('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def batch_tiff2fits(self):

@@ -6,7 +6,6 @@ import shutil
 import copy
 import re
 import textwrap
-from configparser import ConfigParser
 import unicodecsv as csv
 import unidecode
 import math
@@ -24,6 +23,17 @@ from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
 from ._version import __version__
+
+# For Python 2 and 3 compatibility
+try:
+    unicode = str
+except Exception:
+    pass
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     from PIL import Image
@@ -326,7 +336,7 @@ class ArchiveMeta:
         self.archive_name = None
         self.logbooks = None
         self.logbookmeta = OrderedDict()
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.maindata_dict = OrderedDict()
         self.notes_dict = OrderedDict()
         self.observer_dict = OrderedDict()
@@ -360,26 +370,26 @@ class ArchiveMeta:
             except ValueError:
                 print('Error: Value in configuration file must be '
                       'integer ([{}], {})'.format('Archive', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['archive_name', 'logbooks']:
             try:
                 setattr(self, attr, conf.get('Archive', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['fits_dir', 'write_log_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['output_db_host', 'output_db_user',
                      'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if self.logbooks:
@@ -396,14 +406,14 @@ class ArchiveMeta:
                         print('Error: Value in configuration file must be '
                               'integer ([{}], {})'.format(lb, k))
                         lbmeta[k] = None
-                    except ConfigParser.Error:
+                    except configparser.Error:
                         lbmeta[k] = None
 
                 # Assign string values
                 for k in ['logbook_num', 'logbook_title', 'logbook_notes']:
                     try:
                         lbmeta[k] = conf.get(lb, k)
-                    except ConfigParser.Error:
+                    except configparser.Error:
                         lbmeta[k] = None
 
                 # Require non-zero logbook_id
@@ -435,31 +445,31 @@ class ArchiveMeta:
         if wfpdb_dir is None:
             try:
                 wfpdb_dir = self.conf.get('Files', 'wfpdb_dir')
-            except ConfigParser.Error:
+            except configparser.Error:
                 wfpdb_dir = ''
 
         if fn_maindata is None:
             try:
                 fn_maindata = self.conf.get('Files', 'wfpdb_maindata')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_quality is None:
             try:
                 fn_quality = self.conf.get('Files', 'wfpdb_quality')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_notes is None:
             try:
                 fn_notes = self.conf.get('Files', 'wfpdb_notes')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_observer is None:
             try:
                 fn_observer = self.conf.get('Files', 'wfpdb_observer')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_maindata:
@@ -523,7 +533,7 @@ class ArchiveMeta:
         if csv_dir is None:
             try:
                 csv_dir = self.conf.get('Files', 'csv_dir')
-            except ConfigParser.Error:
+            except configparser.Error:
                 csv_dir = ''
                 
         if self.conf.has_section('Files'):
@@ -1043,7 +1053,7 @@ class LogbookMeta(OrderedDict):
             self[k] = copy.deepcopy(v[1])
 
         self['logbook_num'] = num
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
 
     def assign_conf(self, conf):
         """
@@ -1100,7 +1110,7 @@ class LogpageMeta(OrderedDict):
         for k,v in _logpage_meta.items():
             self[k] = copy.deepcopy(v[1])
 
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.logpage_dir = ''
         self.cover_dir = ''
         self.logpage_exif_timezone = None
@@ -1129,13 +1139,13 @@ class LogpageMeta(OrderedDict):
         for attr in ['logpage_dir', 'cover_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['logpage_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def parse_csv(self, val_list, csv_filename=None):
@@ -1259,7 +1269,7 @@ class PreviewMeta(OrderedDict):
         for k,v in _preview_meta.items():
             self[k] = copy.deepcopy(v[1])
 
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.preview_dir = ''
         self.preview_exif_timezone = None
         self['filename'] = filename
@@ -1287,13 +1297,13 @@ class PreviewMeta(OrderedDict):
         for attr in ['preview_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['preview_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def parse_csv(self, val_list, csv_filename=None):
@@ -1417,7 +1427,7 @@ class PlateMeta(OrderedDict):
         self['plate_id'] = plate_id
         self.exposures = None
 
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
@@ -1501,7 +1511,7 @@ class PlateMeta(OrderedDict):
                      'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def get_value(self, key, exp=0):
@@ -2515,7 +2525,7 @@ class PlateHeader(fits.Header):
     def __init__(self, *args, **kwargs):
         fits.Header.__init__(self, *args, **kwargs)
         self.platemeta = PlateMeta()
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.fits_dir = ''
         self.write_fits_dir = ''
         self.write_header_dir = ''
@@ -2828,19 +2838,19 @@ class PlateHeader(fits.Header):
         for attr in ['fits_dir', 'write_fits_dir', 'write_header_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['create_checksum']:
             try:
                 setattr(self, attr, conf.getboolean('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['german_transliteration']:
             try:
                 setattr(self, attr, conf.getboolean('Metadata', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def assign_platemeta(self, platemeta):
@@ -3010,7 +3020,7 @@ class PlateHeader(fits.Header):
 
                     # If acknowledgements section exists, remove it first
                     if ack_sep in self.values():
-                        ack_ind = self.values().index(ack_sep) + 1
+                        ack_ind = list(self.values()).index(ack_sep) + 1
 
                         for i,c in enumerate(self.cards[ack_ind:]):
                             if c[0] == 'COMMENT':
@@ -3315,7 +3325,7 @@ class PlateHeader(fits.Header):
                 wcs_sep = ' WCS'.rjust(72, '-')
 
                 if key.strip().endswith('WCS') and wcs_sep in h.values():
-                    wcs_ind = h.values().index(wcs_sep) + 1
+                    wcs_ind = list(h.values()).index(wcs_sep) + 1
 
                     for i,c in enumerate(h.cards[wcs_ind:]):
                         if c[0]:
@@ -3330,7 +3340,7 @@ class PlateHeader(fits.Header):
                 if (key.strip().endswith('Acknowledgements') and
                         ack_sep in h.values()):
                         #self.platemeta['fits_acknowledgements']):
-                    ack_ind = h.values().index(ack_sep) + 1
+                    ack_ind = list(h.values()).index(ack_sep) + 1
 
                     for i,c in enumerate(h.cards[ack_ind:]):
                         if c[0] == 'COMMENT':
@@ -3400,7 +3410,7 @@ class PlateHeader(fits.Header):
         wcs_sep = ' WCS'.rjust(72, '-')
 
         if wcs_sep in self.values():
-            wcs_ind = self.values().index(wcs_sep) + 1
+            wcs_ind = list(self.values()).index(wcs_sep) + 1
             
             for c in wcshead.cards:
                 if c[0] == 'HISTORY':
