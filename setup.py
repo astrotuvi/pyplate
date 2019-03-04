@@ -26,7 +26,6 @@ setup(
                         'unicodecsv',
                         'unidecode',
                         'healpy',
-                        'esutil',
                         'Pillow'
                        ],
     extras_require = {'mysql': ['MySQL-python']}
