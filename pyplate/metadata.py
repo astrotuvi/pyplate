@@ -1566,7 +1566,9 @@ class PlateMeta(OrderedDict):
 
         """
         
-        for k,v in self.iteritems():
+        for k in self:
+            v = self[k]
+
             if isinstance(v, unicode):
                 v = v.encode('utf-8')
 
@@ -2092,7 +2094,11 @@ class PlateMeta(OrderedDict):
                 tz_orig = self['tz_orig']
 
                 if self['tms_orig']:
-                    tms_orig = self['tms_orig'][iexp]
+                    if isinstance(self['tms_orig'], list):
+                        tms_orig = self['tms_orig'][iexp]
+                    else:
+                        tms_orig = self['tms_orig']
+
                     tms_orig, uts_orig, sts_orig = _split_orig_times(tms_orig)
 
                     if not tms_orig and uts_orig:
@@ -2106,7 +2112,11 @@ class PlateMeta(OrderedDict):
                     tms_orig = None
 
                 if self['tme_orig']:
-                    tme_orig = self['tme_orig'][iexp]
+                    if isinstance(self['tme_orig'], list):
+                        tme_orig = self['tme_orig'][iexp]
+                    else:
+                        tme_orig = self['tme_orig']
+
                     tme_orig, ute_orig, ste_orig = _split_orig_times(tme_orig)
 
                     if not tme_orig and ute_orig:
@@ -2123,10 +2133,16 @@ class PlateMeta(OrderedDict):
                 if (not tms_orig and not tme_orig and 
                         (self['ut_start_orig'] or self['ut_end_orig'])):
                     if self['ut_start_orig']:
-                        tms_orig = self['ut_start_orig'][iexp]
+                        if isinstance(self['ut_start_orig'], list):
+                            tms_orig = self['ut_start_orig'][iexp]
+                        else:
+                            tms_orig = self['ut_start_orig']
 
                     if self['ut_end_orig']:
-                        tme_orig = self['ut_end_orig'][iexp]
+                        if isinstance(self['ut_end_orig'], list):
+                            tme_orig = self['ut_end_orig'][iexp]
+                        else:
+                            tme_orig = self['ut_end_orig']
 
                     tz_orig = 'UT'
 
@@ -2134,10 +2150,16 @@ class PlateMeta(OrderedDict):
                 if (not tms_orig and not tme_orig and 
                         (self['st_start_orig'] or self['st_end_orig'])):
                     if self['st_start_orig']:
-                        tms_orig = self['st_start_orig'][iexp]
+                        if isinstance(self['st_start_orig'], list):
+                            tms_orig = self['st_start_orig'][iexp]
+                        else:
+                            tms_orig = self['st_start_orig']
 
                     if self['st_end_orig']:
-                        tme_orig = self['st_end_orig'][iexp]
+                        if isinstance(self['st_end_orig'], list):
+                            tme_orig = self['st_end_orig'][iexp]
+                        else:
+                            tme_orig = self['st_end_orig']
 
                     tz_orig = 'ST'
 
@@ -2148,7 +2170,10 @@ class PlateMeta(OrderedDict):
                     tme_orig = [x.strip() for x in tme_orig.split('|')]
 
                 try:
-                    exptime = self['exptime'][iexp]
+                    if isinstance(self['exptime'], list):
+                        exptime = self['exptime'][iexp]
+                    else:
+                        exptime = self['exptime']
                 except Exception:
                     exptime = None
                             
@@ -2289,7 +2314,10 @@ class PlateMeta(OrderedDict):
 
                         if self['ut_start_orig'] or tms_orig:
                             if self['ut_start_orig'] and not tms_orig:
-                                ut_start_orig = self['ut_start_orig'][iexp]
+                                if isinstance(self['ut_start_orig'], list):
+                                    ut_start_orig = self['ut_start_orig'][iexp]
+                                else:
+                                    ut_start_orig = self['ut_start_orig']
                             else:
                                 if tz_orig == 'UT':
                                     ut_start_orig = tms_orig
@@ -2319,7 +2347,10 @@ class PlateMeta(OrderedDict):
 
                         if self['ut_end_orig'] or tme_orig:
                             if self['ut_end_orig'] and not tme_orig:
-                                ut_end_orig = self['ut_end_orig'][iexp]
+                                if isinstance(self['ut_end_orig'], list):
+                                    ut_end_orig = self['ut_end_orig'][iexp]
+                                else:
+                                    ut_end_orig = self['ut_end_orig']
                             else:
                                 if tz_orig == 'UT':
                                     ut_end_orig = tme_orig
@@ -2438,14 +2469,27 @@ class PlateMeta(OrderedDict):
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
             for iexp in np.arange(len(self['ra_orig'])):
-                if len(self['date_orig']) > 1:
+                if (isinstance(self['date_orig'], list) and 
+                    len(self['date_orig']) > 1):
                     date_orig = self['date_orig'][iexp]
-                else:
+                elif isinstance(self['date_orig'], list):
                     date_orig = self['date_orig'][0]
+                else:
+                    date_orig = self['date_orig']
+
+                if isinstance(self['ra_orig'], list):
+                    ra_orig = str(self['ra_orig'][iexp])
+                else:
+                    ra_orig = str(self['ra_orig'])
+
+                if isinstance(self['dec_orig'], list):
+                    dec_orig = str(self['dec_orig'][iexp])
+                else:
+                    dec_orig = str(self['dec_orig'])
 
                 pointing = ephem.FixedBody()
-                pointing._ra = ephem.hours(str(self['ra_orig'][iexp]))
-                pointing._dec = ephem.degrees(str(self['dec_orig'][iexp]))
+                pointing._ra = ephem.hours(ra_orig)
+                pointing._dec = ephem.degrees(dec_orig)
                 pointing._epoch = str(date_orig)
                 pointing.compute(ephem.J2000)
 
