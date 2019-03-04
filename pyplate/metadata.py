@@ -13,6 +13,7 @@ import datetime as dt
 import numpy as np
 import ephem
 import pytimeparse
+from deprecated import deprecated
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
@@ -325,7 +326,7 @@ class CSV_Dict(OrderedDict):
         self.filename = None
 
 
-class ArchiveMeta:
+class Archive:
     """
     Plate archive metadata class.
 
@@ -737,7 +738,7 @@ class ArchiveMeta:
 
         """
 
-        logbookmeta = LogbookMeta(num=num)
+        logbookmeta = Logbook(num=num)
         logbookmeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -759,7 +760,7 @@ class ArchiveMeta:
 
         """
 
-        logpagemeta = LogpageMeta(filename=filename)
+        logpagemeta = Logpage(filename=filename)
         logpagemeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -781,7 +782,7 @@ class ArchiveMeta:
 
         """
 
-        previewmeta = PreviewMeta(filename=filename)
+        previewmeta = Preview(filename=filename)
         previewmeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -905,12 +906,12 @@ class ArchiveMeta:
 
         Returns
         -------
-        platemeta : a :class:`PlateMeta` object
-            :class:`PlateMeta` object that contains the plate metadata.
+        platemeta : a :class:`Plate` object
+            :class:`Plate` object that contains the plate metadata.
 
         """
 
-        platemeta = PlateMeta(plate_id=plate_id)
+        platemeta = Plate(plate_id=plate_id)
         platemeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -1039,7 +1040,7 @@ class ArchiveMeta:
         return platemeta
 
 
-class LogbookMeta(OrderedDict):
+class Logbook(OrderedDict):
     """
     Logbook metadata class.
 
@@ -1047,7 +1048,7 @@ class LogbookMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         num = kwargs.pop('num', None)
-        super(LogbookMeta, self).__init__(*args, **kwargs)
+        super(Logbook, self).__init__(*args, **kwargs)
 
         for k,v in _logbook_meta.items():
             self[k] = copy.deepcopy(v[1])
@@ -1097,7 +1098,7 @@ class LogbookMeta(OrderedDict):
                 self['logbook_id'] = None
 
 
-class LogpageMeta(OrderedDict):
+class Logpage(OrderedDict):
     """
     Logpage metadata class.
 
@@ -1105,7 +1106,7 @@ class LogpageMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         filename = kwargs.pop('filename', None)
-        super(LogpageMeta, self).__init__(*args, **kwargs)
+        super(Logpage, self).__init__(*args, **kwargs)
 
         for k,v in _logpage_meta.items():
             self[k] = copy.deepcopy(v[1])
@@ -1256,7 +1257,7 @@ class LogpageMeta(OrderedDict):
                 self['image_datetime'] = exif_datetime
 
 
-class PreviewMeta(OrderedDict):
+class Preview(OrderedDict):
     """
     Preview image metadata class.
 
@@ -1264,7 +1265,7 @@ class PreviewMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         filename = kwargs.pop('filename', None)
-        super(PreviewMeta, self).__init__(*args, **kwargs)
+        super(Preview, self).__init__(*args, **kwargs)
 
         for k,v in _preview_meta.items():
             self[k] = copy.deepcopy(v[1])
@@ -1411,7 +1412,7 @@ class PreviewMeta(OrderedDict):
                 self['image_datetime'] = exif_datetime
 
 
-class PlateMeta(OrderedDict):
+class Plate(OrderedDict):
     """
     Plate metadata class.
 
@@ -1419,7 +1420,7 @@ class PlateMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         plate_id = kwargs.pop('plate_id', None)
-        super(PlateMeta, self).__init__(*args, **kwargs)
+        super(Plate, self).__init__(*args, **kwargs)
         
         for k,v in _keyword_meta.items():
             self[k] = copy.deepcopy(v[2])
@@ -1434,7 +1435,7 @@ class PlateMeta(OrderedDict):
         self.output_db_passwd = ''
 
     def copy(self):
-        pmeta = PlateMeta()
+        pmeta = Plate()
 
         for k,v in self.items():
             pmeta[k] = copy.deepcopy(v)
@@ -1516,17 +1517,17 @@ class PlateMeta(OrderedDict):
 
     def get_value(self, key, exp=0):
         """
-        Get PlateMeta value for SQL query
+        Get Plate value for SQL query
 
         Parameters
         ----------
         key : str
-            PlateMeta keyword to be fetched
+            Plate keyword to be fetched
 
         Returns
         -------
         val
-            PlateMeta value corresponding to the keyword
+            Plate value corresponding to the keyword
 
         """
 
@@ -2568,7 +2569,7 @@ class PlateHeader(fits.Header):
 
     def __init__(self, *args, **kwargs):
         fits.Header.__init__(self, *args, **kwargs)
-        self.platemeta = PlateMeta()
+        self.platemeta = Plate()
         self.conf = configparser.ConfigParser()
         self.fits_dir = ''
         self.write_fits_dir = ''
@@ -3551,4 +3552,28 @@ class PlateHeader(fits.Header):
         except IOError:
             print('Error writing {}'.format(fn_out))
 
+
+@deprecated('Class ArchiveMeta has been renamed Archive')
+class ArchiveMeta(Archive):
+    pass
+
+
+@deprecated('Class PlateMeta has been renamed Plate')
+class PlateMeta(Plate):
+    pass
+
+
+@deprecated('Class LogbookMeta has been renamed Logbook')
+class LogbookMeta(Logbook):
+    pass
+
+
+@deprecated('Class LogpageMeta has been renamed Logpage')
+class LogpageMeta(Logpage):
+    pass
+
+
+@deprecated('Class PreviewMeta has been renamed Preview')
+class PreviewMeta(Preview):
+    pass
 

@@ -1,7 +1,7 @@
 import os
 import multiprocessing as mp
 import time
-from .metadata import ArchiveMeta, PlateMeta, PlateHeader, read_conf
+from .metadata import Archive, PlateHeader, read_conf
 from .solve import SolveProcess
 from .database import PlateDB
 from .image import PlateConverter
@@ -114,7 +114,7 @@ class PlateImagePipeline:
             
         """
 
-        ameta = ArchiveMeta()
+        ameta = Archive()
         ameta.assign_conf(self.conf)
 
         if self.read_wfpdb:

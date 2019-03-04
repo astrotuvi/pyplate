@@ -884,7 +884,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
 
         Returns
@@ -983,7 +983,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
 
         """
@@ -1022,7 +1022,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
 
         Returns
@@ -1072,7 +1072,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
         filecols : bool
             If True, only specific file-related columns are updated
@@ -1121,7 +1121,7 @@ class PlateDB:
 
         Parameters
         ----------
-        previewmeta : PreviewMeta
+        previewmeta : Preview
             Preview metadata instance
 
         Returns
