@@ -18,17 +18,15 @@ setup(
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
                         'astropy>=1.0',
-                        'scipy',
-                        'statsmodels',
                         'ephem',
                         'pytimeparse',
                         'pytz',
                         'unicodecsv',
                         'unidecode',
-                        'healpy',
                         'Pillow',
                         'Deprecated'
                        ],
-    extras_require = {'mysql': ['MySQL-python']}
+    extras_require = {'solve': ['scipy', 'statsmodels', 'healpy', 'esutil'],
+                      'mysql': ['MySQL-python']}
 )
 
