@@ -21,7 +21,7 @@ names. This way, one can specify the structure of each CSV file.
 Example (simple)
 ----------------
 
-::
+Configuration file::
 
     [Files]
     csv_dir = /path/to/CSV/dir
@@ -41,6 +41,18 @@ Example (simple)
     plate_id = 2
     datescan = 3
     scan_author = 4
+
+Plate metadata file (my_plates.csv)::
+
+    plate1,1956-03-11,21:11:30,600,Observer Name,Europe/Berlin
+    plate2,1956-03-11,21:30:00,1800,Observer Name,UT
+    plate3,1956-03-12,23:05:00,1200,Observer Name,ST
+
+Scan metadata file (my_scans.csv)::
+
+    plate_0001.fits,plate1,Scan Author,2018-10-12
+    plate_0002.fits,plate2,Scan Author,2018-10-12
+    plate_0003.fits,plate3,Scan Author,2018-10-13
 
 Example (complex)
 -----------------
