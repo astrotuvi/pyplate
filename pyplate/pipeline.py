@@ -1,6 +1,7 @@
 import os
 import multiprocessing as mp
 import time
+from deprecated import deprecated
 from .metadata import Archive, PlateHeader, read_conf
 from .solve import SolveProcess
 from .database import PlateDB
@@ -12,7 +13,7 @@ except ImportError:
     import ConfigParser as configparser
 
 
-class PlateImagePipeline:
+class PlatePipeline:
     """
     Plate processing pipeline class
 
@@ -405,4 +406,9 @@ class PlateImagePipeline:
         # Empty the input queue
         while not self.input_queue.empty():
             self.input_queue.get()
+
+
+@deprecated('Class PlateImagePipeline has been renamed PlatePipeline')
+class PlateImagePipeline(PlatePipeline):
+    pass
 
