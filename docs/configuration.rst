@@ -22,6 +22,7 @@ Example (simple)
 ----------------
 
 ::
+
     [Files]
     csv_dir = /path/to/CSV/dir
     plate_csv = my_plates.csv
@@ -48,6 +49,7 @@ In this example, database credentials and several directory names have been
 removed.
 
 ::
+
     [Archive]
     archive_id = 101
     archive_name = Lippert-Astrograph
