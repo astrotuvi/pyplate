@@ -21,6 +21,7 @@ names. This way, one can specify the structure of each CSV file.
 Example (simple)
 ----------------
 
+::
     [Files]
     csv_dir = /path/to/CSV/dir
     plate_csv = my_plates.csv
@@ -46,6 +47,7 @@ Example (complex)
 In this example, database credentials and several directory names have been 
 removed.
 
+::
     [Archive]
     archive_id = 101
     archive_name = Lippert-Astrograph
