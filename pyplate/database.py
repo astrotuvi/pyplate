@@ -1,6 +1,5 @@
 import numpy as np
 import time
-import ConfigParser
 import socket
 import os
 import csv
@@ -8,6 +7,11 @@ from collections import OrderedDict
 from astropy.time import Time
 from .conf import read_conf
 from ._version import __version__
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     import MySQLdb
@@ -23,7 +27,7 @@ class csvWriter(object):
         self.writer = csv.writer(csvfile, *args, **kwrags)
 
     def writerow(self, row):
-        self.writer.writerow(['\N' if val is None else val for val in row])
+        self.writer.writerow(['\\N' if val is None else val for val in row])
 
     def writerows(self, rows):
         map(self.writerow, rows)
@@ -716,7 +720,7 @@ def print_tables(use_drop=False, engine='Aria'):
     if use_drop:
         sql = sql_drop + '\n\n' + sql
 
-    print sql
+    print(sql)
 
 
 class PlateDB:
@@ -752,7 +756,7 @@ class PlateDB:
                      'write_db_source_calib_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in zip(['host', 'user', 'dbname', 'passwd'],
@@ -760,7 +764,7 @@ class PlateDB:
                          'output_db_name', 'output_db_passwd']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def open_connection(self, host=None, user=None, passwd=None, dbname=None):
@@ -801,12 +805,12 @@ class PlateDB:
                 self.passwd = passwd
                 self.dbname = dbname
                 break
-            except MySQLdb.OperationalError, e:
+            except MySQLdb.OperationalError as e:
                 if e.args[0] == 1040:
-                    print 'MySQL server reports too many connections, trying again'
+                    print('MySQL server reports too many connections, trying again')
                     time.sleep(10)
                 elif e.args[0] == 1045:
-                    print 'MySQL error {:d}: {}'.format(e.args[0], e.args[1])
+                    print('MySQL error {:d}: {}'.format(e.args[0], e.args[1]))
                     break
                 else:
                     raise
@@ -824,9 +828,9 @@ class PlateDB:
             numrows = self.cursor.execute(*args)
         except AttributeError:
             numrows = None
-        except MySQLdb.OperationalError, e:
+        except MySQLdb.OperationalError as e:
             if e.args[0] == 2006:
-                print 'MySQL server has gone away, trying to reconnect'
+                print('MySQL server has gone away, trying to reconnect')
 
                 # Wait for 20 seconds, then open new connection and execute 
                 # query again
@@ -849,9 +853,9 @@ class PlateDB:
             numrows = self.cursor.executemany(*args)
         except AttributeError:
             numrows = None
-        except MySQLdb.OperationalError, e:
+        except MySQLdb.OperationalError as e:
             if e.args[0] == 2006:
-                print 'MySQL server has gone away, trying to reconnect'
+                print('MySQL server has gone away, trying to reconnect')
 
                 # Wait for 20 seconds, then open new connection and execute 
                 # query again
@@ -880,7 +884,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
 
         Returns
@@ -979,7 +983,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
 
         """
@@ -1018,7 +1022,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
 
         Returns
@@ -1068,7 +1072,7 @@ class PlateDB:
 
         Parameters
         ----------
-        platemeta : PlateMeta
+        platemeta : Plate
             Plate metadata instance
         filecols : bool
             If True, only specific file-related columns are updated
@@ -1083,10 +1087,10 @@ class PlateDB:
                                          platemeta['archive_id'])
 
             if scan_id is None:
-                print ('Cannot update scan metadata in the database '
-                       '(filename={}, archive_id={})'
-                       ''.format(platemeta['filename'],
-                                 platemeta['archive_id']))
+                print('Cannot update scan metadata in the database '
+                      '(filename={}, archive_id={})'
+                      ''.format(platemeta['filename'],
+                                platemeta['archive_id']))
                 return
 
         col_list = []
@@ -1117,7 +1121,7 @@ class PlateDB:
 
         Parameters
         ----------
-        previewmeta : PreviewMeta
+        previewmeta : Preview
             Preview metadata instance
 
         Returns

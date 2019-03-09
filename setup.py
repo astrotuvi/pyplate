@@ -9,7 +9,7 @@ setup(
     author_email = 'taavi.tuvikene@to.ee',
     description = 'A Python package for processing astronomical photographic plates',
     classifiers = ['Programming Language :: Python',
-                   'Programming Language :: Python :: 2.7',
+                   'Programming Language :: Python :: 3',
                    'Development Status :: 5 - Production/Stable',
                    'Intended Audience :: Science/Research',
                    'License :: OSI Approved :: Apache Software License',
@@ -18,17 +18,15 @@ setup(
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
                         'astropy>=1.0',
-                        'scipy',
-                        'statsmodels',
                         'ephem',
                         'pytimeparse',
                         'pytz',
                         'unicodecsv',
                         'unidecode',
-                        'healpy',
-                        'esutil',
-                        'Pillow'
+                        'Pillow',
+                        'Deprecated'
                        ],
-    extras_require = {'mysql': ['MySQL-python']}
+    extras_require = {'solve': ['scipy', 'statsmodels', 'healpy', 'esutil'],
+                      'mysql': ['MySQL-python']}
 )
 

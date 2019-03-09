@@ -6,7 +6,6 @@ import shutil
 import copy
 import re
 import textwrap
-import ConfigParser
 import unicodecsv as csv
 import unidecode
 import math
@@ -14,6 +13,7 @@ import datetime as dt
 import numpy as np
 import ephem
 import pytimeparse
+from deprecated import deprecated
 from astropy import wcs
 from astropy.io import fits
 from astropy.io import votable
@@ -24,6 +24,17 @@ from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
 from ._version import __version__
+
+# For Python 2 and 3 compatibility
+try:
+    unicode = str
+except Exception:
+    pass
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     from PIL import Image
@@ -315,7 +326,7 @@ class CSV_Dict(OrderedDict):
         self.filename = None
 
 
-class ArchiveMeta:
+class Archive:
     """
     Plate archive metadata class.
 
@@ -326,7 +337,7 @@ class ArchiveMeta:
         self.archive_name = None
         self.logbooks = None
         self.logbookmeta = OrderedDict()
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.maindata_dict = OrderedDict()
         self.notes_dict = OrderedDict()
         self.observer_dict = OrderedDict()
@@ -358,28 +369,28 @@ class ArchiveMeta:
             try:
                 setattr(self, attr, conf.getint('Archive', attr))
             except ValueError:
-                print ('Error: Value in configuration file must be '
-                       'integer ([{}], {})'.format('Archive', attr))
-            except ConfigParser.Error:
+                print('Error: Value in configuration file must be '
+                      'integer ([{}], {})'.format('Archive', attr))
+            except configparser.Error:
                 pass
 
         for attr in ['archive_name', 'logbooks']:
             try:
                 setattr(self, attr, conf.get('Archive', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['fits_dir', 'write_log_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['output_db_host', 'output_db_user',
                      'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if self.logbooks:
@@ -393,17 +404,17 @@ class ArchiveMeta:
                     try:
                         lbmeta[k] = conf.getint(lb, k)
                     except ValueError:
-                        print ('Error: Value in configuration file must be '
-                               'integer ([{}], {})'.format(lb, k))
+                        print('Error: Value in configuration file must be '
+                              'integer ([{}], {})'.format(lb, k))
                         lbmeta[k] = None
-                    except ConfigParser.Error:
+                    except configparser.Error:
                         lbmeta[k] = None
 
                 # Assign string values
                 for k in ['logbook_num', 'logbook_title', 'logbook_notes']:
                     try:
                         lbmeta[k] = conf.get(lb, k)
-                    except ConfigParser.Error:
+                    except configparser.Error:
                         lbmeta[k] = None
 
                 # Require non-zero logbook_id
@@ -435,31 +446,31 @@ class ArchiveMeta:
         if wfpdb_dir is None:
             try:
                 wfpdb_dir = self.conf.get('Files', 'wfpdb_dir')
-            except ConfigParser.Error:
+            except configparser.Error:
                 wfpdb_dir = ''
 
         if fn_maindata is None:
             try:
                 fn_maindata = self.conf.get('Files', 'wfpdb_maindata')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_quality is None:
             try:
                 fn_quality = self.conf.get('Files', 'wfpdb_quality')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_notes is None:
             try:
                 fn_notes = self.conf.get('Files', 'wfpdb_notes')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_observer is None:
             try:
                 fn_observer = self.conf.get('Files', 'wfpdb_observer')
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         if fn_maindata:
@@ -469,7 +480,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.maindata_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB maindata file!'
+                print('Could not read the WFPDB maindata file!')
 
         if fn_quality:
             try:
@@ -478,7 +489,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.quality_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB quality file!'
+                print('Could not read the WFPDB quality file!')
 
         if fn_notes:
             try:
@@ -487,7 +498,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.notes_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB notes file!'
+                print('Could not read the WFPDB notes file!')
 
         if fn_observer:
             try:
@@ -496,7 +507,7 @@ class ArchiveMeta:
                             line.rstrip('\n')) for line in f.readlines()]
                     self.observer_dict = OrderedDict(lst)
             except IOError:
-                print 'Could not read the WFPDB observer file!'
+                print('Could not read the WFPDB observer file!')
 
     def read_csv(self, csv_dir=None, fn_plate_csv=None, fn_scan_csv=None, 
                  fn_preview_csv=None, fn_logbook_csv=None, fn_logpage_csv=None):
@@ -523,7 +534,7 @@ class ArchiveMeta:
         if csv_dir is None:
             try:
                 csv_dir = self.conf.get('Files', 'csv_dir')
-            except ConfigParser.Error:
+            except configparser.Error:
                 csv_dir = ''
                 
         if self.conf.has_section('Files'):
@@ -727,7 +738,7 @@ class ArchiveMeta:
 
         """
 
-        logbookmeta = LogbookMeta(num=num)
+        logbookmeta = Logbook(num=num)
         logbookmeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -749,7 +760,7 @@ class ArchiveMeta:
 
         """
 
-        logpagemeta = LogpageMeta(filename=filename)
+        logpagemeta = Logpage(filename=filename)
         logpagemeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -771,7 +782,7 @@ class ArchiveMeta:
 
         """
 
-        previewmeta = PreviewMeta(filename=filename)
+        previewmeta = Preview(filename=filename)
         previewmeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -895,12 +906,12 @@ class ArchiveMeta:
 
         Returns
         -------
-        platemeta : a :class:`PlateMeta` object
-            :class:`PlateMeta` object that contains the plate metadata.
+        platemeta : a :class:`Plate` object
+            :class:`Plate` object that contains the plate metadata.
 
         """
 
-        platemeta = PlateMeta(plate_id=plate_id)
+        platemeta = Plate(plate_id=plate_id)
         platemeta['archive_id'] = self.archive_id
 
         if self.conf is not None:
@@ -916,7 +927,7 @@ class ArchiveMeta:
                                                do_not_scale_image_data=True,
                                                ignore_missing_end=True)
             except Exception:
-                print 'Error reading {}'.format(filename)
+                print('Error reading {}'.format(filename))
                 fitsdata = None
                 header = None
 
@@ -1029,7 +1040,7 @@ class ArchiveMeta:
         return platemeta
 
 
-class LogbookMeta(OrderedDict):
+class Logbook(OrderedDict):
     """
     Logbook metadata class.
 
@@ -1037,13 +1048,13 @@ class LogbookMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         num = kwargs.pop('num', None)
-        super(LogbookMeta, self).__init__(*args, **kwargs)
+        super(Logbook, self).__init__(*args, **kwargs)
 
         for k,v in _logbook_meta.items():
             self[k] = copy.deepcopy(v[1])
 
         self['logbook_num'] = num
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
 
     def assign_conf(self, conf):
         """
@@ -1087,7 +1098,7 @@ class LogbookMeta(OrderedDict):
                 self['logbook_id'] = None
 
 
-class LogpageMeta(OrderedDict):
+class Logpage(OrderedDict):
     """
     Logpage metadata class.
 
@@ -1095,12 +1106,12 @@ class LogpageMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         filename = kwargs.pop('filename', None)
-        super(LogpageMeta, self).__init__(*args, **kwargs)
+        super(Logpage, self).__init__(*args, **kwargs)
 
         for k,v in _logpage_meta.items():
             self[k] = copy.deepcopy(v[1])
 
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.logpage_dir = ''
         self.cover_dir = ''
         self.logpage_exif_timezone = None
@@ -1129,13 +1140,13 @@ class LogpageMeta(OrderedDict):
         for attr in ['logpage_dir', 'cover_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['logpage_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def parse_csv(self, val_list, csv_filename=None):
@@ -1246,7 +1257,7 @@ class LogpageMeta(OrderedDict):
                 self['image_datetime'] = exif_datetime
 
 
-class PreviewMeta(OrderedDict):
+class Preview(OrderedDict):
     """
     Preview image metadata class.
 
@@ -1254,12 +1265,12 @@ class PreviewMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         filename = kwargs.pop('filename', None)
-        super(PreviewMeta, self).__init__(*args, **kwargs)
+        super(Preview, self).__init__(*args, **kwargs)
 
         for k,v in _preview_meta.items():
             self[k] = copy.deepcopy(v[1])
 
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.preview_dir = ''
         self.preview_exif_timezone = None
         self['filename'] = filename
@@ -1287,13 +1298,13 @@ class PreviewMeta(OrderedDict):
         for attr in ['preview_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['preview_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def parse_csv(self, val_list, csv_filename=None):
@@ -1401,7 +1412,7 @@ class PreviewMeta(OrderedDict):
                 self['image_datetime'] = exif_datetime
 
 
-class PlateMeta(OrderedDict):
+class Plate(OrderedDict):
     """
     Plate metadata class.
 
@@ -1409,7 +1420,7 @@ class PlateMeta(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         plate_id = kwargs.pop('plate_id', None)
-        super(PlateMeta, self).__init__(*args, **kwargs)
+        super(Plate, self).__init__(*args, **kwargs)
         
         for k,v in _keyword_meta.items():
             self[k] = copy.deepcopy(v[2])
@@ -1417,14 +1428,14 @@ class PlateMeta(OrderedDict):
         self['plate_id'] = plate_id
         self.exposures = None
 
-        self.conf = ConfigParser.ConfigParser()
+        self.conf = configparser.ConfigParser()
         self.output_db_host = 'localhost'
         self.output_db_user = ''
         self.output_db_name = ''
         self.output_db_passwd = ''
 
     def copy(self):
-        pmeta = PlateMeta()
+        pmeta = Plate()
 
         for k,v in self.items():
             pmeta[k] = copy.deepcopy(v)
@@ -1501,22 +1512,22 @@ class PlateMeta(OrderedDict):
                      'output_db_name', 'output_db_passwd']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def get_value(self, key, exp=0):
         """
-        Get PlateMeta value for SQL query
+        Get Plate value for SQL query
 
         Parameters
         ----------
         key : str
-            PlateMeta keyword to be fetched
+            Plate keyword to be fetched
 
         Returns
         -------
         val
-            PlateMeta value corresponding to the keyword
+            Plate value corresponding to the keyword
 
         """
 
@@ -1556,11 +1567,13 @@ class PlateMeta(OrderedDict):
 
         """
         
-        for k,v in self.iteritems():
+        for k in self:
+            v = self[k]
+
             if isinstance(v, unicode):
                 v = v.encode('utf-8')
 
-            print '{:15}: {}'.format(k, v)
+            print('{:15}: {}'.format(k, v))
 
     def parse_maindata(self, maindata_entry):
         """
@@ -2082,7 +2095,11 @@ class PlateMeta(OrderedDict):
                 tz_orig = self['tz_orig']
 
                 if self['tms_orig']:
-                    tms_orig = self['tms_orig'][iexp]
+                    if isinstance(self['tms_orig'], list):
+                        tms_orig = self['tms_orig'][iexp]
+                    else:
+                        tms_orig = self['tms_orig']
+
                     tms_orig, uts_orig, sts_orig = _split_orig_times(tms_orig)
 
                     if not tms_orig and uts_orig:
@@ -2096,7 +2113,11 @@ class PlateMeta(OrderedDict):
                     tms_orig = None
 
                 if self['tme_orig']:
-                    tme_orig = self['tme_orig'][iexp]
+                    if isinstance(self['tme_orig'], list):
+                        tme_orig = self['tme_orig'][iexp]
+                    else:
+                        tme_orig = self['tme_orig']
+
                     tme_orig, ute_orig, ste_orig = _split_orig_times(tme_orig)
 
                     if not tme_orig and ute_orig:
@@ -2113,10 +2134,16 @@ class PlateMeta(OrderedDict):
                 if (not tms_orig and not tme_orig and 
                         (self['ut_start_orig'] or self['ut_end_orig'])):
                     if self['ut_start_orig']:
-                        tms_orig = self['ut_start_orig'][iexp]
+                        if isinstance(self['ut_start_orig'], list):
+                            tms_orig = self['ut_start_orig'][iexp]
+                        else:
+                            tms_orig = self['ut_start_orig']
 
                     if self['ut_end_orig']:
-                        tme_orig = self['ut_end_orig'][iexp]
+                        if isinstance(self['ut_end_orig'], list):
+                            tme_orig = self['ut_end_orig'][iexp]
+                        else:
+                            tme_orig = self['ut_end_orig']
 
                     tz_orig = 'UT'
 
@@ -2124,10 +2151,16 @@ class PlateMeta(OrderedDict):
                 if (not tms_orig and not tme_orig and 
                         (self['st_start_orig'] or self['st_end_orig'])):
                     if self['st_start_orig']:
-                        tms_orig = self['st_start_orig'][iexp]
+                        if isinstance(self['st_start_orig'], list):
+                            tms_orig = self['st_start_orig'][iexp]
+                        else:
+                            tms_orig = self['st_start_orig']
 
                     if self['st_end_orig']:
-                        tme_orig = self['st_end_orig'][iexp]
+                        if isinstance(self['st_end_orig'], list):
+                            tme_orig = self['st_end_orig'][iexp]
+                        else:
+                            tme_orig = self['st_end_orig']
 
                     tz_orig = 'ST'
 
@@ -2138,7 +2171,10 @@ class PlateMeta(OrderedDict):
                     tme_orig = [x.strip() for x in tme_orig.split('|')]
 
                 try:
-                    exptime = self['exptime'][iexp]
+                    if isinstance(self['exptime'], list):
+                        exptime = self['exptime'][iexp]
+                    else:
+                        exptime = self['exptime']
                 except Exception:
                     exptime = None
                             
@@ -2279,7 +2315,10 @@ class PlateMeta(OrderedDict):
 
                         if self['ut_start_orig'] or tms_orig:
                             if self['ut_start_orig'] and not tms_orig:
-                                ut_start_orig = self['ut_start_orig'][iexp]
+                                if isinstance(self['ut_start_orig'], list):
+                                    ut_start_orig = self['ut_start_orig'][iexp]
+                                else:
+                                    ut_start_orig = self['ut_start_orig']
                             else:
                                 if tz_orig == 'UT':
                                     ut_start_orig = tms_orig
@@ -2309,7 +2348,10 @@ class PlateMeta(OrderedDict):
 
                         if self['ut_end_orig'] or tme_orig:
                             if self['ut_end_orig'] and not tme_orig:
-                                ut_end_orig = self['ut_end_orig'][iexp]
+                                if isinstance(self['ut_end_orig'], list):
+                                    ut_end_orig = self['ut_end_orig'][iexp]
+                                else:
+                                    ut_end_orig = self['ut_end_orig']
                             else:
                                 if tz_orig == 'UT':
                                     ut_end_orig = tme_orig
@@ -2428,14 +2470,27 @@ class PlateMeta(OrderedDict):
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
             for iexp in np.arange(len(self['ra_orig'])):
-                if len(self['date_orig']) > 1:
+                if (isinstance(self['date_orig'], list) and 
+                    len(self['date_orig']) > 1):
                     date_orig = self['date_orig'][iexp]
-                else:
+                elif isinstance(self['date_orig'], list):
                     date_orig = self['date_orig'][0]
+                else:
+                    date_orig = self['date_orig']
+
+                if isinstance(self['ra_orig'], list):
+                    ra_orig = str(self['ra_orig'][iexp])
+                else:
+                    ra_orig = str(self['ra_orig'])
+
+                if isinstance(self['dec_orig'], list):
+                    dec_orig = str(self['dec_orig'][iexp])
+                else:
+                    dec_orig = str(self['dec_orig'])
 
                 pointing = ephem.FixedBody()
-                pointing._ra = ephem.hours(str(self['ra_orig'][iexp]))
-                pointing._dec = ephem.degrees(str(self['dec_orig'][iexp]))
+                pointing._ra = ephem.hours(ra_orig)
+                pointing._dec = ephem.degrees(dec_orig)
                 pointing._epoch = str(date_orig)
                 pointing.compute(ephem.J2000)
 
@@ -2514,8 +2569,8 @@ class PlateHeader(fits.Header):
 
     def __init__(self, *args, **kwargs):
         fits.Header.__init__(self, *args, **kwargs)
-        self.platemeta = PlateMeta()
-        self.conf = ConfigParser.ConfigParser()
+        self.platemeta = Plate()
+        self.conf = configparser.ConfigParser()
         self.fits_dir = ''
         self.write_fits_dir = ''
         self.write_header_dir = ''
@@ -2828,19 +2883,19 @@ class PlateHeader(fits.Header):
         for attr in ['fits_dir', 'write_fits_dir', 'write_header_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['create_checksum']:
             try:
                 setattr(self, attr, conf.getboolean('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['german_transliteration']:
             try:
                 setattr(self, attr, conf.getboolean('Metadata', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def assign_platemeta(self, platemeta):
@@ -3010,7 +3065,7 @@ class PlateHeader(fits.Header):
 
                     # If acknowledgements section exists, remove it first
                     if ack_sep in self.values():
-                        ack_ind = self.values().index(ack_sep) + 1
+                        ack_ind = list(self.values()).index(ack_sep) + 1
 
                         for i,c in enumerate(self.cards[ack_ind:]):
                             if c[0] == 'COMMENT':
@@ -3048,7 +3103,7 @@ class PlateHeader(fits.Header):
         try:
             h = fits.getheader(fn_fits)
         except IOError:
-            print 'Error reading file {}'.format(fn_fits)
+            print('Error reading file {}'.format(fn_fits))
             return
 
         for k,v,c in h.cards:
@@ -3315,7 +3370,7 @@ class PlateHeader(fits.Header):
                 wcs_sep = ' WCS'.rjust(72, '-')
 
                 if key.strip().endswith('WCS') and wcs_sep in h.values():
-                    wcs_ind = h.values().index(wcs_sep) + 1
+                    wcs_ind = list(h.values()).index(wcs_sep) + 1
 
                     for i,c in enumerate(h.cards[wcs_ind:]):
                         if c[0]:
@@ -3330,7 +3385,7 @@ class PlateHeader(fits.Header):
                 if (key.strip().endswith('Acknowledgements') and
                         ack_sep in h.values()):
                         #self.platemeta['fits_acknowledgements']):
-                    ack_ind = h.values().index(ack_sep) + 1
+                    ack_ind = list(h.values()).index(ack_sep) + 1
 
                     for i,c in enumerate(h.cards[ack_ind:]):
                         if c[0] == 'COMMENT':
@@ -3400,7 +3455,7 @@ class PlateHeader(fits.Header):
         wcs_sep = ' WCS'.rjust(72, '-')
 
         if wcs_sep in self.values():
-            wcs_ind = self.values().index(wcs_sep) + 1
+            wcs_ind = list(self.values()).index(wcs_sep) + 1
             
             for c in wcshead.cards:
                 if c[0] == 'HISTORY':
@@ -3439,7 +3494,7 @@ class PlateHeader(fits.Header):
             fitsfile.flush()
         else:
             if not os.path.exists(fn_fits):
-                print 'File does not exist: {}'.format(fn_fits)
+                print('File does not exist: {}'.format(fn_fits))
 
             fitsfile = fits.open(fn_fits, do_not_scale_image_data=True, 
                                  ignore_missing_end=True)
@@ -3449,13 +3504,13 @@ class PlateHeader(fits.Header):
                 os.makedirs(self.write_fits_dir)
             except OSError:
                 if not os.path.isdir(self.write_fits_dir):
-                    print ('Could not create directory {}'
-                           .format(self.write_fits_dir))
+                    print('Could not create directory {}'
+                          .format(self.write_fits_dir))
         
             try:
                 fitsfile.writeto(fn_out, checksum=checksum)
             except IOError:
-                print 'Could not write to {}'.format(fn_out)
+                print('Could not write to {}'.format(fn_out))
             
         fitsfile.close()
         del fitsfile
@@ -3484,8 +3539,8 @@ class PlateHeader(fits.Header):
             os.makedirs(self.write_header_dir)
         except OSError:
             if not os.path.isdir(self.write_header_dir):
-                print ('Could not create directory {}'
-                       .format(self.write_header_dir))
+                print('Could not create directory {}'
+                      .format(self.write_header_dir))
 
         fn_out = os.path.join(self.write_header_dir, filename)
 
@@ -3495,6 +3550,30 @@ class PlateHeader(fits.Header):
         try:
             self.tofile(fn_out, sep='', endcard=True, padding=True)
         except IOError:
-            print 'Error writing {}'.format(fn_out)
+            print('Error writing {}'.format(fn_out))
 
+
+@deprecated('Class ArchiveMeta has been renamed Archive')
+class ArchiveMeta(Archive):
+    pass
+
+
+@deprecated('Class PlateMeta has been renamed Plate')
+class PlateMeta(Plate):
+    pass
+
+
+@deprecated('Class LogbookMeta has been renamed Logbook')
+class LogbookMeta(Logbook):
+    pass
+
+
+@deprecated('Class LogpageMeta has been renamed Logpage')
+class LogpageMeta(Logpage):
+    pass
+
+
+@deprecated('Class PreviewMeta has been renamed Preview')
+class PreviewMeta(Preview):
+    pass
 

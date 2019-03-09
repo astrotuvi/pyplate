@@ -1,7 +1,7 @@
-pyplate API
+PyPlate API
 ===========
 
-:mod:`metadata` Module
+:mod:`metadata` module
 ----------------------
 
 .. automodule:: pyplate.metadata
@@ -9,7 +9,7 @@ pyplate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`solve` Module
+:mod:`solve` module
 -------------------
 
 .. automodule:: pyplate.solve
@@ -17,7 +17,7 @@ pyplate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`database` Module
+:mod:`database` module
 ----------------------
 
 .. automodule:: pyplate.database
@@ -25,7 +25,7 @@ pyplate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`image` Module
+:mod:`image` module
 -------------------
 
 .. automodule:: pyplate.image
@@ -33,7 +33,7 @@ pyplate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`pipeline` Module
+:mod:`pipeline` module
 ----------------------
 
 .. automodule:: pyplate.pipeline
@@ -41,7 +41,7 @@ pyplate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`conf` Module
+:mod:`conf` module
 ------------------
 
 .. automodule:: pyplate.conf

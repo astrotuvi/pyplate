@@ -1,19 +1,22 @@
-Using pyplate
+Using PyPlate
 =============
 
 Working with metadata
 ---------------------
 
 An archive is a collection of photographic plates, logbooks, observer notes, 
-etc. In ``pyplate``, an archive is represented with ``ArchiveMeta`` class in
-the ``metadata`` module. An individual plate is represented with ``PlateMeta``
+etc. In ``PyPlate``, an archive is represented with the ``Archive`` class in
+the ``metadata`` module. An individual plate is represented with the ``Plate``
 and a FITS header with ``PlateHeader`` class.
 
 Initialise an archive::
 
     import pyplate
+    archive = pyplate.metadata.Archive()
 
-    archive = pyplate.metadata.ArchiveMeta()
+Optionally, specify a configuration file::
+
+    archive.assign_conf('/path/to/conf.cfg')
 
 Importing metadata from files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -52,7 +55,7 @@ Create header from a text file that contains a FITS header::
 
 Update header with metadata::
 
-    pmeta = pyplate.metadata.PlateMeta()
+    pmeta = pyplate.metadata.Plate()
     pheader.update_from_platemeta(pmeta)
 
 Configure input and output directories::
@@ -66,7 +69,7 @@ Write header to a FITS file in ``write_fits_dir``::
     pheader.output_to_fits('file.fits')
 
 If the FITS file exists, then its header is updated with ``pheader``. If the 
-file does not exist, ``pyplate`` assumes that the file with the same name
+file does not exist, then ``PyPlate`` assumes that the file with the same name
 exists in ``fits_dir``. The file is then opened for reading and an output
 file is written to ``write_fits_dir`` with the current header.
 
@@ -96,7 +99,7 @@ configuration::
 
     proc.assign_conf('/path/to/conf_file.cfg')
     
-    # Use ArchiveMeta configuration instead
+    # Use Archive configuration instead
     proc.assign_conf(archive.conf)
 
 Set up process::

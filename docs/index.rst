@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to pyplate's documentation!
+Welcome to PyPlate's documentation!
 ===================================
 
 Contents:
@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 4
 
    using_pyplate
+   configuration
    pyplate
 
 

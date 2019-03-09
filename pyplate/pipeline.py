@@ -1,14 +1,19 @@
 import os
 import multiprocessing as mp
 import time
-import ConfigParser
-from .metadata import ArchiveMeta, PlateMeta, PlateHeader, read_conf
+from deprecated import deprecated
+from .metadata import Archive, PlateHeader, read_conf
 from .solve import SolveProcess
 from .database import PlateDB
 from .image import PlateConverter
 
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
-class PlateImagePipeline:
+
+class PlatePipeline:
     """
     Plate processing pipeline class
 
@@ -59,7 +64,7 @@ class PlateImagePipeline:
         for attr in ['work_dir', 'write_log_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
@@ -74,27 +79,27 @@ class PlateImagePipeline:
             try:
                 setattr(self, attr, conf.getboolean('Pipeline', attr))
             except ValueError:
-                print ('Error in configuration file: not a boolean value '
-                       '([{}], {})'.format('Pipeline', attr))
-            except ConfigParser.Error:
+                print('Error in configuration file: not a boolean value '
+                      '([{}], {})'.format('Pipeline', attr))
+            except configparser.Error:
                 pass
 
         for attr in ['processes', 'process_max_tasks']:
             try:
                 setattr(self, attr, conf.getint('Pipeline', attr))
             except ValueError:
-                print ('Error in configuration file: not an integer value '
-                       '([{}], {})'.format('Pipeline', attr))
-            except ConfigParser.Error:
+                print('Error in configuration file: not an integer value '
+                      '([{}], {})'.format('Pipeline', attr))
+            except configparser.Error:
                 pass
 
         for attr in ['wait_start']:
             try:
                 setattr(self, attr, conf.getfloat('Pipeline', attr))
             except ValueError:
-                print ('Error in configuration file: not a float value '
-                       '([{}], {})'.format('Pipeline', attr))
-            except ConfigParser.Error:
+                print('Error in configuration file: not a float value '
+                      '([{}], {})'.format('Pipeline', attr))
+            except configparser.Error:
                 pass
 
     def single_image(self, filename, plate_epoch=None):
@@ -110,7 +115,7 @@ class PlateImagePipeline:
             
         """
 
-        ameta = ArchiveMeta()
+        ameta = Archive()
         ameta.assign_conf(self.conf)
 
         if self.read_wfpdb:
@@ -401,4 +406,9 @@ class PlateImagePipeline:
         # Empty the input queue
         while not self.input_queue.empty():
             self.input_queue.get()
+
+
+@deprecated('Class PlateImagePipeline has been renamed PlatePipeline')
+class PlateImagePipeline(PlatePipeline):
+    pass
 

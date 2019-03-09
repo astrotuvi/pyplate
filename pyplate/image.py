@@ -1,11 +1,15 @@
 import os
 import glob
 import numpy as np
-import ConfigParser
 from datetime import datetime
 from astropy.io import fits
 from .conf import read_conf
 from ._version import __version__
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 try:
     from PIL import Image
@@ -53,25 +57,25 @@ class PlateConverter:
         for attr in ['tiff_dir', 'write_fits_dir', 'write_wedge_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['scan_exif_timezone']:
             try:
                 setattr(self, attr, conf.get('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['wedge_height']:
             try:
                 setattr(self, attr, conf.getint('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
         for attr in ['cut_wedge']:
             try:
                 setattr(self, attr, conf.getboolean('Image', attr))
-            except ConfigParser.Error:
+            except configparser.Error:
                 pass
 
     def batch_tiff2fits(self):
@@ -138,8 +142,6 @@ class PlateConverter:
                 except pytz.exceptions.UnknownTimeZoneError:
                     pass
 
-        #print '{} Reading {}'.format(str(datetime.now()), fn_tiff)
-
         im = np.array(im_pil.getdata(),
                       dtype=np.uint16).reshape(im_pil.size[1],-1)
         imwidth = im.shape[1]
@@ -193,7 +195,7 @@ class PlateConverter:
                     im_wedge = im[ycut_wedge:,:]
                     im_plates = im[:ycut_wedge,:]
                 except ValueError:
-                    print 'Cannot separate wedge in {}'.format(fn_tiff)
+                    print('Cannot separate wedge in {}'.format(fn_tiff))
                     im_wedge = None
                     im_plates = im
 
@@ -217,8 +219,8 @@ class PlateConverter:
                     os.makedirs(self.write_wedge_dir)
                 except OSError:
                     if not os.path.isdir(self.write_wedge_dir):
-                        print ('Could not create directory {}'
-                               .format(write_wedge_dir))
+                        print('Could not create directory {}'
+                              .format(write_wedge_dir))
                         raise
 
         # Create FITS image output directory
@@ -227,8 +229,8 @@ class PlateConverter:
                 os.makedirs(self.write_fits_dir)
             except OSError:
                 if not os.path.isdir(self.write_fits_dir):
-                    print ('Could not create directory {}'
-                           .format(write_fits_dir))
+                    print('Could not create directory {}'
+                          .format(write_fits_dir))
                     raise
 
         # If filename contains dash, assume that two plates have been scanned 
