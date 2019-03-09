@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 4
 
    using_pyplate
+   configuration
    pyplate
 
 
