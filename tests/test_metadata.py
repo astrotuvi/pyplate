@@ -1,5 +1,12 @@
 import pytest
 import os
+import sys
+
+tests_dir = os.path.dirname(__file__)
+data_dir = os.path.join(tests_dir, 'data')
+root_dir = os.path.abspath(os.path.join(tests_dir, '..'))
+
+sys.path.insert(0, root_dir)
 from pyplate import metadata
 
 def test_str_int():
@@ -22,7 +29,8 @@ def test_plate_header():
 @pytest.fixture(scope='module')
 def my_archive():
     archive = metadata.Archive()
-    archive.assign_conf(os.path.join('data', 'my_archive.conf'))
+    archive.assign_conf(os.path.join(data_dir, 'my_archive.conf'))
+    archive.conf.set('Files', 'csv_dir', data_dir)
     archive.read_csv()
     return archive
 
@@ -50,7 +58,7 @@ def test_plate_exptime(my_archive, plate_id, exptime):
     assert plate['exptime'] == exptime
 
 @pytest.mark.parametrize('plate_id,jd_avg', [('plate1', [2435544.34479]), 
-                                             ('plate2', [2435544.40625, 2435544.42708])])
+                                             ('plate2', [2435544.40625, 2435544.42778])])
 def test_plate_jd(my_archive, plate_id, jd_avg):
     plate = my_archive.get_platemeta(plate_id)
     plate.calculate()
