@@ -2198,7 +2198,7 @@ class Plate(OrderedDict):
                     self['year_end'].append(expmeta['year_end'][-1])
 
                     # Check if exptimes exist for all sub-exposures
-                    if (len(filter(None, expmeta['exptime'])) == 
+                    if (len(list(filter(None, expmeta['exptime']))) == 
                         expmeta['numexp']):
                         exptime_calc.append(sum(expmeta['exptime']))
                         jd_weighted = np.average(expmeta['jd_avg'],
@@ -2465,7 +2465,7 @@ class Plate(OrderedDict):
                     else:
                         exptime_calc.append(None)
 
-            if self['exptime'] == [] and filter(None, exptime_calc) != []:
+            if self['exptime'] == [] and list(filter(None, exptime_calc)) != []:
                 self['exptime'] = exptime_calc
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
