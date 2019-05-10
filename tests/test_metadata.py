@@ -68,4 +68,19 @@ def test_plate_jd(my_archive, plate_id, jd_avg):
     plate.calculate()
     assert pytest.approx(plate['jd_avg'], abs=1e-5) == jd_avg
 
+@pytest.mark.parametrize('plate_id,jd_avg', [('plate1', 2435544.34479)])
+def test_plateheader_jd(my_archive, plate_id, jd_avg):
+    plate = my_archive.get_platemeta(plate_id)
+    plate.calculate()
+    h = metadata.PlateHeader()
+    h.assign_conf(my_archive.conf)
+    h.assign_platemeta(plate)
+    h.update_from_platemeta()
+    h.assign_values()
+    h.update_comments()
+    h.rewrite()
+    h.reorder()
+    assert h['JD-AVG'] == jd_avg
+    assert h.comments['JD-AVG'] == 'Julian date at the mid-point of exposure 1'
+    assert h['OBSERVAT'] == 'Astrophysikalische Observatorium Potsdam'
 
