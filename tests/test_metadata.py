@@ -39,30 +39,33 @@ def test_read_archive(my_archive):
     assert len(my_archive.get_scanlist()) == 3
 
 @pytest.mark.parametrize('plate_id,time_start', [('plate1', ['21:11:30']),
-                                                 ('plate2', ['21:30:00', '22:10:00|22:17:00'])])
+                                                 ('plate2', ['21:30:00', '22:10:00|22:17:00']), 
+                                                 ('plate3', ['12:00:00'])])
 def test_plate_time(my_archive, plate_id, time_start):
     plate = my_archive.get_platemeta(plate_id)
     assert plate['tms_orig'] == time_start
 
 @pytest.mark.parametrize('plate_id,ut_start', [('plate1', ['1956-03-11T20:11:30']),
-                                               ('plate2', ['1956-03-11T21:30:00', '1956-03-11T22:10:00'])])
+                                               ('plate2', ['1956-03-11T21:30:00', '1956-03-11T22:10:00']),
+                                               ('plate3', ['1931-03-12T23:49:08'])])
 def test_plate_ut(my_archive, plate_id, ut_start):
     plate = my_archive.get_platemeta(plate_id)
     plate.calculate()
     assert plate['date_obs'] == ut_start
 
 @pytest.mark.parametrize('plate_id,exptime', [('plate1', [600]), 
-                                              ('plate2', [1800, 600])])
+                                              ('plate2', [1800, 600]), 
+                                              ('plate3', [1200])])
 def test_plate_exptime(my_archive, plate_id, exptime):
     plate = my_archive.get_platemeta(plate_id)
     assert plate['exptime'] == exptime
 
 @pytest.mark.parametrize('plate_id,jd_avg', [('plate1', [2435544.34479]), 
-                                             ('plate2', [2435544.40625, 2435544.42778])])
+                                             ('plate2', [2435544.40625, 2435544.42778]), 
+                                             ('plate3', [2426413.49940])])
 def test_plate_jd(my_archive, plate_id, jd_avg):
     plate = my_archive.get_platemeta(plate_id)
     plate.calculate()
     assert pytest.approx(plate['jd_avg'], abs=1e-5) == jd_avg
-    #assert plate['jd_avg'] == jd_avg
 
 
