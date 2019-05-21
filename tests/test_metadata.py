@@ -21,11 +21,6 @@ def test_str_float():
     assert isinstance(result, float)
     assert result == 1.0
 
-def test_plate_header():
-    h = metadata.PlateHeader()
-    h.populate()
-    assert 'DATEORIG' in h
-
 @pytest.fixture(scope='module')
 def my_archive():
     archive = metadata.Archive()
@@ -36,7 +31,7 @@ def my_archive():
 
 def test_read_archive(my_archive):
     assert len(my_archive.get_platelist()) == 3
-    assert len(my_archive.get_scanlist()) == 3
+    assert len(my_archive.get_scanlist()) == 4
 
 @pytest.mark.parametrize('plate_id,time_start', [('plate1', ['21:11:30']),
                                                  ('plate2', ['21:30:00', '22:10:00|22:17:00']), 
@@ -53,6 +48,13 @@ def test_plate_ut(my_archive, plate_id, ut_start):
     plate.calculate()
     assert plate['date_obs'] == ut_start
 
+@pytest.mark.parametrize('plate_id,numexp', [('plate1', 1), 
+                                             ('plate2', 2), 
+                                             ('plate3', 1)])
+def test_plate_numexp(my_archive, plate_id, numexp):
+    plate = my_archive.get_platemeta(plate_id)
+    assert plate['numexp'] == numexp
+
 @pytest.mark.parametrize('plate_id,exptime', [('plate1', [600]), 
                                               ('plate2', [1800, 600]), 
                                               ('plate3', [1200])])
@@ -67,6 +69,19 @@ def test_plate_jd(my_archive, plate_id, jd_avg):
     plate = my_archive.get_platemeta(plate_id)
     plate.calculate()
     assert pytest.approx(plate['jd_avg'], abs=1e-5) == jd_avg
+
+@pytest.mark.parametrize('filename,plate_id', [('plate_0001.fits', 'plate1'), 
+                                               ('plate_0002.fits', 'plate2'), 
+                                               ('plate_0003_1.fits', 'plate3'), 
+                                               ('plate_0003_2.fits', 'plate3')])
+def test_scan_plate_id(my_archive, filename, plate_id):
+    plate = my_archive.get_platemeta(filename=filename)
+    assert plate['plate_id'] == plate_id
+
+def test_plateheader_populate():
+    h = metadata.PlateHeader()
+    h.populate()
+    assert 'DATEORIG' in h
 
 @pytest.mark.parametrize('plate_id,jd_avg', [('plate1', 2435544.34479)])
 def test_plateheader_jd(my_archive, plate_id, jd_avg):
