@@ -5302,7 +5302,7 @@ class SolveProcess:
             fn_world = os.path.join(self.write_source_dir, 
                                     '{}_sources.csv'.format(self.basefn))
 
-        outfields = _source_meta.keys()
+        outfields = list(_source_meta)
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
         delimiter = ','
