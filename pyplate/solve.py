@@ -61,12 +61,6 @@ except ImportError:
     pass
 
 try:
-    from esutil import wcsutil
-    have_esutil = True
-except ImportError:
-    have_esutil = False
-
-try:
     import healpy
     have_healpy = True
 except ImportError:
@@ -574,7 +568,6 @@ class SolveProcess:
         self.psfex_path = 'psfex'
         self.solve_field_path = 'solve-field'
         self.wcs_to_tan_path = 'wcs-to-tan'
-        self.xy2sky_path = 'xy2sky'
 
         self.timestamp = dt.datetime.now()
         self.timestamp_str = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
@@ -715,7 +708,7 @@ class SolveProcess:
             pass
 
         for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
-                     'solve_field_path', 'wcs_to_tan_path', 'xy2sky_path']:
+                     'solve_field_path', 'wcs_to_tan_path']:
             try:
                 setattr(self, attr, conf.get('Programs', attr))
             except configparser.Error:
@@ -3238,41 +3231,18 @@ class SolveProcess:
                 
                 indout = np.where(bout)
 
-                if have_esutil:
-                    subwcs = wcsutil.WCS(head)
-                    ra_out,dec_out = subwcs.image2sky(x[indout]-xmin_ext, y[indout]-ymin_ext)
-                    ra[indout] = ra_out
-                    dec[indout] = dec_out
-                else:
-                    # Save header file without line-breaks
-                    hdrfile = os.path.join(self.scratch_dir, 
-                                           fnsub + '_scamp.hdr')
+                # Check for distortion keywords in SCAMP header and
+                # modify CTYPE accordingly
+                if 'PV1_0' in head:
+                    head['CTYPE1'] = 'RA---TPV'
+                    head['CTYPE2'] = 'DEC--TPV'
 
-                    if os.path.exists(hdrfile):
-                        os.remove(hdrfile)
-
-                    head.tofile(hdrfile, sep='', endcard=True, padding=False)
-
-                    # Output x,y in ASCII format
-                    xyout = np.column_stack((x[indout]-xmin_ext, y[indout]-ymin_ext))
-                    np.savetxt(os.path.join(self.scratch_dir, 
-                                            fnsub + '_xy.txt'), 
-                               xyout, fmt='%9.3f\t%9.3f')
-
-                    # Convert x,y to RA,Dec
-                    cmd = self.xy2sky_path
-                    cmd += (' -d -o rd {} @{}_xy.txt > {}_world.txt'
-                            ''.format(hdrfile, fnsub, fnsub))
-                    self.log.write('Subprocess: {}'.format(cmd))
-                    sp.call(cmd, shell=True, stdout=self.log.handle, 
-                            stderr=self.log.handle, cwd=self.scratch_dir)
-
-                    # Read RA,Dec from a file
-                    world = np.loadtxt(os.path.join(self.scratch_dir, 
-                                                    fnsub + '_world.txt'), 
-                                       usecols=(0,1))
-                    ra[indout] = world[:,0]
-                    dec[indout] = world[:,1]
+                # Use astropy.wcs.WCS 
+                subwcs = wcs.WCS(head)
+                pixcrd = np.stack((x[indout]-xmin_ext, y[indout]-ymin_ext)).T
+                world = subwcs.wcs_pix2world(pixcrd, 1)
+                ra[indout] = world[:,0]
+                dec[indout] = world[:,1]
 
                 sigma_ra[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[0]**2)
                 sigma_dec[indout] = np.sqrt(erra_arcsec[indout]**2 + astromsigma[1]**2)
