@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
+from astropy.table import Table
 from astropy.coordinates import Angle, EarthLocation, AltAz
 from astropy import units
 from astropy.time import Time
@@ -1880,16 +1881,50 @@ class SolveProcess:
         # Keep 1000 stars in brightness order, skip the brightest
         # Use only sources from annular bins 1-6
 
-        xycat = fits.HDUList()
-        hdu = fits.PrimaryHDU()
-        xycat.append(hdu)
-
         indclean = np.where((self.sources['flag_clean'] == 1) & 
                             (self.sources['annular_bin'] <= 6))[0]
         sb = skip_bright
         indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+1000]
         indsel = indclean[indsort]
         nrows = len(indsel)
+
+        self.astrom_sources = self.sources[indsel]
+        self.solution = []
+
+        # Repeat finding astrometric solutions until none is found
+        while True:
+            solution = self.find_astrometric_solution(ref_year=plate_year, sip=sip)
+
+            if solution is None:
+                break
+
+            self.solution.append(solution)
+
+    def find_astrometric_solution(self, ref_year=None, sip=None):
+        """
+        Solve astrometry for a list of sources.
+
+        Parameters
+        ----------
+        ref_year : int
+            Year number that will be used for reference coordinates
+        sip : int
+            SIP distortion order (default 3)
+
+        """
+
+        self.log.write('Looking for an astrometric solution', level=3, event=31)
+
+        if ref_year is None:
+            ref_year = self.plate_year
+
+        if sip is None:
+            sip = self.sip
+
+        # Prepare a FITS file with a list of sources and write the file to disk
+        xycat = fits.HDUList()
+        hdu = fits.PrimaryHDU()
+        xycat.append(hdu)
 
         col1 = fits.Column(name='X_IMAGE', format='1E', unit='pixel', 
                            disp='F11.4')
@@ -1900,16 +1935,18 @@ class SolveProcess:
         col4 = fits.Column(name='FLUX', format='1E', unit='count', 
                            disp='F12.7')
 
+        nrows = len(self.astrom_sources)
+
         try:
             tbl = fits.BinTableHDU.from_columns([col1, col2, col3, col4], 
                                                 nrows=nrows)
         except AttributeError:
             tbl = fits.new_table([col1, col2, col3, col4], nrows=nrows)
 
-        tbl.data.field('X_IMAGE')[:] = self.sources[indsel]['x_image']
-        tbl.data.field('Y_IMAGE')[:] = self.sources[indsel]['y_image']
-        tbl.data.field('MAG_AUTO')[:] = self.sources[indsel]['mag_auto']
-        tbl.data.field('FLUX')[:] = self.sources[indsel]['flux_auto']
+        tbl.data.field('X_IMAGE')[:] = self.astrom_sources['x_image']
+        tbl.data.field('Y_IMAGE')[:] = self.astrom_sources['y_image']
+        tbl.data.field('MAG_AUTO')[:] = self.astrom_sources['mag_auto']
+        tbl.data.field('FLUX')[:] = self.astrom_sources['flux_auto']
         xycat.append(tbl)
 
         fnxy_short = os.path.join(self.scratch_dir, self.basefn + '.xy-short')
@@ -1923,7 +1960,7 @@ class SolveProcess:
         fconf = open(os.path.join(self.scratch_dir, 
                                   self.basefn + '_backend.cfg'), 'w')
         index_path = os.path.join(self.tycho2_dir, 
-                                  'index_{:d}'.format(plate_year))
+                                  'index_{:d}'.format(ref_year))
         fconf.write('add_path {}\n'.format(index_path))
         fconf.write('autoindex\n')
         fconf.write('inparallel\n')
@@ -1955,7 +1992,7 @@ class SolveProcess:
         cmd += ' --corr none'
         cmd += ' --overwrite'
         cmd += ' --cpulimit 120'
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=30)
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1963,19 +2000,38 @@ class SolveProcess:
         # Check the result of solve-field
         fn_solved = os.path.join(self.scratch_dir, self.basefn + '.solved')
         fn_wcs = os.path.join(self.scratch_dir, self.basefn + '.wcs')
+        fn_indx = os.path.join(self.scratch_dir, self.basefn + '-indx.xyls')
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
-            self.log.write('Astrometry solved', level=3, event=31)
+            self.log.write('Astrometry solved', level=4, event=31)
             self.db_update_process(solved=1)
         else:
             self.log.write('Could not solve astrometry for the plate', 
                            level=2, event=31)
             self.db_update_process(solved=0)
-            return
+            return None
+
+        # Read list of sources found in the Astrometry.net index files
+        indx_table = Table.read(fn_indx)
+
+        # Match sources in two lists (distance < 5 px)
+        # Keep only such sources that did not match
+        num_astrom_sources = len(self.astrom_sources)
+        coords1 = np.empty((num_astrom_sources, 2))
+        coords1[:,0] = self.astrom_sources['x_source']
+        coords1[:,1] = self.astrom_sources['y_source']
+        coords2 = np.empty((len(indx_table), 2))
+        coords2[:,0] = indx_table['X']
+        coords2[:,1] = indx_table['Y']
+        kdt = KDT(coords2)
+        ds,ind2 = kdt.query(coords1)
+        ind1 = np.arange(num_astrom_sources)
+        indmask = ds > 5.
+        self.astrom_sources = self.astrom_sources[ind1[indmask]]
 
         self.log.write('Calculating plate-solution related parameters', 
-                       level=3, event=32)
+                       level=4, event=31)
 
         # Read the .wcs file and calculate star density
         self.wcshead = fits.getheader(fn_wcs)
@@ -2118,7 +2174,7 @@ class SolveProcess:
             if c[0] != 'COMMENT':
                 wcshead_strip.append(c, bottom=True)
 
-        self.solution = OrderedDict([
+        solution = OrderedDict([
             ('raj2000', ra_deg),
             ('dej2000', dec_deg),
             ('raj2000_hms', ra_str),
@@ -2178,6 +2234,8 @@ class SolveProcess:
             if min_above180-max_below180 > 10:
                 self.min_ra = min_above180
                 self.max_ra = max_below180
+
+        return solution
 
     def output_solution_db(self):
         """
