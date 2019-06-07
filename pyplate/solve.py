@@ -1990,6 +1990,7 @@ class SolveProcess:
 
         xycat.writeto(fnxy_short)
 
+        fn_match = '{}.match-{:02d}'.format(self.basefn, self.num_solutions+1)
         fn_corr = '{}.corr-{:02d}'.format(self.basefn, self.num_solutions+1)
 
         # Write backend config file
@@ -2013,17 +2014,12 @@ class SolveProcess:
         cmd += ' --sort-ascending'
         cmd += ' --backend-config {}_backend.cfg'.format(self.basefn)
 
-        if sip > 0:
-            cmd += ' --tweak-order %d' % sip
-        else:
-            cmd += ' --no-tweak'
-            
         cmd += ' --crpix-center'
         cmd += ' --scamp {}_scamp.cat'.format(self.basefn)
         cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
         cmd += ' --no-plots'
         cmd += ' --out {}'.format(self.basefn)
-        cmd += ' --match none'
+        cmd += ' --match {}'.format(fn_match)
         cmd += ' --rdls none'
         cmd += ' --corr {}'.format(fn_corr)
         cmd += ' --overwrite'
@@ -2047,6 +2043,13 @@ class SolveProcess:
         else:
             cmd += ' --cpulimit 30'
 
+        cmd_no_tweak = cmd + ' --no-tweak'
+
+        if sip > 0:
+            cmd += ' --tweak-order {:d}'.format(sip)
+        else:
+            cmd += ' --no-tweak'
+
         self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
@@ -2055,9 +2058,22 @@ class SolveProcess:
         # Check the result of solve-field
         fn_solved = os.path.join(self.scratch_dir, self.basefn + '.solved')
         fn_wcs = os.path.join(self.scratch_dir, self.basefn + '.wcs')
-        #fn_indx = os.path.join(self.scratch_dir, self.basefn + '-indx.xyls')
-        #fn_corr = '{}.corr-{:02d}'.format(self.basefn, self.num_solutions+1)
+        fn_match = os.path.join(self.scratch_dir, fn_match)
         fn_corr = os.path.join(self.scratch_dir, fn_corr)
+
+        if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
+            wcshead = fits.getheader(fn_wcs)
+
+            # If SIP distortions were not computed, then repeat solving
+            # without tweaking (plane TAN projection)
+            if sip > 0 and wcshead['CTYPE1'] == 'RA---TAN':
+                self.log.write('Repeating astrometric solving without SIP distortions', 
+                               level=4, event=31)
+                self.log.write('Subprocess: {}'.format(cmd_no_tweak), 
+                               level=5, event=31)
+                sp.call(cmd_no_tweak, shell=True, stdout=self.log.handle, 
+                        stderr=self.log.handle, cwd=self.scratch_dir)
+                self.log.write('', timestamp=False, double_newline=False)
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
