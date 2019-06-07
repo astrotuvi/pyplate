@@ -622,7 +622,8 @@ class SolveProcess:
         self.scampcat = None
         self.wcshead = None
         self.wcs_plate = None
-        self.solution = None
+        self.solutions = None
+        self.num_solutions = 0
         self.astrom_sub = []
         self.phot_cterm = []
         self.phot_color = None
@@ -1889,7 +1890,7 @@ class SolveProcess:
         nrows = len(indsel)
 
         self.astrom_sources = self.sources[indsel]
-        self.solution = []
+        self.solutions = []
 
         fnxy_short = os.path.join(self.scratch_dir, 
                                   '{}.xy-short-00'.format(self.basefn))
@@ -1902,7 +1903,8 @@ class SolveProcess:
             if solution is None:
                 break
 
-            self.solution.append(solution)
+            self.solutions.append(solution)
+            self.num_solutions = len(self.solutions)
 
     def find_astrometric_solution(self, ref_year=None, sip=None):
         """
@@ -1928,7 +1930,7 @@ class SolveProcess:
         num_astrom_sources = len(self.astrom_sources)
 
         try:
-            num_remain_exp = self.platemeta['numexp'] - len(self.solution)
+            num_remain_exp = self.platemeta['numexp'] - self.num_solutions
         except Exception:
             num_remain_exp = 1
 
@@ -1981,14 +1983,14 @@ class SolveProcess:
         xycat.append(tbl)
 
         fnxy_short = os.path.join(self.scratch_dir, 
-                                  '{}.xy-short-{:02d}'.format(self.basefn, len(self.solution)+1))
+                                  '{}.xy-short-{:02d}'.format(self.basefn, self.num_solutions+1))
 
         if os.path.exists(fnxy_short):
             os.remove(fnxy_short)
 
         xycat.writeto(fnxy_short)
 
-        fn_corr = '{}.corr-{:02d}'.format(self.basefn, len(self.solution)+1)
+        fn_corr = '{}.corr-{:02d}'.format(self.basefn, self.num_solutions+1)
 
         # Write backend config file
         fconf = open(os.path.join(self.scratch_dir, 
@@ -2027,8 +2029,8 @@ class SolveProcess:
         cmd += ' --overwrite'
         cmd += ' --pixel-error 3'
 
-        if len(self.solution) > 0:
-            scale0 = self.solution[0]['pixel_scale']
+        if self.num_solutions > 0:
+            scale0 = self.solutions[0]['pixel_scale']
             scale_low = 0.9 * scale0
             scale_high = 1.1 * scale0
             cmd += ' --scale-units arcsecperpix'
@@ -2037,7 +2039,7 @@ class SolveProcess:
 
         # If the number of solutions is larger than 4, then accept
         # solutions with lower odds
-        if (self.platemeta['numexp'] > 4) or (len(self.solution) > 4):
+        if self.platemeta['numexp'] > 4 or self.num_solutions > 4:
             cmd += ' --odds-to-solve 1e8'
 
         if num_remain_exp > 0:
@@ -2054,7 +2056,7 @@ class SolveProcess:
         fn_solved = os.path.join(self.scratch_dir, self.basefn + '.solved')
         fn_wcs = os.path.join(self.scratch_dir, self.basefn + '.wcs')
         #fn_indx = os.path.join(self.scratch_dir, self.basefn + '-indx.xyls')
-        #fn_corr = '{}.corr-{:02d}'.format(self.basefn, len(self.solution)+1)
+        #fn_corr = '{}.corr-{:02d}'.format(self.basefn, self.num_solutions+1)
         fn_corr = os.path.join(self.scratch_dir, fn_corr)
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
@@ -2062,9 +2064,13 @@ class SolveProcess:
             self.log.write('Astrometry solved', level=4, event=31)
             self.db_update_process(solved=1)
         else:
-            self.log.write('Could not solve astrometry for the plate', 
-                           level=2, event=31)
-            self.db_update_process(solved=0)
+            if self.num_solutions > 0:
+                self.log.write('Could not find additional astrometric solutions', 
+                               level=4, event=31)
+            else:
+                self.log.write('Could not solve astrometry for the plate', 
+                               level=2, event=31)
+                self.db_update_process(solved=0)
             return None
 
         # Read list of sources found in the Astrometry.net index files
@@ -2301,7 +2307,7 @@ class SolveProcess:
         self.log.to_db(3, 'Writing astrometric solution to the database', 
                        event=35)
 
-        if self.solution is None:
+        if self.num_solutions == 0:
             self.log.write('No plate solution to write to the database', 
                            level=2, event=35)
             return
@@ -2316,10 +2322,11 @@ class SolveProcess:
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
-            platedb.write_solution(self.solution, process_id=self.process_id,
-                                   scan_id=self.scan_id,
-                                   plate_id=self.plate_id,
-                                   archive_id=self.archive_id)
+            for solution in self.solutions:
+                platedb.write_solution(solution, process_id=self.process_id,
+                                       scan_id=self.scan_id,
+                                       plate_id=self.plate_id,
+                                       archive_id=self.archive_id)
             
         platedb.close_connection()
         self.log.write('Closed database connection')
