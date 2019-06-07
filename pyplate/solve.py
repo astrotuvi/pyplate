@@ -1891,6 +1891,10 @@ class SolveProcess:
         self.astrom_sources = self.sources[indsel]
         self.solution = []
 
+        fnxy_short = os.path.join(self.scratch_dir, 
+                                  '{}.xy-short-00'.format(self.basefn))
+        Table(self.astrom_sources).write(fnxy_short, format='fits')
+
         # Repeat finding astrometric solutions until none is found
         while True:
             solution = self.find_astrometric_solution(ref_year=plate_year, sip=sip)
@@ -1921,6 +1925,35 @@ class SolveProcess:
         if sip is None:
             sip = self.sip
 
+        num_astrom_sources = len(self.astrom_sources)
+
+        try:
+            num_remain_exp = self.platemeta['numexp'] - len(self.solution)
+        except Exception:
+            num_remain_exp = 1
+
+        # If number of remaining exposures is larger than 4, then
+        # select sources that have two nearest neighbours within 90-degree
+        # angle
+        if num_remain_exp > 3:
+            coords = np.empty((num_astrom_sources, 2))
+            coords[:,0] = self.astrom_sources['x_source']
+            coords[:,1] = self.astrom_sources['y_source']
+            kdt = KDT(coords)
+            ds,ind = kdt.query(coords, k=3)
+            x0 = coords[:,0]
+            y0 = coords[:,1]
+            x1 = coords[ind[:,1],0]
+            y1 = coords[ind[:,1],1]
+            x2 = coords[ind[:,2],0]
+            y2 = coords[ind[:,2],1]
+            indmask = (x1-x0)*(x2-x0)+(y1-y0)*(y2-y0) > 0
+            use_sources = self.astrom_sources[indmask]
+            num_use_sources = indmask.sum()
+        else:
+            use_sources = self.astrom_sources
+            num_use_sources = num_astrom_sources
+
         # Prepare a FITS file with a list of sources and write the file to disk
         xycat = fits.HDUList()
         hdu = fits.PrimaryHDU()
@@ -1935,26 +1968,27 @@ class SolveProcess:
         col4 = fits.Column(name='FLUX', format='1E', unit='count', 
                            disp='F12.7')
 
-        nrows = len(self.astrom_sources)
-
         try:
             tbl = fits.BinTableHDU.from_columns([col1, col2, col3, col4], 
-                                                nrows=nrows)
+                                                nrows=num_use_sources)
         except AttributeError:
-            tbl = fits.new_table([col1, col2, col3, col4], nrows=nrows)
+            tbl = fits.new_table([col1, col2, col3, col4], nrows=num_use_sources)
 
-        tbl.data.field('X_IMAGE')[:] = self.astrom_sources['x_image']
-        tbl.data.field('Y_IMAGE')[:] = self.astrom_sources['y_image']
-        tbl.data.field('MAG_AUTO')[:] = self.astrom_sources['mag_auto']
-        tbl.data.field('FLUX')[:] = self.astrom_sources['flux_auto']
+        tbl.data.field('X_IMAGE')[:] = use_sources['x_image']
+        tbl.data.field('Y_IMAGE')[:] = use_sources['y_image']
+        tbl.data.field('MAG_AUTO')[:] = use_sources['mag_auto']
+        tbl.data.field('FLUX')[:] = use_sources['flux_auto']
         xycat.append(tbl)
 
-        fnxy_short = os.path.join(self.scratch_dir, self.basefn + '.xy-short')
+        fnxy_short = os.path.join(self.scratch_dir, 
+                                  '{}.xy-short-{:02d}'.format(self.basefn, len(self.solution)+1))
 
         if os.path.exists(fnxy_short):
             os.remove(fnxy_short)
 
         xycat.writeto(fnxy_short)
+
+        fn_corr = '{}.corr-{:02d}'.format(self.basefn, len(self.solution)+1)
 
         # Write backend config file
         fconf = open(os.path.join(self.scratch_dir, 
@@ -1989,9 +2023,28 @@ class SolveProcess:
         cmd += ' --out {}'.format(self.basefn)
         cmd += ' --match none'
         cmd += ' --rdls none'
-        cmd += ' --corr none'
+        cmd += ' --corr {}'.format(fn_corr)
         cmd += ' --overwrite'
-        cmd += ' --cpulimit 120'
+        cmd += ' --pixel-error 3'
+
+        if len(self.solution) > 0:
+            scale0 = self.solution[0]['pixel_scale']
+            scale_low = 0.9 * scale0
+            scale_high = 1.1 * scale0
+            cmd += ' --scale-units arcsecperpix'
+            cmd += ' --scale-low {:.3f}'.format(scale_low)
+            cmd += ' --scale-high {:.3f}'.format(scale_high)
+
+        # If the number of solutions is larger than 4, then accept
+        # solutions with lower odds
+        if (self.platemeta['numexp'] > 4) or (len(self.solution) > 4):
+            cmd += ' --odds-to-solve 1e8'
+
+        if num_remain_exp > 0:
+            cmd += ' --cpulimit 120'
+        else:
+            cmd += ' --cpulimit 30'
+
         self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
         sp.call(cmd, shell=True, stdout=self.log.handle, 
                 stderr=self.log.handle, cwd=self.scratch_dir)
@@ -2000,7 +2053,9 @@ class SolveProcess:
         # Check the result of solve-field
         fn_solved = os.path.join(self.scratch_dir, self.basefn + '.solved')
         fn_wcs = os.path.join(self.scratch_dir, self.basefn + '.wcs')
-        fn_indx = os.path.join(self.scratch_dir, self.basefn + '-indx.xyls')
+        #fn_indx = os.path.join(self.scratch_dir, self.basefn + '-indx.xyls')
+        #fn_corr = '{}.corr-{:02d}'.format(self.basefn, len(self.solution)+1)
+        fn_corr = os.path.join(self.scratch_dir, fn_corr)
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
@@ -2013,21 +2068,21 @@ class SolveProcess:
             return None
 
         # Read list of sources found in the Astrometry.net index files
-        indx_table = Table.read(fn_indx)
+        corr_table = Table.read(fn_corr)
 
-        # Match sources in two lists (distance < 5 px)
+        # Match sources in two lists (distance <= 1 px)
         # Keep only such sources that did not match
         num_astrom_sources = len(self.astrom_sources)
         coords1 = np.empty((num_astrom_sources, 2))
         coords1[:,0] = self.astrom_sources['x_source']
         coords1[:,1] = self.astrom_sources['y_source']
-        coords2 = np.empty((len(indx_table), 2))
-        coords2[:,0] = indx_table['X']
-        coords2[:,1] = indx_table['Y']
+        coords2 = np.empty((len(corr_table), 2))
+        coords2[:,0] = corr_table['field_x']
+        coords2[:,1] = corr_table['field_y']
         kdt = KDT(coords2)
         ds,ind2 = kdt.query(coords1)
         ind1 = np.arange(num_astrom_sources)
-        indmask = ds > 5.
+        indmask = ds > 1.
         self.astrom_sources = self.astrom_sources[ind1[indmask]]
 
         self.log.write('Calculating plate-solution related parameters', 
