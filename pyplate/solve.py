@@ -1990,8 +1990,9 @@ class SolveProcess:
 
         xycat.writeto(fnxy_short)
 
-        fn_match = '{}.match-{:02d}'.format(self.basefn, self.num_solutions+1)
-        fn_corr = '{}.corr-{:02d}'.format(self.basefn, self.num_solutions+1)
+        basefn_solution = '{}-{:02d}'.format(self.basefn, self.num_solutions+1)
+        fn_match = '{}.match'.format(basefn_solution)
+        fn_corr = '{}.corr'.format(basefn_solution)
 
         # Write backend config file
         fconf = open(os.path.join(self.scratch_dir, 
@@ -2015,10 +2016,10 @@ class SolveProcess:
         cmd += ' --backend-config {}_backend.cfg'.format(self.basefn)
 
         cmd += ' --crpix-center'
-        cmd += ' --scamp {}_scamp.cat'.format(self.basefn)
+        cmd += ' --scamp {}.cat'.format(basefn_solution)
         cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
         cmd += ' --no-plots'
-        cmd += ' --out {}'.format(self.basefn)
+        cmd += ' --out {}'.format(basefn_solution)
         cmd += ' --match {}'.format(fn_match)
         cmd += ' --rdls none'
         cmd += ' --corr {}'.format(fn_corr)
@@ -2056,8 +2057,8 @@ class SolveProcess:
         self.log.write('', timestamp=False, double_newline=False)
 
         # Check the result of solve-field
-        fn_solved = os.path.join(self.scratch_dir, self.basefn + '.solved')
-        fn_wcs = os.path.join(self.scratch_dir, self.basefn + '.wcs')
+        fn_solved = os.path.join(self.scratch_dir, '{}.solved'.format(basefn_solution))
+        fn_wcs = os.path.join(self.scratch_dir, '{}.wcs'.format(basefn_solution))
         fn_match = os.path.join(self.scratch_dir, fn_match)
         fn_corr = os.path.join(self.scratch_dir, fn_corr)
 
