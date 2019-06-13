@@ -1878,6 +1878,22 @@ class SolveProcess:
         if skip_bright is None:
             skip_bright = self.skip_bright
 
+        # By default, use 1000 sources for solving
+        num_keep = 1000
+
+        try:
+            numexp = self.platemeta['numexp']
+        except Exception:
+            numexp = 1
+
+        num_keep = max([num_keep, int(self.num_sources_sixbins * numexp / 100)])
+
+        # Limit number of stars with 100000/numexp
+        num_keep = min([num_keep, int(100000/numexp)])
+
+        self.log.write('Using max {:d} stars for astrometric solving'.format(num_keep), 
+                       level=4, event=30)
+
         # Create another xy list for faster solving
         # Keep 1000 stars in brightness order, skip the brightest
         # Use only sources from annular bins 1-6
@@ -1885,9 +1901,12 @@ class SolveProcess:
         indclean = np.where((self.sources['flag_clean'] == 1) & 
                             (self.sources['annular_bin'] <= 6))[0]
         sb = skip_bright
-        indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+1000]
+        indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+num_keep]
         indsel = indclean[indsort]
         nrows = len(indsel)
+
+        self.log.write('Selected {:d} stars for astrometric solving'.format(nrows), 
+                       level=4, event=30)
 
         self.astrom_sources = self.sources[indsel]
         self.solutions = []
@@ -1934,10 +1953,10 @@ class SolveProcess:
         except Exception:
             num_remain_exp = 1
 
-        # If number of remaining exposures is larger than 4, then
+        # If number of remaining exposures is larger than 2, then
         # select sources that have two nearest neighbours within 90-degree
         # angle
-        if num_remain_exp > 3:
+        if num_remain_exp > 2:
             coords = np.empty((num_astrom_sources, 2))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
@@ -2028,8 +2047,8 @@ class SolveProcess:
 
         if self.num_solutions > 0:
             scale0 = self.solutions[0]['pixel_scale']
-            scale_low = 0.9 * scale0
-            scale_high = 1.1 * scale0
+            scale_low = 0.95 * scale0
+            scale_high = 1.05 * scale0
             cmd += ' --scale-units arcsecperpix'
             cmd += ' --scale-low {:.3f}'.format(scale_low)
             cmd += ' --scale-high {:.3f}'.format(scale_high)
@@ -2090,23 +2109,194 @@ class SolveProcess:
                 self.db_update_process(solved=0)
             return None
 
+        # Improve solution with SCAMP
+
+        wcshead = fits.getheader(fn_wcs)
+        wcshead.set('NAXIS', 2)
+        wcshead.set('NAXIS1', self.imwidth, after='NAXIS')
+        wcshead.set('NAXIS2', self.imheight, after='NAXIS1')
+        ra_deg = wcshead['CRVAL1']
+        dec_deg = wcshead['CRVAL2']
+        wcs_plate = wcs.WCS(wcshead)
+        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
+                                [self.imwidth, self.imheight], 
+                                [1., self.imheight]])
+        corners = wcs_plate.all_pix2world(pix_corners, 1)
+        min_dec = corners[:,1].min()
+        max_dec = corners[:,1].max()
+        min_ra = corners[:,0].min()
+        max_ra = corners[:,0].max()
+
+        if max_ra-min_ra > 180:
+            ra_all = corners[:,0]
+            max_below180 = ra_all[np.where(ra_all<180)].max()
+            min_above180 = ra_all[np.where(ra_all>180)].min()
+
+            if min_above180-max_below180 > 10:
+                min_ra = min_above180
+                max_ra = max_below180
+
+        match_table = Table.read(fn_match)
+        half_diag = match_table['RADIUS'][0]
+        ncp_close = 90. - dec_deg <= half_diag
+        scp_close = 90. + dec_deg <= half_diag
+
+        sol = OrderedDict()
+        sol['min_ra'] = min_ra
+        sol['max_ra'] = max_ra
+        sol['min_dec'] = min_dec
+        sol['max_dec'] = max_dec
+        sol['ncp_close'] = ncp_close
+        sol['scp_close'] = scp_close
+        self.sol = sol
+        ra_tyc,dec_tyc,mag_tyc = self.get_reference_stars_for_solution(sol)
+
+        # Create scampref file
+        numtyc = len(ra_tyc)
+        scampref = new_scampref()
+        hduref = fits.BinTableHDU.from_columns(scampref[2].columns, nrows=numtyc)
+        hduref.data.field('X_WORLD')[:] = ra_tyc
+        hduref.data.field('Y_WORLD')[:] = dec_tyc
+        hduref.data.field('ERRA_WORLD')[:] = np.zeros(numtyc) + 1./3600.
+        hduref.data.field('ERRB_WORLD')[:] = np.zeros(numtyc) + 1./3600.
+        hduref.data.field('MAG')[:] = mag_tyc
+        hduref.data.field('MAGERR')[:] = np.zeros(numtyc) + 0.1
+        hduref.data.field('OBSDATE')[:] = np.zeros(numtyc) + 2000.
+        scampref[2].data = hduref.data
+        scampref_file = os.path.join(self.scratch_dir, 
+                                     '{}_scampref.cat'.format(basefn_solution))
+        scampref.writeto(scampref_file, overwrite=True)
+
+        # Create SCAMP .ahead files
+        fn_tan = '{}_tan.wcs'.format(basefn_solution)
+        cmd = self.wcs_to_tan_path
+        cmd += ' -w {}.wcs'.format(basefn_solution)
+        cmd += ' -x 1'
+        cmd += ' -y 1'
+        cmd += ' -W {:f}'.format(self.imwidth)
+        cmd += ' -H {:f}'.format(self.imheight)
+        cmd += ' -N 10'
+        cmd += ' -o {}'.format(fn_tan)
+        self.log.write('Subprocess: {}'.format(cmd))
+        sp.call(cmd, shell=True, stdout=self.log.handle, 
+                stderr=self.log.handle, cwd=self.scratch_dir)
+
+        tanhead = fits.getheader(os.path.join(self.scratch_dir, fn_tan))
+        tanhead.set('NAXIS', 2)
+        ahead = fits.Header()
+        ahead.set('NAXIS', 2)
+        ahead.set('NAXIS1', self.imwidth)
+        ahead.set('NAXIS2', self.imheight)
+        ahead.set('IMAGEW', self.imwidth)
+        ahead.set('IMAGEH', self.imheight)
+        ahead.set('CTYPE1', 'RA---TAN')
+        ahead.set('CTYPE2', 'DEC--TAN')
+        ahead.set('CRPIX1', (self.imwidth + 1.) / 2.)
+        ahead.set('CRPIX2', (self.imheight + 1.) / 2.)
+        ahead.set('CRVAL1', tanhead['CRVAL1'])
+        ahead.set('CRVAL2', tanhead['CRVAL2'])
+        ahead.set('CD1_1', tanhead['CD1_1'])
+        ahead.set('CD1_2', tanhead['CD1_2'])
+        ahead.set('CD2_1', tanhead['CD2_1'])
+        ahead.set('CD2_2', tanhead['CD2_2'])
+        aheadfile = os.path.join(self.scratch_dir, 
+                                 '{}.ahead'.format(basefn_solution))
+        ahead.totextfile(aheadfile, endcard=True, overwrite=True)
+
+        # Run SCAMP
+        cmd = self.scamp_path
+        cmd += ' -c {}_scamp.conf {}.cat'.format(self.basefn, basefn_solution)
+        cmd += ' -ASTREF_CATALOG FILE'
+        cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
+        cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
+        cmd += ' -ASTREFERR_KEYS ERRA_WORLD,ERRB_WORLD,ERRTHETA_WORLD'
+        cmd += ' -ASTREFMAG_KEY MAG'
+        cmd += ' -ASTRCLIP_NSIGMA 1.5'
+        cmd += ' -FLAGS_MASK 0x00ff'
+        cmd += ' -SN_THRESHOLDS 20.0,100.0'
+        cmd += ' -MATCH Y'
+        cmd += ' -CROSSID_RADIUS {:.2f}'.format(20.)
+        cmd += ' -DISTORT_DEGREES 3'
+        cmd += ' -PROJECTION_TYPE TPV'
+        cmd += ' -STABILITY_TYPE EXPOSURE'
+        cmd += ' -SOLVE_PHOTOM N'
+        cmd += ' -WRITE_XML Y'
+        cmd += ' -XML_NAME scamp.xml'
+        cmd += ' -VERBOSE_TYPE LOG'
+        cmd += ' -CHECKPLOT_TYPE NONE'
+        self.log.write('Subprocess: {}'.format(cmd))
+        sp.call(cmd, shell=True, stdout=self.log.handle, 
+                stderr=self.log.handle, cwd=self.scratch_dir)
+
+        # Read SCAMP solution
+        head = fits.PrimaryHDU().header
+        head.set('NAXIS', 2)
+        head.set('NAXIS1', self.imwidth)
+        head.set('NAXIS2', self.imheight)
+        head.set('IMAGEW', self.imwidth)
+        head.set('IMAGEH', self.imheight)
+        fn_scamphead = os.path.join(self.scratch_dir, 
+                                    '{}.head'.format(basefn_solution))
+        head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
+                                         endcard=False, padding=False))
+
+        # Crossmatch sources with rerefence stars and throw out
+        # stars that matched
+        w = wcs.WCS(head)
+        xr,yr = w.wcs_world2pix(ra_tyc, dec_tyc, 1)
+
+        coords_plate = np.empty((num_astrom_sources, 2))
+        coords_plate[:,0] = self.astrom_sources['x_source']
+        coords_plate[:,1] = self.astrom_sources['y_source']
+
+        coords_ref = np.empty((len(xr), 2))
+        coords_ref[:,0] = xr
+        coords_ref[:,1] = yr
+
+        kdt = KDT(coords_ref)
+        ds,ind_ref = kdt.query(coords_plate, k=1)
+        indmask = ds > 5.
+        ind_plate = np.arange(num_astrom_sources)
+
+        # Output reference stars for debugging
+        t = Table()
+        t['x_ref'] = xr
+        t['y_ref'] = yr
+        t['ra_tyc'] = ra_tyc
+        t['dec_tyc'] = dec_tyc
+        t['mag_tyc'] = mag_tyc
+        fn_out = os.path.join(self.scratch_dir, '{}_tycho.fits'.format(basefn_solution))
+        t.write(fn_out, format='fits')
+
+        # Output crossmatched stars for debugging
+        t = Table()
+        ind_xmatch = ds <= 5.
+        t['x_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['x_source']
+        t['y_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['y_source']
+        t['dist'] = ds[ind_xmatch]
+        fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
+        t.write(fn_out, format='fits')
+
+        # Keep only stars that were not crossmatched
+        self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
+
         # Read list of sources found in the Astrometry.net index files
-        corr_table = Table.read(fn_corr)
+        #corr_table = Table.read(fn_corr)
 
         # Match sources in two lists (distance <= 1 px)
         # Keep only such sources that did not match
-        num_astrom_sources = len(self.astrom_sources)
-        coords1 = np.empty((num_astrom_sources, 2))
-        coords1[:,0] = self.astrom_sources['x_source']
-        coords1[:,1] = self.astrom_sources['y_source']
-        coords2 = np.empty((len(corr_table), 2))
-        coords2[:,0] = corr_table['field_x']
-        coords2[:,1] = corr_table['field_y']
-        kdt = KDT(coords2)
-        ds,ind2 = kdt.query(coords1)
-        ind1 = np.arange(num_astrom_sources)
-        indmask = ds > 1.
-        self.astrom_sources = self.astrom_sources[ind1[indmask]]
+        #num_astrom_sources = len(self.astrom_sources)
+        #coords1 = np.empty((num_astrom_sources, 2))
+        #coords1[:,0] = self.astrom_sources['x_source']
+        #coords1[:,1] = self.astrom_sources['y_source']
+        #coords2 = np.empty((len(corr_table), 2))
+        #coords2[:,0] = corr_table['field_x']
+        #coords2[:,1] = corr_table['field_y']
+        #kdt = KDT(coords2)
+        #ds,ind2 = kdt.query(coords1)
+        #ind1 = np.arange(num_astrom_sources)
+        #indmask = ds > 1.
+        #self.astrom_sources = self.astrom_sources[ind1[indmask]]
 
         self.log.write('Calculating plate-solution related parameters', 
                        level=4, event=31)
@@ -2367,6 +2557,61 @@ class SolveProcess:
             self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
                            level=4, event=36)
             self.wcshead.tofile(fn_wcshead, overwrite=True)
+
+    def get_reference_stars_for_solution(self, solution):
+        """
+        Get astrometric reference stars based on the WCS solution.
+
+        """
+
+        #self.log.write('Getting reference catalogs', level=3, event=40)
+
+        # Read the Tycho-2 catalogue
+        if self.use_tycho2_fits:
+            #self.log.write('Reading the Tycho-2 catalogue', level=3, event=41)
+            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
+
+            tycho2 = Table.read(fn_tycho2)
+
+            #except IOError:
+                #self.log.write('Missing Tycho-2 data', level=2, event=41)
+
+            ra_tyc = tycho2['_RAJ2000']
+            dec_tyc = tycho2['_DEJ2000']
+
+            # For stars that have proper motion data, calculate RA, Dec
+            # for the plate epoch
+            pm_mask = np.isfinite(tycho2['pmRA']) & np.isfinite(tycho2['pmDE'])
+            ra_tyc[pm_mask] = (ra_tyc[pm_mask]
+                               + (self.plate_epoch - 2000.) * tycho2['pmRA'][pm_mask]
+                               / np.cos(dec_tyc[pm_mask] * np.pi / 180.) 
+                               / 3600000.)
+            dec_tyc[pm_mask] = (dec_tyc[pm_mask] 
+                                + (self.plate_epoch - 2000.) 
+                                * tycho2['pmDE'][pm_mask] / 3600000.)
+
+            if solution['ncp_close']:
+                btyc = (dec_tyc > solution['min_dec'])
+            elif solution['scp_close']:
+                btyc = (dec_tyc < solution['max_dec'])
+            elif solution['max_ra'] < solution['min_ra']:
+                btyc = (((ra_tyc < solution['max_ra']) |
+                        (ra_tyc > solution['min_ra'])) &
+                        (dec_tyc > solution['min_dec']) & 
+                        (dec_tyc < solution['max_dec']))
+            else:
+                btyc = ((ra_tyc > solution['min_ra']) & 
+                        (ra_tyc < solution['max_ra']) &
+                        (dec_tyc > solution['min_dec']) & 
+                        (dec_tyc < solution['max_dec']))
+
+            numtyc = btyc.sum()
+            self.log.write('Fetched {:d} entries from Tycho-2'
+                           ''.format(numtyc))
+
+            return (tycho2[btyc]['_RAJ2000'], 
+                    tycho2[btyc]['_DEJ2000'], 
+                    tycho2[btyc]['BTmag'])
 
     def get_reference_catalogs(self):
         """
