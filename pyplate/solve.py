@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
-from astropy.table import Table
+from astropy.table import Table, vstack
 from astropy.coordinates import Angle, EarthLocation, AltAz
 from astropy import units
 from astropy.time import Time
@@ -82,11 +82,52 @@ class AstrometryNetIndex:
 
     def __init__(self, *args):
         self.vizquery_path = 'vizquery'
-        self.build_index_path = 'build-index'
+        self.build_index_path = 'build-astrometry-index'
         self.index_dir = './'
         
         if len(args) == 1:
             self.index_dir = args[0]
+
+    def query_gaia(self):
+        """
+        Query Gaia DR2 catalogue for bright stars (G < 12) and 
+        store results in a FITS file.
+
+        """
+
+        from astroquery.gaia import Gaia
+
+        gaiadr2_dir = self.index_dir
+
+        # Query in two parts to overcome the 3-million-row limit
+        query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
+                 'phot_bp_mean_mag,phot_rp_mean_mag '
+                 'FROM gaiadr2.gaia_source '
+                 'WHERE phot_g_mean_mag<11.5 '
+                 'AND astrometric_params_solved=31')
+        fn_tab1 = os.path.join(gaiadr2_dir, 'gaiadr2_pyplate_1.fits')
+        job = Gaia.launch_job_async(query, output_file=fn_tab1, 
+                                    output_format='fits', dump_to_file=True)
+
+        query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
+                 'phot_bp_mean_mag,phot_rp_mean_mag '
+                 'FROM gaiadr2.gaia_source '
+                 'WHERE phot_g_mean_mag BETWEEN 11.5 AND 12 '
+                 'AND astrometric_params_solved=31')
+        fn_tab2 = os.path.join(gaiadr2_dir, 'gaiadr2_pyplate_2.fits')
+        job = Gaia.launch_job_async(query, output_file=fn_tab2, 
+                                    output_format='fits', dump_to_file=True)
+
+        # Read two tables and concatenate them
+        tab1 = Table.read(fn_tab1)
+        tab2 = Table.read(fn_tab2)
+        tab = vstack([tab1, tab2], join_type='exact')
+        fn_tab = os.path.join(gaiadr2_dir, 'gaiadr2_pyplate.fits')
+        tab.write(fn_tab, format='fits', overwrite=True)
+
+        # Remove partial tables
+        os.remove(fn_tab1)
+        os.remove(fn_tab2)
 
     def download_tycho2(self, site=None):
         """
@@ -137,7 +178,7 @@ class AstrometryNetIndex:
             os.remove(fn_vizout)
 
     def create_index_year(self, year, max_scale=None, min_scale=None,
-                          sort_by='BTmag'):
+                          catalog='gaia', sort_by='Gmag'):
         """
         Create Astrometry.net index for a given epoch.
 
@@ -157,72 +198,105 @@ class AstrometryNetIndex:
         elif min_scale < 1:
             min_scale = 1
 
-        if sort_by != 'BTmag' and sort_by != 'VTmag':
-            sort_by = 'BTmag'
+        if catalog != 'gaia' and catalog != 'tycho':
+            print('Unknown catalog ({})'.format(catalog))
+            return
 
-        tyc = fits.open(os.path.join(self.index_dir, 'tycho2_pyplate.fits'))
-        data = tyc[1].data
+        if catalog == 'gaia':
+            if sort_by != 'Gmag' and sort_by != 'BPmag' and sort_by != 'RPmag':
+                sort_by = 'Gmag'
 
-        cols = tyc[1].columns[0:2] + tyc[1].columns[4:6]
-        cols[0].name = 'RA'
-        cols[1].name = 'Dec'
+            fn_gaia = os.path.join(self.index_dir, 'gaiadr2_pyplate.fits')
+            gaia_tab = Table.read(fn_gaia)
 
-        try:
-            hdu = fits.BinTableHDU.from_columns(cols)
-        except AttributeError:
-            hdu = fits.new_table(cols)
+            year_tab = Table()
+            year_tab['RA'] = (gaia_tab['ra'] 
+                              + (year - 2015.5 + 0.5)
+                              * gaia_tab['pmra'] 
+                              / np.cos(gaia_tab['dec'] * np.pi / 180.) 
+                              / 3600000.)
+            year_tab['Dec'] = (gaia_tab['dec']
+                               + (year - 2015.5 + 0.5)
+                               * gaia_tab['pmdec'] / 3600000.)
 
-        tyc.close()
+            if sort_by == 'Gmag':
+                year_tab['Gmag'] = gaia_tab['phot_g_mean_mag']
+            elif sort_by == 'BPmag':
+                year_tab['BPmag'] = gaia_tab['phot_bp_mean_mag']
+            elif sort_by == 'RPmag':
+                year_tab['RPmag'] = gaia_tab['phot_rp_mean_mag']
 
-        hdu.data.field(0)[:] = data.field(0) + (year - 2000. + 0.5) * \
-                data.field(2) / np.cos(data.field(1) * math.pi / 180.) / 3600000.
-        hdu.data.field(1)[:] = data.field(1) + (year - 2000. + 0.5) * \
-                data.field(3) / 3600000.
-        hdu.data.field(2)[:] = data.field(4)
-        hdu.data.field(3)[:] = data.field(5)
+            fn_year = os.path.join(self.index_dir, 
+                                   'gaiadr2_{:d}.fits'.format(year))
+            year_tab.write(fn_year, format='fits', overwrite=True)
 
-        # Leave out rows with missing proper motion and magnitudes
-        mask1 = np.isfinite(hdu.data.field(0))
-        mask2 = np.isfinite(hdu.data.field(2))
-        mask3 = np.isfinite(hdu.data.field(3))
-        hdu.data = hdu.data[mask1 & mask2 & mask3]
+        elif catalog == 'tycho':
+            if sort_by != 'BTmag' and sort_by != 'VTmag':
+                sort_by = 'BTmag'
 
-        # Sort rows
-        if sort_by == 'VTmag':
-            indsort = np.argsort(hdu.data.field(3))
-        else:
-            indsort = np.argsort(hdu.data.field(2))
+            tyc = fits.open(os.path.join(self.index_dir, 'tycho2_pyplate.fits'))
+            data = tyc[1].data
 
-        hdu.data = hdu.data[indsort]
+            cols = tyc[1].columns[0:2] + tyc[1].columns[4:6]
+            cols[0].name = 'RA'
+            cols[1].name = 'Dec'
 
-        fn_tyc_year = os.path.join(self.index_dir, 
+            try:
+                hdu = fits.BinTableHDU.from_columns(cols)
+            except AttributeError:
+                hdu = fits.new_table(cols)
+
+            tyc.close()
+
+            hdu.data.field(0)[:] = data.field(0) + (year - 2000. + 0.5) * \
+                    data.field(2) / np.cos(data.field(1) * math.pi / 180.) / 3600000.
+            hdu.data.field(1)[:] = data.field(1) + (year - 2000. + 0.5) * \
+                    data.field(3) / 3600000.
+            hdu.data.field(2)[:] = data.field(4)
+            hdu.data.field(3)[:] = data.field(5)
+
+            # Leave out rows with missing proper motion and magnitudes
+            mask1 = np.isfinite(hdu.data.field(0))
+            mask2 = np.isfinite(hdu.data.field(2))
+            mask3 = np.isfinite(hdu.data.field(3))
+            hdu.data = hdu.data[mask1 & mask2 & mask3]
+
+            # Sort rows
+            if sort_by == 'VTmag':
+                indsort = np.argsort(hdu.data.field(3))
+            else:
+                indsort = np.argsort(hdu.data.field(2))
+
+            hdu.data = hdu.data[indsort]
+
+            fn_year = os.path.join(self.index_dir, 
                                    'tycho2_{:d}.fits'.format(year))
-        hdu.writeto(fn_tyc_year, overwrite=True)
+            hdu.writeto(fn_year, overwrite=True)
 
-        tycho2_index_dir = os.path.join(self.index_dir, 
-                                        'index_{:d}'.format(year))
+        year_index_dir = os.path.join(self.index_dir, 
+                                      'index_{:d}'.format(year))
 
         try:
-            os.makedirs(tycho2_index_dir)
+            os.makedirs(year_index_dir)
         except OSError:
-            if not os.path.isdir(tycho2_index_dir):
+            if not os.path.isdir(year_index_dir):
                 raise
 
         for scale_num in np.arange(max_scale, min_scale-1, -1):
             cmd = self.build_index_path
-            cmd += ' -i {}'.format(fn_tyc_year)
+            cmd += ' -i {}'.format(fn_year)
             cmd += ' -S {}'.format(sort_by)
             cmd += ' -P {:d}'.format(scale_num)
             cmd += ' -I {:d}{:02d}'.format(year, scale_num)
             fn_index = 'index_{:d}_{:02d}.fits'.format(year, scale_num)
-            cmd += ' -o {}'.format(os.path.join(tycho2_index_dir, fn_index))
+            cmd += ' -o {}'.format(os.path.join(year_index_dir, fn_index))
 
             sp.call(cmd, shell=True, cwd=self.index_dir)
 
         #os.remove(fn_tyc_year)
 
     def create_index_loop(self, start_year, end_year, step, max_scale=None, 
-                          min_scale=None, sort_by='BTmag'):
+                          min_scale=None, catalog='gaia', sort_by='BTmag'):
         """
         Create Astrometry.net indexes for a set of epochs.
 
@@ -230,7 +304,8 @@ class AstrometryNetIndex:
 
         for year in np.arange(start_year, end_year+1, step):
             self.create_index_year(year, max_scale=max_scale, 
-                                   min_scale=min_scale, sort_by=sort_by)
+                                   min_scale=min_scale, 
+                                   catalog=catalog, sort_by=sort_by)
 
 
 class SolveProcessLog:
@@ -530,6 +605,8 @@ class SolveProcess:
         self.plate_id = None
 
         self.fits_dir = ''
+        self.index_dir = ''
+        self.gaia_dir = ''
         self.tycho2_dir = ''
         self.work_dir = ''
         self.write_source_dir = ''
@@ -542,6 +619,7 @@ class SolveProcess:
         self.astref_catalog = None
         self.photref_catalog = None
 
+        self.use_gaia_fits = False
         self.use_tycho2_fits = False
 
         self.use_ucac4_db = False
@@ -716,7 +794,7 @@ class SolveProcess:
             except configparser.Error:
                 pass
 
-        for attr in ['fits_dir', 'tycho2_dir', 
+        for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir', 
                      'work_dir', 'write_log_dir', 'write_phot_dir',
                      'write_source_dir', 'write_wcs_dir',
                      'write_db_source_dir', 'write_db_source_calib_dir']:
@@ -728,7 +806,8 @@ class SolveProcess:
         if self.write_log_dir:
             self.enable_log = True
 
-        for attr in ['use_tycho2_fits', 'use_ucac4_db', 'use_apass_db',
+        for attr in ['use_gaia_fits', 'use_tycho2_fits', 
+                     'use_ucac4_db', 'use_apass_db',
                      'enable_db_log', 'write_sources_csv']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
@@ -2016,7 +2095,7 @@ class SolveProcess:
         # Write backend config file
         fconf = open(os.path.join(self.scratch_dir, 
                                   self.basefn + '_backend.cfg'), 'w')
-        index_path = os.path.join(self.tycho2_dir, 
+        index_path = os.path.join(self.index_dir, 
                                   'index_{:d}'.format(ref_year))
         fconf.write('add_path {}\n'.format(index_path))
         fconf.write('autoindex\n')
@@ -2565,6 +2644,39 @@ class SolveProcess:
         """
 
         #self.log.write('Getting reference catalogs', level=3, event=40)
+
+        # Read the Gaia DR2 catalogue
+        if self.use_gaia_fits:
+            fn_gaia = os.path.join(self.gaia_dir, 'gaiadr2_pyplate.fits')
+
+            tab = Table.read(fn_gaia)
+
+            # Calculate RA and Dec for the plate epoch
+            ra_ref = (tab['ra'] + (self.plate_epoch - 2015.5) * tab['pmra']
+                      / np.cos(tab['dec'] * np.pi / 180.) / 3600000.)
+            dec_ref = (tab['dec'] + (self.plate_epoch - 2015.5) 
+                       * tab['pmdec'] / 3600000.)
+
+            if solution['ncp_close']:
+                bref = (dec_ref > solution['min_dec'])
+            elif solution['scp_close']:
+                bref = (dec_ref < solution['max_dec'])
+            elif solution['max_ra'] < solution['min_ra']:
+                bref = (((ra_ref < solution['max_ra']) |
+                        (ra_ref > solution['min_ra'])) &
+                        (dec_ref > solution['min_dec']) & 
+                        (dec_ref < solution['max_dec']))
+            else:
+                bref = ((ra_ref > solution['min_ra']) & 
+                        (ra_ref < solution['max_ra']) &
+                        (dec_ref > solution['min_dec']) & 
+                        (dec_ref < solution['max_dec']))
+
+            numref = bref.sum()
+            self.log.write('Fetched {:d} entries from Gaia DR2'
+                           ''.format(numref))
+
+            return (ra_ref[bref], dec_ref[bref], tab[bref]['phot_g_mean_mag'])
 
         # Read the Tycho-2 catalogue
         if self.use_tycho2_fits:
