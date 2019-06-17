@@ -12,7 +12,7 @@ from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
 from astropy.table import Table, vstack
-from astropy.coordinates import Angle, EarthLocation, AltAz
+from astropy.coordinates import Angle, EarthLocation, SkyCoord, AltAz
 from astropy import units
 from astropy.time import Time
 from astropy.stats import sigma_clip
@@ -2221,6 +2221,9 @@ class SolveProcess:
         scp_close = 90. + dec_deg <= half_diag
 
         sol = OrderedDict()
+        sol['raj2000'] = ra_deg
+        sol['dej2000'] = dec_deg
+        sol['half_diag'] = half_diag
         sol['min_ra'] = min_ra
         sol['max_ra'] = max_ra
         sol['min_dec'] = min_dec
@@ -2642,6 +2645,7 @@ class SolveProcess:
             ('dej2000_dms', dec_str),
             ('fov1', imwidth_deg),
             ('fov2', imheight_deg),
+            ('half_diag', half_diag),
             ('pixel_scale', self.mean_pixscale),
             ('source_density', self.stars_sqdeg),
             ('cd1_1', self.wcshead['CD1_1']),
@@ -2770,22 +2774,13 @@ class SolveProcess:
                       / np.cos(tab['dec'] * np.pi / 180.) / 3600000.)
             dec_ref = (tab['dec'] + (self.plate_epoch - 2015.5) 
                        * tab['pmdec'] / 3600000.)
+            catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
 
-            if solution['ncp_close']:
-                bref = (dec_ref > solution['min_dec'])
-            elif solution['scp_close']:
-                bref = (dec_ref < solution['max_dec'])
-            elif solution['max_ra'] < solution['min_ra']:
-                bref = (((ra_ref < solution['max_ra']) |
-                        (ra_ref > solution['min_ra'])) &
-                        (dec_ref > solution['min_dec']) & 
-                        (dec_ref < solution['max_dec']))
-            else:
-                bref = ((ra_ref > solution['min_ra']) & 
-                        (ra_ref < solution['max_ra']) &
-                        (dec_ref > solution['min_dec']) & 
-                        (dec_ref < solution['max_dec']))
-
+            # Query stars around the plate center
+            c = SkyCoord(solution['raj2000']*units.deg, 
+                         solution['dej2000']*units.deg, frame='icrs')
+            dist = catalog.separation(c)
+            bref = dist < solution['half_diag']*units.deg
             numref = bref.sum()
             self.log.write('Fetched {:d} entries from Gaia DR2'
                            ''.format(numref))
@@ -2815,22 +2810,13 @@ class SolveProcess:
             dec_tyc[pm_mask] = (dec_tyc[pm_mask] 
                                 + (self.plate_epoch - 2000.) 
                                 * tycho2['pmDE'][pm_mask] / 3600000.)
+            catalog = SkyCoord(ra_tyc, dec_tyc, frame='icrs')
 
-            if solution['ncp_close']:
-                btyc = (dec_tyc > solution['min_dec'])
-            elif solution['scp_close']:
-                btyc = (dec_tyc < solution['max_dec'])
-            elif solution['max_ra'] < solution['min_ra']:
-                btyc = (((ra_tyc < solution['max_ra']) |
-                        (ra_tyc > solution['min_ra'])) &
-                        (dec_tyc > solution['min_dec']) & 
-                        (dec_tyc < solution['max_dec']))
-            else:
-                btyc = ((ra_tyc > solution['min_ra']) & 
-                        (ra_tyc < solution['max_ra']) &
-                        (dec_tyc > solution['min_dec']) & 
-                        (dec_tyc < solution['max_dec']))
-
+            # Query stars around the plate center
+            c = SkyCoord(solution['raj2000']*units.deg, 
+                         solution['dej2000']*units.deg, frame='icrs')
+            dist = catalog.separation(c)
+            btyc = dist < solution['half_diag']*units.deg
             numtyc = btyc.sum()
             self.log.write('Fetched {:d} entries from Tycho-2'
                            ''.format(numtyc))
