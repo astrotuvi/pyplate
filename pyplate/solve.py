@@ -2352,9 +2352,123 @@ class SolveProcess:
         ind_xmatch = ds <= 5.
         t['x_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['x_source']
         t['y_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['y_source']
+        t['x_ref'] = xr[ind_ref[ind_xmatch]]
+        t['y_ref'] = yr[ind_ref[ind_xmatch]]
         t['dist'] = ds[ind_xmatch]
         fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
         t.write(fn_out, format='fits')
+
+        #----------------------
+
+        # Calculate difference between scan coordinates and reference coordinates
+        # along the scan direction, then fit a smooth curve to get the wobble pattern
+
+        ys = t['y_source']
+        dy = t['y_source'] - t['y_ref']
+
+        # Make sure that lowess fraction includes at least 10 stars
+        if len(ys) > 200:
+            frac = 0.05
+        else:
+            frac = 10. / len(ys)
+
+        z = sm.nonparametric.lowess(dy, ys, frac=frac, it=3, 
+                                    return_sorted=True)
+        s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
+        # Apply correction to source coordinates
+        fn_scampcat = os.path.join(self.scratch_dir, 
+                                   '{}.cat'.format(basefn_solution))
+        cat = fits.open(fn_scampcat)
+        y_image = cat[2].data['Y_IMAGE']
+        dy_image = s(y_image)
+        cat[2].data['Y_IMAGE'] = y_image - dy_image
+        fn_scampcat = os.path.join(self.scratch_dir, 
+                                   '{}-dewobbled.cat'.format(basefn_solution))
+        cat.writeto(fn_scampcat)
+ 
+        # Write SCAMP header to .ahead file
+        fn_ahead = os.path.join(self.scratch_dir, 
+                                '{}-dewobbled.ahead'.format(basefn_solution))
+        head.totextfile(fn_ahead, endcard=True, overwrite=True)
+
+        # Run SCAMP again on dewobbled pixel coordinates
+        cmd = self.scamp_path
+        cmd += ' -c {}_scamp.conf {}-dewobbled.cat'.format(self.basefn, basefn_solution)
+        cmd += ' -ASTREF_CATALOG FILE'
+        cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
+        cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
+        cmd += ' -ASTREFERR_KEYS ERRA_WORLD,ERRB_WORLD,ERRTHETA_WORLD'
+        cmd += ' -ASTREFMAG_KEY MAG'
+        cmd += ' -ASTRCLIP_NSIGMA 1.5'
+        cmd += ' -FLAGS_MASK 0x00ff'
+        cmd += ' -SN_THRESHOLDS 20.0,100.0'
+        cmd += ' -MATCH N'
+        cmd += ' -CROSSID_RADIUS {:.2f}'.format(3.)
+        cmd += ' -DISTORT_DEGREES 3'
+        cmd += ' -PROJECTION_TYPE TPV'
+        cmd += ' -STABILITY_TYPE EXPOSURE'
+        cmd += ' -SOLVE_PHOTOM N'
+        cmd += ' -WRITE_XML Y'
+        cmd += ' -XML_NAME scamp.xml'
+        cmd += ' -VERBOSE_TYPE LOG'
+        cmd += ' -CHECKPLOT_TYPE NONE'
+        self.log.write('Subprocess: {}'.format(cmd))
+        sp.call(cmd, shell=True, stdout=self.log.handle, 
+                stderr=self.log.handle, cwd=self.scratch_dir)
+
+        # Read SCAMP solution
+        head = fits.PrimaryHDU().header
+        head.set('NAXIS', 2)
+        head.set('NAXIS1', self.imwidth)
+        head.set('NAXIS2', self.imheight)
+        head.set('IMAGEW', self.imwidth)
+        head.set('IMAGEH', self.imheight)
+        fn_scamphead = os.path.join(self.scratch_dir, 
+                                    '{}-dewobbled.head'.format(basefn_solution))
+        head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
+                                         endcard=False, padding=False))
+
+        # Crossmatch sources with rerefence stars and throw out
+        # stars that matched
+        w = wcs.WCS(head)
+        xr,yr = w.wcs_world2pix(ra_tyc, dec_tyc, 1)
+
+        coords_plate = np.empty((num_astrom_sources, 2))
+        coords_plate[:,0] = self.astrom_sources['x_source']
+        coords_plate[:,1] = self.astrom_sources['y_source']
+
+        coords_ref = np.empty((len(xr), 2))
+        coords_ref[:,0] = xr
+        coords_ref[:,1] = yr
+
+        kdt = KDT(coords_ref)
+        ds,ind_ref = kdt.query(coords_plate, k=1)
+        indmask = ds > 5.
+        ind_plate = np.arange(num_astrom_sources)
+
+        # Output reference stars for debugging
+        t = Table()
+        t['x_ref'] = xr
+        t['y_ref'] = yr
+        t['ra_tyc'] = ra_tyc
+        t['dec_tyc'] = dec_tyc
+        t['mag_tyc'] = mag_tyc
+        fn_out = os.path.join(self.scratch_dir, '{}_tycho2.fits'.format(basefn_solution))
+        t.write(fn_out, format='fits')
+
+        # Output crossmatched stars for debugging
+        t = Table()
+        ind_xmatch = ds <= 5.
+        t['x_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['x_source']
+        t['y_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['y_source']
+        t['x_ref'] = xr[ind_ref[ind_xmatch]]
+        t['y_ref'] = yr[ind_ref[ind_xmatch]]
+        t['dist'] = ds[ind_xmatch]
+        fn_out = os.path.join(self.scratch_dir, '{}_xmatch2.fits'.format(basefn_solution))
+        t.write(fn_out, format='fits')
+
+        #----------------------
 
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
