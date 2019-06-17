@@ -1919,6 +1919,93 @@ class SolveProcess:
 
         #xycat.writeto(fnxy)
 
+    def crossmatch_cartesian(self, x_image, y_image, x_ref, y_ref):
+        """
+        Crossmatch source coordinates with reference-star coordinates.
+
+        """
+
+        assert len(x_image) == len(y_image), 'x_image and y_image must have the same length'
+        assert len(x_ref) == len(y_ref), 'x_ref and y_ref must have the same length'
+
+        coords_plate = np.empty((len(x_image), 2))
+        coords_plate[:,0] = x_image
+        coords_plate[:,1] = y_image
+
+        coords_ref = np.empty((len(x_ref), 2))
+        coords_ref[:,0] = x_ref
+        coords_ref[:,1] = y_ref
+
+        kdt = KDT(coords_ref)
+        ds,ind_ref = kdt.query(coords_plate, k=1)
+        mask_xmatch = ds < 5.
+        ind_plate = np.arange(len(x_image))
+
+        return ind_plate[mask_xmatch], ind_ref[mask_xmatch]
+
+    def find_scanner_pattern(self, x_image, y_image, x_ref, y_ref):
+        """
+        Find if there is a pattern along one axis in the scan file.
+        If found, fit a smooth curve to the difference between scan
+        coordinates and reference coordinates along that axis.
+        Return corrected image coordinates.
+
+        """
+
+        # All input arrays must have the same length
+        assert len(x_image) == len(y_image), 'x_image and y_image must have the same length'
+        assert len(x_ref) == len(y_ref), 'x_ref and y_ref must have the same length'
+        assert len(x_image) == len(x_ref), 'x_image and x_ref must have the same length'
+
+        # Calculate differences
+        dx = x_image - x_ref
+        dy = y_image - y_ref
+
+        # Find smooth curve along y-axis
+
+        # Make sure that lowess fraction includes at least 10 stars
+        if len(y_image) > 200:
+            frac = 0.05
+        else:
+            frac = 10. / len(y_image)
+
+        z = sm.nonparametric.lowess(dy, y_image, frac=frac, it=3, 
+                                    return_sorted=True)
+        _,uind = np.unique(z[:,0], return_index=True)
+        s_y = InterpolatedUnivariateSpline(z[uind,0], z[uind,1], k=1)
+
+        # Find smooth curve along x-axis
+
+        # Make sure that lowess fraction includes at least 10 stars
+        if len(x_image) > 200:
+            frac = 0.05
+        else:
+            frac = 10. / len(x_image)
+
+        z = sm.nonparametric.lowess(dx, x_image, frac=frac, it=3, 
+                                    return_sorted=True)
+        _,uind = np.unique(z[:,0], return_index=True)
+        s_x = InterpolatedUnivariateSpline(z[uind,0], z[uind,1], k=1)
+
+        y_range = np.max(y_image) - np.min(y_image)
+        x_range = np.max(x_image) - np.min(x_image)
+        yy = np.linspace(np.min(y_image) + 0.1 * y_range, 
+                         np.max(y_image) - 0.1 * y_range, 80)
+        xx = np.linspace(np.min(x_image) + 0.1 * x_range, 
+                         np.max(x_image) - 0.1 * x_range, 80)
+
+        # Scanner pattern exists if the standard deviation of 
+        # 80 points from the smooth curve along that axis is at least
+        # twice as high as the standard deviation along the other axis
+        std_ratio = s_y(yy).std() / s_x(xx).std()
+
+        if std_ratio > 2:
+            y_image = y_image - s_y(y_image)
+        elif std_ratio < 0.5:
+            x_image = x_image - s_x(x_image)
+
+        return x_image, y_image, s_x, s_y, std_ratio
+
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
         Solve astrometry in a FITS file.
