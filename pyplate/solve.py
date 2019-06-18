@@ -667,7 +667,8 @@ class SolveProcess:
         self.max_model_sources = 10000
         self.sip = 3
         self.skip_bright = 10
-        self.distort = 1
+        self.distort = 3
+        self.subfield_distort = 1
         self.max_recursion_depth = 5
         self.force_recursion_depth = 0
         self.circular_film = False
@@ -702,6 +703,7 @@ class SolveProcess:
         self.wcs_plate = None
         self.solutions = None
         self.num_solutions = 0
+        self.astref_tables = []
         self.astrom_sub = []
         self.phot_cterm = []
         self.phot_color = None
@@ -849,9 +851,9 @@ class SolveProcess:
             except configparser.Error:
                 pass
 
-        for attr in ['sip', 'skip_bright', 'distort', 'max_recursion_depth', 
-                     'force_recursion_depth', 'min_model_sources', 
-                     'max_model_sources']:
+        for attr in ['sip', 'skip_bright', 'distort', 'subfield_distort', 
+                     'max_recursion_depth', 'force_recursion_depth', 
+                     'min_model_sources', 'max_model_sources']:
             try:
                 setattr(self, attr, conf.getint('Solve', attr))
             except ValueError:
@@ -1919,8 +1921,8 @@ class SolveProcess:
 
         #xycat.writeto(fnxy)
 
-    def crossmatch_cartesian(self, x_image, y_image, x_ref, y_ref, 
-                             tolerance=None):
+    def crossmatch_cartesian_2d(self, x_image, y_image, x_ref, y_ref, 
+                                tolerance=None):
         """
         Crossmatch source coordinates with reference-star coordinates.
 
@@ -1945,13 +1947,8 @@ class SolveProcess:
         if tolerance is None:
             tolerance = 5.
 
-        coords_plate = np.empty((len(x_image), 2))
-        coords_plate[:,0] = x_image
-        coords_plate[:,1] = y_image
-
-        coords_ref = np.empty((len(x_ref), 2))
-        coords_ref[:,0] = x_ref
-        coords_ref[:,1] = y_ref
+        coords_plate = np.vstack((x_image, y_image)).T
+        coords_ref = np.vstack((x_ref, y_ref)).T
 
         kdt = KDT(coords_ref)
         ds,ind_ref = kdt.query(coords_plate, k=1)
@@ -1959,6 +1956,32 @@ class SolveProcess:
         ind_plate = np.arange(len(x_image))
 
         return ind_plate[mask_xmatch], ind_ref[mask_xmatch]
+
+    def crossmatch_cartesian(self, coords_image, coords_ref, 
+                             tolerance=None):
+        """
+        Crossmatch source coordinates with reference-star coordinates.
+
+        Parameters
+        ----------
+        coords_image : array-like
+            The coordinates of points to match
+        coords_ref : array-like
+            The coordinates of reference points to match
+        tolerance : float
+            Crossmatch distance in pixels (default: 5)
+
+        """
+
+        if tolerance is None:
+            tolerance = 5.
+
+        kdt = KDT(coords_ref)
+        ds,ind_ref = kdt.query(coords_image, k=1)
+        mask_xmatch = ds < tolerance
+        ind_image = np.arange(len(coords_image))
+
+        return ind_image[mask_xmatch], ind_ref[mask_xmatch]
 
     def find_scanner_pattern(self, x_image, y_image, x_ref, y_ref):
         """
@@ -2112,13 +2135,17 @@ class SolveProcess:
 
         # Repeat finding astrometric solutions until none is found
         while True:
-            solution = self.find_astrometric_solution(ref_year=plate_year, sip=sip)
+            solution, astref_table = self.find_astrometric_solution(ref_year=plate_year, sip=sip)
 
             if solution is None:
                 break
 
             self.solutions.append(solution)
+            self.astref_tables.append(astref_table)
             self.num_solutions = len(self.solutions)
+
+        # Improve astrometric solutions
+        self.improve_astrometric_solutions()
 
     def find_astrometric_solution(self, ref_year=None, sip=None):
         """
@@ -2302,7 +2329,7 @@ class SolveProcess:
                 self.log.write('Could not solve astrometry for the plate', 
                                level=2, event=31)
                 self.db_update_process(solved=0)
-            return None
+            return None, None
 
         # Improve solution with SCAMP
 
@@ -2347,17 +2374,17 @@ class SolveProcess:
         sol['ncp_close'] = ncp_close
         sol['scp_close'] = scp_close
         self.sol = sol
-        ra_ref,dec_ref,mag_ref = self.get_reference_stars_for_solution(sol)
+        astref_table = self.get_reference_stars_for_solution(sol)
 
         # Create scampref file
-        numref = len(ra_ref)
+        numref = len(astref_table)
         scampref = new_scampref()
         hduref = fits.BinTableHDU.from_columns(scampref[2].columns, nrows=numref)
-        hduref.data.field('X_WORLD')[:] = ra_ref
-        hduref.data.field('Y_WORLD')[:] = dec_ref
+        hduref.data.field('X_WORLD')[:] = astref_table['ra']
+        hduref.data.field('Y_WORLD')[:] = astref_table['dec']
         hduref.data.field('ERRA_WORLD')[:] = np.zeros(numref) + 1./3600.
         hduref.data.field('ERRB_WORLD')[:] = np.zeros(numref) + 1./3600.
-        hduref.data.field('MAG')[:] = mag_ref
+        hduref.data.field('MAG')[:] = astref_table['mag']
         hduref.data.field('MAGERR')[:] = np.zeros(numref) + 0.1
         hduref.data.field('OBSDATE')[:] = np.zeros(numref) + 2000.
         scampref[2].data = hduref.data
@@ -2437,20 +2464,15 @@ class SolveProcess:
                                     '{}.head'.format(basefn_solution))
         head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
                                          endcard=False, padding=False))
+        header_scamp = head
 
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
-        w = wcs.WCS(head)
-        xr,yr = w.wcs_world2pix(ra_ref, dec_ref, 1)
-
-        coords_plate = np.empty((num_astrom_sources, 2))
-        coords_plate[:,0] = self.astrom_sources['x_source']
-        coords_plate[:,1] = self.astrom_sources['y_source']
-
-        coords_ref = np.empty((len(xr), 2))
-        coords_ref[:,0] = xr
-        coords_ref[:,1] = yr
-
+        w = wcs.WCS(header_scamp)
+        xr,yr = w.wcs_world2pix(astref_table['ra'], astref_table['dec'], 1)
+        coords_ref = np.vstack((xr, yr)).T
+        coords_plate = np.vstack((self.astrom_sources['x_source'],
+                                  self.astrom_sources['y_source'])).T
         kdt = KDT(coords_ref)
         ds,ind_ref = kdt.query(coords_plate, k=1)
         indmask = ds > 5.
@@ -2460,9 +2482,9 @@ class SolveProcess:
         t = Table()
         t['x_ref'] = xr
         t['y_ref'] = yr
-        t['ra_ref'] = ra_ref
-        t['dec_ref'] = dec_ref
-        t['mag_ref'] = mag_ref
+        t['ra_ref'] = astref_table['ra']
+        t['dec_ref'] = astref_table['dec']
+        t['mag_ref'] = astref_table['mag']
         fn_out = os.path.join(self.scratch_dir, '{}_ref.fits'.format(basefn_solution))
         t.write(fn_out, format='fits')
 
@@ -2476,118 +2498,6 @@ class SolveProcess:
         t['dist'] = ds[ind_xmatch]
         fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
         t.write(fn_out, format='fits')
-
-        #----------------------
-
-        # Calculate difference between scan coordinates and reference coordinates
-        # along the scan direction, then fit a smooth curve to get the wobble pattern
-
-        ys = t['y_source']
-        dy = t['y_source'] - t['y_ref']
-
-        # Make sure that lowess fraction includes at least 10 stars
-        if len(ys) > 200:
-            frac = 0.05
-        else:
-            frac = 10. / len(ys)
-
-        z = sm.nonparametric.lowess(dy, ys, frac=frac, it=3, 
-                                    return_sorted=True)
-        s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
-
-        # Apply correction to source coordinates
-        fn_scampcat = os.path.join(self.scratch_dir, 
-                                   '{}.cat'.format(basefn_solution))
-        cat = fits.open(fn_scampcat)
-        y_image = cat[2].data['Y_IMAGE']
-        dy_image = s(y_image)
-        cat[2].data['Y_IMAGE'] = y_image - dy_image
-        fn_scampcat = os.path.join(self.scratch_dir, 
-                                   '{}-dewobbled.cat'.format(basefn_solution))
-        cat.writeto(fn_scampcat)
- 
-        # Write SCAMP header to .ahead file
-        fn_ahead = os.path.join(self.scratch_dir, 
-                                '{}-dewobbled.ahead'.format(basefn_solution))
-        head.totextfile(fn_ahead, endcard=True, overwrite=True)
-
-        # Run SCAMP again on dewobbled pixel coordinates
-        cmd = self.scamp_path
-        cmd += ' -c {}_scamp.conf {}-dewobbled.cat'.format(self.basefn, basefn_solution)
-        cmd += ' -ASTREF_CATALOG FILE'
-        cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
-        cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
-        cmd += ' -ASTREFERR_KEYS ERRA_WORLD,ERRB_WORLD,ERRTHETA_WORLD'
-        cmd += ' -ASTREFMAG_KEY MAG'
-        cmd += ' -ASTRCLIP_NSIGMA 1.5'
-        cmd += ' -FLAGS_MASK 0x00ff'
-        cmd += ' -SN_THRESHOLDS 20.0,100.0'
-        cmd += ' -MATCH N'
-        cmd += ' -CROSSID_RADIUS {:.2f}'.format(3.)
-        cmd += ' -DISTORT_DEGREES 3'
-        cmd += ' -PROJECTION_TYPE TPV'
-        cmd += ' -STABILITY_TYPE EXPOSURE'
-        cmd += ' -SOLVE_PHOTOM N'
-        cmd += ' -WRITE_XML Y'
-        cmd += ' -XML_NAME scamp.xml'
-        cmd += ' -VERBOSE_TYPE LOG'
-        cmd += ' -CHECKPLOT_TYPE NONE'
-        self.log.write('Subprocess: {}'.format(cmd))
-        sp.call(cmd, shell=True, stdout=self.log.handle, 
-                stderr=self.log.handle, cwd=self.scratch_dir)
-
-        # Read SCAMP solution
-        head = fits.PrimaryHDU().header
-        head.set('NAXIS', 2)
-        head.set('NAXIS1', self.imwidth)
-        head.set('NAXIS2', self.imheight)
-        head.set('IMAGEW', self.imwidth)
-        head.set('IMAGEH', self.imheight)
-        fn_scamphead = os.path.join(self.scratch_dir, 
-                                    '{}-dewobbled.head'.format(basefn_solution))
-        head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
-                                         endcard=False, padding=False))
-
-        # Crossmatch sources with rerefence stars and throw out
-        # stars that matched
-        w = wcs.WCS(head)
-        xr,yr = w.wcs_world2pix(ra_ref, dec_ref, 1)
-
-        coords_plate = np.empty((num_astrom_sources, 2))
-        coords_plate[:,0] = self.astrom_sources['x_source']
-        coords_plate[:,1] = self.astrom_sources['y_source']
-
-        coords_ref = np.empty((len(xr), 2))
-        coords_ref[:,0] = xr
-        coords_ref[:,1] = yr
-
-        kdt = KDT(coords_ref)
-        ds,ind_ref = kdt.query(coords_plate, k=1)
-        indmask = ds > 5.
-        ind_plate = np.arange(num_astrom_sources)
-
-        # Output reference stars for debugging
-        t = Table()
-        t['x_ref'] = xr
-        t['y_ref'] = yr
-        t['ra_ref'] = ra_ref
-        t['dec_ref'] = dec_ref
-        t['mag_ref'] = mag_ref
-        fn_out = os.path.join(self.scratch_dir, '{}_ref2.fits'.format(basefn_solution))
-        t.write(fn_out, format='fits')
-
-        # Output crossmatched stars for debugging
-        t = Table()
-        ind_xmatch = ds <= 5.
-        t['x_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['x_source']
-        t['y_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['y_source']
-        t['x_ref'] = xr[ind_ref[ind_xmatch]]
-        t['y_ref'] = yr[ind_ref[ind_xmatch]]
-        t['dist'] = ds[ind_xmatch]
-        fn_out = os.path.join(self.scratch_dir, '{}_xmatch2.fits'.format(basefn_solution))
-        t.write(fn_out, format='fits')
-
-        #----------------------
 
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
@@ -2774,7 +2684,8 @@ class SolveProcess:
             ('scp_on_plate', self.scp_on_plate),
             ('stc_box', stc_box),
             ('stc_polygon', stc_polygon),
-            ('wcs', wcshead_strip)
+            ('wcs', wcshead_strip),
+            ('header_scamp', header_scamp)
         ])
 
         self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
@@ -2816,7 +2727,225 @@ class SolveProcess:
                 self.min_ra = min_above180
                 self.max_ra = max_below180
 
-        return solution
+        return solution, astref_table
+
+    def improve_astrometric_solutions(self, distort=None):
+        """
+        Improve astrometric solution based on a list of sources and
+        reference sources.
+
+        Parameters
+        ----------
+        distort : int
+            Distortion order for improved solution (default: 3)
+
+        """
+
+        self.log.write('Improving astrometric solutions', level=3, event=32)
+
+        if self.num_solutions < 1:
+            self.log.write('No astrometric solutions to improve!', level=2, event=32)
+            return
+
+        if distort is None:
+            distort = self.distort
+
+        # Create array for xy coordinates of reference stars
+        coords_ref = np.zeros((0,2))
+
+        # Create lists for xy coordinates of reference stars, 
+        # separate for each solution
+        x_ref_list = []
+        y_ref_list = []
+
+        # Go through solutions and build a list of reference stars
+        for i in np.arange(self.num_solutions):
+            solution = self.solutions[i]
+            astref_table = self.astref_tables[i]
+
+            w = wcs.WCS(solution['header_scamp'])
+            xr,yr = w.all_world2pix(astref_table['ra'], 
+                                    astref_table['dec'], 1)
+            mask_valid = ((xr > 0) & (xr < self.imwidth) & 
+                          (yr > 0) & (yr < self.imheight))
+            num_valid = mask_valid.sum()
+
+            if num_valid > 0:
+                add_ref = np.vstack((xr[mask_valid], yr[mask_valid])).T
+                coords_ref = np.append(coords_ref, add_ref, axis=0)
+                x_ref_list.append(xr[mask_valid])
+                y_ref_list.append(yr[mask_valid])
+            else:
+                x_ref_list.append(np.array([]))
+                y_ref_list.append(np.array([]))
+
+        if len(coords_ref) <= 10:
+            self.log.write('Too few astrometric reference stars: '
+                           '{:d}'.format(len(coords_ref)), level=2, event=32)
+            return
+
+        # Exclude reference stars that have close neighbours either
+        # naturally or due to other solution
+        kdt = KDT(coords_ref)
+        ds,ind = kdt.query(coords_ref, k=2)
+        mask_isolated = ds[:,1] > 5
+        num_isolated = mask_isolated.sum()
+
+        num_excluded = (ds[:,1] <= 5).sum()
+        self.log.write('Excluded {:d} reference stars due to close neighbors, '
+                       '{:d} stars remained.'
+                       ''.format(num_excluded, num_isolated), level=4, event=32)
+
+        if num_isolated <= 10:
+            self.log.write('Too few isolated astrometric reference stars: '
+                           '{:d}'.format(num_isolated), level=2, event=32)
+            return
+
+        coords_ref = coords_ref[mask_isolated]
+
+        # Output reference stars for debugging
+        t = Table()
+        t['x_ref'] = coords_ref[:,0]
+        t['y_ref'] = coords_ref[:,1]
+        fn_out = os.path.join(self.scratch_dir, '{}_ref_all.fits'.format(self.basefn))
+        t.write(fn_out, format='fits')
+
+        # Take clean sources from annular bins 1-8
+        mask_bins = ((self.sources['annular_bin'] < 9) & 
+                     (self.sources['flag_clean'] == 1))
+
+        if mask_bins.sum() <= 10:
+            self.log.write('Too few clean sources in annular bins 1--8: '
+                           '{:d}'.format(num_isolated), level=2, event=32)
+            return
+
+        coords_plate = np.vstack((self.sources[mask_bins]['x_source'],
+                                  self.sources[mask_bins]['y_source'])).T
+        ind_sources = np.arange(self.num_sources)[mask_bins]
+
+        # Exclude sources that have close neighbours
+        kdt = KDT(coords_plate)
+        ds,ind = kdt.query(coords_plate, k=2)
+        mask_isolated = ds[:,1] > 5
+        num_isolated = mask_isolated.sum()
+
+        if num_isolated <= 10:
+            self.log.write('Too few isolated sources in annular bins 1--8: '
+                           '{:d}'.format(num_isolated), level=2, event=32)
+            return
+
+        coords_plate = coords_plate[mask_isolated]
+        ind_sources = ind_sources[mask_isolated]
+
+        # Crossmatch sources and reference stars
+        ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, coords_ref)
+        ind_sources = ind_sources[ind_plate]
+
+        # Find scanner pattern and get pattern-subtracted coordinates
+        res = self.find_scanner_pattern(coords_plate[ind_plate][:,0], 
+                                        coords_plate[ind_plate][:,1],
+                                        coords_ref[ind_ref][:,0],
+                                        coords_ref[ind_ref][:,1])
+
+        x_dewobbled = res[0]
+        y_dewobbled = res[1]
+        nsrc = len(x_dewobbled)
+
+        # Go through individual solutions and improve them by
+        # running SCAMP
+        for i in np.arange(self.num_solutions):
+            solution = self.solutions[i]
+            astref_table = self.astref_tables[i]
+            x_ref = x_ref_list[i]
+            y_ref = y_ref_list[i]
+            basefn_solution = '{}-{:02d}'.format(self.basefn, i+1)
+
+            fn_scampcat = os.path.join(self.scratch_dir, 
+                                       '{}.cat'.format(basefn_solution))
+            cat = fits.open(fn_scampcat)
+            scampdata = fits.BinTableHDU.from_columns(cat[2].columns,
+                                                      nrows=nsrc).data
+            scampdata.field('X_IMAGE')[:] = x_dewobbled
+            scampdata.field('Y_IMAGE')[:] = y_dewobbled
+            scampdata.field('ERR_A')[:] = self.sources[ind_sources]['erra_source']
+            scampdata.field('ERR_B')[:] = self.sources[ind_sources]['errb_source']
+            scampdata.field('FLUX')[:] = self.sources[ind_sources]['flux_auto']
+            scampdata.field('FLUX_ERR')[:] = self.sources[ind_sources]['fluxerr_auto']
+            scampdata.field('FLAGS')[:] = self.sources[ind_sources]['sextractor_flags']
+            cat[2].data = scampdata
+
+            fn_scampcat = os.path.join(self.scratch_dir, 
+                                       '{}-dewobbled.cat'.format(basefn_solution))
+            cat.writeto(fn_scampcat)
+ 
+            # Write SCAMP header to .ahead file
+            fn_ahead = os.path.join(self.scratch_dir, 
+                                    '{}-dewobbled.ahead'.format(basefn_solution))
+            head = solution['header_scamp']
+            head.totextfile(fn_ahead, endcard=True, overwrite=True)
+
+            # Use crossid radius of 3 pixels and transform it to arcsec scale
+            crossid_radius = 3. * solution['pixel_scale']
+
+            # Run SCAMP again on dewobbled pixel coordinates
+            cmd = self.scamp_path
+            cmd += ' -c {}_scamp.conf {}-dewobbled.cat'.format(self.basefn, basefn_solution)
+            cmd += ' -ASTREF_CATALOG FILE'
+            cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
+            cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
+            cmd += ' -ASTREFERR_KEYS ERRA_WORLD,ERRB_WORLD,ERRTHETA_WORLD'
+            cmd += ' -ASTREFMAG_KEY MAG'
+            cmd += ' -ASTRCLIP_NSIGMA 1.5'
+            cmd += ' -FLAGS_MASK 0x00ff'
+            cmd += ' -SN_THRESHOLDS 20.0,100.0'
+            cmd += ' -MATCH N'
+            cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius)
+            cmd += ' -DISTORT_DEGREES {:d}'.format(distort)
+            cmd += ' -PROJECTION_TYPE TPV'
+            cmd += ' -STABILITY_TYPE EXPOSURE'
+            cmd += ' -SOLVE_PHOTOM N'
+            cmd += ' -WRITE_XML Y'
+            cmd += ' -XML_NAME scamp.xml'
+            cmd += ' -VERBOSE_TYPE LOG'
+            cmd += ' -CHECKPLOT_TYPE NONE'
+            self.log.write('Subprocess: {}'.format(cmd))
+            sp.call(cmd, shell=True, stdout=self.log.handle, 
+                    stderr=self.log.handle, cwd=self.scratch_dir)
+
+            # Read SCAMP solution
+            head = fits.PrimaryHDU().header
+            head.set('NAXIS', 2)
+            head.set('NAXIS1', self.imwidth)
+            head.set('NAXIS2', self.imheight)
+            head.set('IMAGEW', self.imwidth)
+            head.set('IMAGEH', self.imheight)
+            fn_scamphead = os.path.join(self.scratch_dir, 
+                                        '{}-dewobbled.head'.format(basefn_solution))
+            head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
+                                             endcard=False, padding=False))
+
+            # Crossmatch sources with rerefence stars
+            w = wcs.WCS(head)
+            xr,yr = w.wcs_world2pix(astref_table['ra'], 
+                                    astref_table['dec'], 1)
+
+            coords_plate = np.vstack((x_dewobbled, y_dewobbled)).T
+            coords_ref = np.vstack((xr, yr)).T
+
+            kdt = KDT(coords_ref)
+            ds,ind_ref = kdt.query(coords_plate, k=1)
+            mask_xmatch = ds <= crossid_radius
+            ind_plate = np.arange(len(coords_plate))
+
+            # Output crossmatched stars for debugging
+            t = Table()
+            t['x_source'] = x_dewobbled[ind_plate[mask_xmatch]]
+            t['y_source'] = y_dewobbled[ind_plate[mask_xmatch]]
+            t['x_ref'] = xr[ind_ref[mask_xmatch]]
+            t['y_ref'] = yr[ind_ref[mask_xmatch]]
+            t['dist'] = ds[mask_xmatch]
+            fn_out = os.path.join(self.scratch_dir, '{}_xmatch2.fits'.format(basefn_solution))
+            t.write(fn_out, format='fits')
 
     def output_solution_db(self):
         """
@@ -2901,7 +3030,13 @@ class SolveProcess:
             self.log.write('Fetched {:d} entries from Gaia DR2'
                            ''.format(numref))
 
-            return (ra_ref[bref], dec_ref[bref], tab[bref]['phot_g_mean_mag'])
+            # Construct table for return
+            astref_table = Table()
+            astref_table['ra'] = ra_ref[bref]
+            astref_table['dec'] = dec_ref[bref]
+            astref_table['mag'] = tab[bref]['phot_g_mean_mag']
+
+            return astref_table
 
         # Read the Tycho-2 catalogue
         if self.use_tycho2_fits:
@@ -2937,9 +3072,15 @@ class SolveProcess:
             self.log.write('Fetched {:d} entries from Tycho-2'
                            ''.format(numtyc))
 
-            return (tycho2[btyc]['_RAJ2000'], 
-                    tycho2[btyc]['_DEJ2000'], 
-                    tycho2[btyc]['BTmag'])
+            # Construct table for return
+            astref_table = Table()
+            astref_table['ra'] = ra_tyc[btyc]
+            astref_table['dec'] = dec_tyc[btyc]
+            astref_table['mag'] = tycho2[btyc]['BTmag']
+
+            return astref_table
+
+        return None
 
     def get_reference_catalogs(self):
         """
@@ -3347,7 +3488,7 @@ class SolveProcess:
                        level=4, event=50)
 
         if distort is None:
-            distort = self.distort
+            distort = self.subfield_distort
 
         if skip_bright is None:
             skip_bright = self.skip_bright
