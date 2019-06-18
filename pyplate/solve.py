@@ -1919,14 +1919,31 @@ class SolveProcess:
 
         #xycat.writeto(fnxy)
 
-    def crossmatch_cartesian(self, x_image, y_image, x_ref, y_ref):
+    def crossmatch_cartesian(self, x_image, y_image, x_ref, y_ref, 
+                             tolerance=None):
         """
         Crossmatch source coordinates with reference-star coordinates.
+
+        Parameters
+        ----------
+        x_image : scalar or array-like
+            The x coordinates of points to match
+        y_image : scalar or array-like
+            The y coordinates of points to match
+        x_ref : scalar or array-like
+            The x coordinates of reference points to match
+        y_ref : scalar or array-like
+            The y coordinates of reference points to match
+        tolerance : float
+            Crossmatch distance in pixels (default: 5)
 
         """
 
         assert len(x_image) == len(y_image), 'x_image and y_image must have the same length'
         assert len(x_ref) == len(y_ref), 'x_ref and y_ref must have the same length'
+
+        if tolerance is None:
+            tolerance = 5.
 
         coords_plate = np.empty((len(x_image), 2))
         coords_plate[:,0] = x_image
@@ -1938,7 +1955,7 @@ class SolveProcess:
 
         kdt = KDT(coords_ref)
         ds,ind_ref = kdt.query(coords_plate, k=1)
-        mask_xmatch = ds < 5.
+        mask_xmatch = ds < tolerance
         ind_plate = np.arange(len(x_image))
 
         return ind_plate[mask_xmatch], ind_ref[mask_xmatch]
@@ -1950,12 +1967,24 @@ class SolveProcess:
         coordinates and reference coordinates along that axis.
         Return corrected image coordinates.
 
+        Parameters
+        ----------
+        x_image : array-like
+            The x coordinates of sources
+        y_image : array-like
+            The y coordinates of sources
+        x_ref : array-like
+            The x coordinates of reference stars
+        y_ref : array-like
+            The y coordinates of reference stars
+
         """
 
         # All input arrays must have the same length
         assert len(x_image) == len(y_image), 'x_image and y_image must have the same length'
         assert len(x_ref) == len(y_ref), 'x_ref and y_ref must have the same length'
         assert len(x_image) == len(x_ref), 'x_image and x_ref must have the same length'
+        assert len(x_image) > 10, 'Number of sources must be larger than 10'
 
         # Calculate differences
         dx = x_image - x_ref
