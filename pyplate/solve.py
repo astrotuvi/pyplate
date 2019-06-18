@@ -2373,6 +2373,7 @@ class SolveProcess:
         sol['max_dec'] = max_dec
         sol['ncp_close'] = ncp_close
         sol['scp_close'] = scp_close
+        sol['header_astrometry'] = wcshead
         self.sol = sol
         astref_table = self.get_reference_stars_for_solution(sol)
 
@@ -2763,18 +2764,14 @@ class SolveProcess:
             solution = self.solutions[i]
             astref_table = self.astref_tables[i]
 
-            w = wcs.WCS(solution['header_scamp'])
-            xr,yr = w.all_world2pix(astref_table['ra'], 
-                                    astref_table['dec'], 1)
-            mask_valid = ((xr > 0) & (xr < self.imwidth) & 
-                          (yr > 0) & (yr < self.imheight))
-            num_valid = mask_valid.sum()
-
-            if num_valid > 0:
-                add_ref = np.vstack((xr[mask_valid], yr[mask_valid])).T
+            if len(astref_table) > 0:
+                w = wcs.WCS(solution['header_scamp'])
+                xr,yr = w.all_world2pix(astref_table['ra'], 
+                                        astref_table['dec'], 1)
+                add_ref = np.vstack((xr, yr)).T
                 coords_ref = np.append(coords_ref, add_ref, axis=0)
-                x_ref_list.append(xr[mask_valid])
-                y_ref_list.append(yr[mask_valid])
+                x_ref_list.append(xr)
+                y_ref_list.append(yr)
             else:
                 x_ref_list.append(np.array([]))
                 y_ref_list.append(np.array([]))
@@ -3025,16 +3022,25 @@ class SolveProcess:
             c = SkyCoord(solution['raj2000']*units.deg, 
                          solution['dej2000']*units.deg, frame='icrs')
             dist = catalog.separation(c)
-            bref = dist < solution['half_diag']*units.deg
-            numref = bref.sum()
+            mask_dist = dist < solution['half_diag']*units.deg
+            ind = np.arange(len(tab))[mask_dist]
+
+            # Check which stars fall inside image area
+            w = wcs.WCS(solution['header_astrometry'])
+            xr,yr = w.all_world2pix(ra_ref[mask_dist], dec_ref[mask_dist], 1)
+            mask_inside = ((xr > 0) & (xr < self.imwidth) & 
+                           (yr > 0) & (yr < self.imheight))
+            ind_ref = ind[mask_inside]
+
+            numref = mask_inside.sum()
             self.log.write('Fetched {:d} entries from Gaia DR2'
                            ''.format(numref))
 
             # Construct table for return
             astref_table = Table()
-            astref_table['ra'] = ra_ref[bref]
-            astref_table['dec'] = dec_ref[bref]
-            astref_table['mag'] = tab[bref]['phot_g_mean_mag']
+            astref_table['ra'] = ra_ref[ind_ref]
+            astref_table['dec'] = dec_ref[ind_ref]
+            astref_table['mag'] = tab[ind_ref]['phot_g_mean_mag']
 
             return astref_table
 
@@ -3067,16 +3073,25 @@ class SolveProcess:
             c = SkyCoord(solution['raj2000']*units.deg, 
                          solution['dej2000']*units.deg, frame='icrs')
             dist = catalog.separation(c)
-            btyc = dist < solution['half_diag']*units.deg
-            numtyc = btyc.sum()
+            mask_dist = dist < solution['half_diag']*units.deg
+            ind = np.arange(len(tycho2))[mask_dist]
+
+            # Check which stars fall inside image area
+            w = wcs.WCS(solution['header_astrometry'])
+            xr,yr = w.all_world2pix(ra_tyc[mask_dist], dec_tyc[mask_dist], 1)
+            mask_inside = ((xr > 0) & (xr < self.imwidth) & 
+                           (yr > 0) & (yr < self.imheight))
+            ind_ref = ind[mask_inside]
+
+            numtyc = mask_inside.sum()
             self.log.write('Fetched {:d} entries from Tycho-2'
                            ''.format(numtyc))
 
             # Construct table for return
             astref_table = Table()
-            astref_table['ra'] = ra_tyc[btyc]
-            astref_table['dec'] = dec_tyc[btyc]
-            astref_table['mag'] = tycho2[btyc]['BTmag']
+            astref_table['ra'] = ra_tyc[ind_ref]
+            astref_table['dec'] = dec_tyc[ind_ref]
+            astref_table['mag'] = tycho2[ind_ref]['BTmag']
 
             return astref_table
 
