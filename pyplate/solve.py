@@ -2768,10 +2768,17 @@ class SolveProcess:
                 w = wcs.WCS(solution['header_scamp'])
                 xr,yr = w.all_world2pix(astref_table['ra'], 
                                         astref_table['dec'], 1)
-                add_ref = np.vstack((xr, yr)).T
+                xy_ref = np.vstack((xr, yr)).T
+
+                # Include only isolated reference stars
+                kdt = KDT(xy_ref)
+                ds,ind = kdt.query(xy_ref, k=2)
+                mask_isolated = ds[:,1] > 5
+                num_isolated = mask_isolated.sum()
+                add_ref = xy_ref[mask_isolated]
                 coords_ref = np.append(coords_ref, add_ref, axis=0)
-                x_ref_list.append(xr)
-                y_ref_list.append(yr)
+                x_ref_list.append(add_ref[:,0])
+                y_ref_list.append(add_ref[:,1])
             else:
                 x_ref_list.append(np.array([]))
                 y_ref_list.append(np.array([]))
@@ -2789,7 +2796,7 @@ class SolveProcess:
         num_isolated = mask_isolated.sum()
 
         num_excluded = (ds[:,1] <= 5).sum()
-        self.log.write('Excluded {:d} reference stars due to close neighbors, '
+        self.log.write('Excluded {:d} reference stars due to close neighbours, '
                        '{:d} stars remained.'
                        ''.format(num_excluded, num_isolated), level=4, event=32)
 
