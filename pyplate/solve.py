@@ -2318,19 +2318,19 @@ class SolveProcess:
         sol['ncp_close'] = ncp_close
         sol['scp_close'] = scp_close
         self.sol = sol
-        ra_tyc,dec_tyc,mag_tyc = self.get_reference_stars_for_solution(sol)
+        ra_ref,dec_ref,mag_ref = self.get_reference_stars_for_solution(sol)
 
         # Create scampref file
-        numtyc = len(ra_tyc)
+        numref = len(ra_ref)
         scampref = new_scampref()
-        hduref = fits.BinTableHDU.from_columns(scampref[2].columns, nrows=numtyc)
-        hduref.data.field('X_WORLD')[:] = ra_tyc
-        hduref.data.field('Y_WORLD')[:] = dec_tyc
-        hduref.data.field('ERRA_WORLD')[:] = np.zeros(numtyc) + 1./3600.
-        hduref.data.field('ERRB_WORLD')[:] = np.zeros(numtyc) + 1./3600.
-        hduref.data.field('MAG')[:] = mag_tyc
-        hduref.data.field('MAGERR')[:] = np.zeros(numtyc) + 0.1
-        hduref.data.field('OBSDATE')[:] = np.zeros(numtyc) + 2000.
+        hduref = fits.BinTableHDU.from_columns(scampref[2].columns, nrows=numref)
+        hduref.data.field('X_WORLD')[:] = ra_ref
+        hduref.data.field('Y_WORLD')[:] = dec_ref
+        hduref.data.field('ERRA_WORLD')[:] = np.zeros(numref) + 1./3600.
+        hduref.data.field('ERRB_WORLD')[:] = np.zeros(numref) + 1./3600.
+        hduref.data.field('MAG')[:] = mag_ref
+        hduref.data.field('MAGERR')[:] = np.zeros(numref) + 0.1
+        hduref.data.field('OBSDATE')[:] = np.zeros(numref) + 2000.
         scampref[2].data = hduref.data
         scampref_file = os.path.join(self.scratch_dir, 
                                      '{}_scampref.cat'.format(basefn_solution))
@@ -2412,7 +2412,7 @@ class SolveProcess:
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
         w = wcs.WCS(head)
-        xr,yr = w.wcs_world2pix(ra_tyc, dec_tyc, 1)
+        xr,yr = w.wcs_world2pix(ra_ref, dec_ref, 1)
 
         coords_plate = np.empty((num_astrom_sources, 2))
         coords_plate[:,0] = self.astrom_sources['x_source']
@@ -2431,10 +2431,10 @@ class SolveProcess:
         t = Table()
         t['x_ref'] = xr
         t['y_ref'] = yr
-        t['ra_tyc'] = ra_tyc
-        t['dec_tyc'] = dec_tyc
-        t['mag_tyc'] = mag_tyc
-        fn_out = os.path.join(self.scratch_dir, '{}_tycho.fits'.format(basefn_solution))
+        t['ra_ref'] = ra_ref
+        t['dec_ref'] = dec_ref
+        t['mag_ref'] = mag_ref
+        fn_out = os.path.join(self.scratch_dir, '{}_ref.fits'.format(basefn_solution))
         t.write(fn_out, format='fits')
 
         # Output crossmatched stars for debugging
@@ -2522,7 +2522,7 @@ class SolveProcess:
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
         w = wcs.WCS(head)
-        xr,yr = w.wcs_world2pix(ra_tyc, dec_tyc, 1)
+        xr,yr = w.wcs_world2pix(ra_ref, dec_ref, 1)
 
         coords_plate = np.empty((num_astrom_sources, 2))
         coords_plate[:,0] = self.astrom_sources['x_source']
@@ -2541,10 +2541,10 @@ class SolveProcess:
         t = Table()
         t['x_ref'] = xr
         t['y_ref'] = yr
-        t['ra_tyc'] = ra_tyc
-        t['dec_tyc'] = dec_tyc
-        t['mag_tyc'] = mag_tyc
-        fn_out = os.path.join(self.scratch_dir, '{}_tycho2.fits'.format(basefn_solution))
+        t['ra_ref'] = ra_ref
+        t['dec_ref'] = dec_ref
+        t['mag_ref'] = mag_ref
+        fn_out = os.path.join(self.scratch_dir, '{}_ref2.fits'.format(basefn_solution))
         t.write(fn_out, format='fits')
 
         # Output crossmatched stars for debugging
