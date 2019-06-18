@@ -2855,6 +2855,27 @@ class SolveProcess:
         y_dewobbled = res[1]
         nsrc = len(x_dewobbled)
 
+        # Calculate scanner pattern and output to file
+        xx = np.append(np.arange(0, self.imwidth, 100), self.imwidth)
+        yy = np.append(np.arange(0, self.imheight, 100), self.imheight)
+        xx_pattern = res[2](xx)
+        yy_pattern = res[3](yy)
+
+        t = Table()
+        t['x'] = xx
+        t['x_pattern'] = xx_pattern
+        fn_out = os.path.join(self.scratch_dir, '{}_pattern_x.fits'.format(self.basefn))
+        t.write(fn_out, format='fits')
+
+        t = Table()
+        t['y'] = yy
+        t['y_pattern'] = yy_pattern
+        fn_out = os.path.join(self.scratch_dir, '{}_pattern_y.fits'.format(self.basefn))
+        t.write(fn_out, format='fits')
+
+        # Create new array for xy coordinates of reference stars
+        coords_ref = np.zeros((0,2))
+
         # Go through individual solutions and improve them by
         # running SCAMP
         for i in np.arange(self.num_solutions):
@@ -2933,13 +2954,14 @@ class SolveProcess:
             xr,yr = w.wcs_world2pix(astref_table['ra'], 
                                     astref_table['dec'], 1)
 
-            coords_plate = np.vstack((x_dewobbled, y_dewobbled)).T
-            coords_ref = np.vstack((xr, yr)).T
+            coords_plate_dewobbled = np.vstack((x_dewobbled, y_dewobbled)).T
+            coords_ref_sol = np.vstack((xr, yr)).T
+            coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
 
-            kdt = KDT(coords_ref)
-            ds,ind_ref = kdt.query(coords_plate, k=1)
+            kdt = KDT(coords_ref_sol)
+            ds,ind_ref = kdt.query(coords_plate_dewobbled, k=1)
             mask_xmatch = ds <= crossid_radius
-            ind_plate = np.arange(len(coords_plate))
+            ind_plate = np.arange(len(coords_plate_dewobbled))
 
             # Output crossmatched stars for debugging
             t = Table()
@@ -2950,6 +2972,38 @@ class SolveProcess:
             t['dist'] = ds[mask_xmatch]
             fn_out = os.path.join(self.scratch_dir, '{}_xmatch2.fits'.format(basefn_solution))
             t.write(fn_out, format='fits')
+
+        # Check scanner pattern again with improved solutions
+        
+        # Crossmatch sources and reference stars
+        ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, coords_ref)
+
+        # Find scanner pattern and get pattern-subtracted coordinates
+        res = self.find_scanner_pattern(coords_plate[ind_plate][:,0], 
+                                        coords_plate[ind_plate][:,1],
+                                        coords_ref[ind_ref][:,0],
+                                        coords_ref[ind_ref][:,1])
+
+        x_dewobbled = res[0]
+        y_dewobbled = res[1]
+
+        # Calculate scanner pattern and output to file
+        xx = np.append(np.arange(0, self.imwidth, 100), self.imwidth)
+        yy = np.append(np.arange(0, self.imheight, 100), self.imheight)
+        xx_pattern = res[2](xx)
+        yy_pattern = res[3](yy)
+
+        t = Table()
+        t['x'] = xx
+        t['x_pattern'] = xx_pattern
+        fn_out = os.path.join(self.scratch_dir, '{}_pattern2_x.fits'.format(self.basefn))
+        t.write(fn_out, format='fits')
+
+        t = Table()
+        t['y'] = yy
+        t['y_pattern'] = yy_pattern
+        fn_out = os.path.join(self.scratch_dir, '{}_pattern2_y.fits'.format(self.basefn))
+        t.write(fn_out, format='fits')
 
     def output_solution_db(self):
         """
