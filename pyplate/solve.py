@@ -2042,10 +2042,10 @@ class SolveProcess:
 
         y_range = np.max(y_image) - np.min(y_image)
         x_range = np.max(x_image) - np.min(x_image)
-        yy = np.linspace(np.min(y_image) + 0.1 * y_range, 
-                         np.max(y_image) - 0.1 * y_range, 80)
-        xx = np.linspace(np.min(x_image) + 0.1 * x_range, 
-                         np.max(x_image) - 0.1 * x_range, 80)
+        yy = np.linspace(np.min(y_image) + 0.2 * y_range, 
+                         np.max(y_image) - 0.2 * y_range, 60)
+        xx = np.linspace(np.min(x_image) + 0.2 * x_range, 
+                         np.max(x_image) - 0.2 * x_range, 60)
 
         # Scanner pattern exists if the standard deviation of 
         # 80 points from the smooth curve along that axis is at least
@@ -2146,7 +2146,7 @@ class SolveProcess:
             self.num_solutions = len(self.solutions)
 
         # Improve astrometric solutions (two iterations)
-        self.improve_astrometric_solutions()
+        self.improve_astrometric_solutions(distort=3)
         self.improve_astrometric_solutions()
 
     def find_astrometric_solution(self, ref_year=None, sip=None):
@@ -2852,6 +2852,9 @@ class SolveProcess:
                                         coords_plate[ind_plate][:,1],
                                         coords_ref[ind_ref][:,0],
                                         coords_ref[ind_ref][:,1])
+
+        self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
+                       '{:.3f}'.format(res[4]), level=4, event=32)
 
         x_dewobbled = res[0]
         y_dewobbled = res[1]
