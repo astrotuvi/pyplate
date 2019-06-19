@@ -703,6 +703,7 @@ class SolveProcess:
         self.wcs_plate = None
         self.solutions = None
         self.num_solutions = 0
+        self.num_iterations = 0
         self.astref_tables = []
         self.astrom_sub = []
         self.phot_cterm = []
@@ -2144,7 +2145,8 @@ class SolveProcess:
             self.astref_tables.append(astref_table)
             self.num_solutions = len(self.solutions)
 
-        # Improve astrometric solutions
+        # Improve astrometric solutions (two iterations)
+        self.improve_astrometric_solutions()
         self.improve_astrometric_solutions()
 
     def find_astrometric_solution(self, ref_year=None, sip=None):
@@ -2812,7 +2814,7 @@ class SolveProcess:
         t['x_ref'] = coords_ref[:,0]
         t['y_ref'] = coords_ref[:,1]
         fn_out = os.path.join(self.scratch_dir, '{}_ref_all.fits'.format(self.basefn))
-        t.write(fn_out, format='fits')
+        t.write(fn_out, format='fits', overwrite=True)
 
         # Take clean sources from annular bins 1-8
         mask_bins = ((self.sources['annular_bin'] < 9) & 
@@ -2864,14 +2866,18 @@ class SolveProcess:
         t = Table()
         t['x'] = xx
         t['x_pattern'] = xx_pattern
-        fn_out = os.path.join(self.scratch_dir, '{}_pattern_x.fits'.format(self.basefn))
-        t.write(fn_out, format='fits')
+        fn_out = os.path.join(self.scratch_dir, 
+                              '{}_pattern_x_{:d}.fits'.format(self.basefn, 
+                                                              self.num_iterations+1))
+        t.write(fn_out, format='fits', overwrite=True)
 
         t = Table()
         t['y'] = yy
         t['y_pattern'] = yy_pattern
-        fn_out = os.path.join(self.scratch_dir, '{}_pattern_y.fits'.format(self.basefn))
-        t.write(fn_out, format='fits')
+        fn_out = os.path.join(self.scratch_dir, 
+                              '{}_pattern_y_{:d}.fits'.format(self.basefn,
+                                                              self.num_iterations+1))
+        t.write(fn_out, format='fits', overwrite=True)
 
         # Create new array for xy coordinates of reference stars
         coords_ref = np.zeros((0,2))
@@ -2901,7 +2907,7 @@ class SolveProcess:
 
             fn_scampcat = os.path.join(self.scratch_dir, 
                                        '{}-dewobbled.cat'.format(basefn_solution))
-            cat.writeto(fn_scampcat)
+            cat.writeto(fn_scampcat, overwrite=True)
  
             # Write SCAMP header to .ahead file
             fn_ahead = os.path.join(self.scratch_dir, 
@@ -2949,6 +2955,9 @@ class SolveProcess:
             head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
                                              endcard=False, padding=False))
 
+            # Store improved solution
+            self.solutions[i]['header_scamp'] = head
+
             # Crossmatch sources with rerefence stars
             w = wcs.WCS(head)
             xr,yr = w.wcs_world2pix(astref_table['ra'], 
@@ -2970,40 +2979,13 @@ class SolveProcess:
             t['x_ref'] = xr[ind_ref[mask_xmatch]]
             t['y_ref'] = yr[ind_ref[mask_xmatch]]
             t['dist'] = ds[mask_xmatch]
-            fn_out = os.path.join(self.scratch_dir, '{}_xmatch2.fits'.format(basefn_solution))
-            t.write(fn_out, format='fits')
+            fn_out = os.path.join(self.scratch_dir, 
+                                  '{}_xmatch2_{:d}.fits'.format(basefn_solution, 
+                                                                self.num_iterations+1))
+            t.write(fn_out, format='fits', overwrite=True)
 
-        # Check scanner pattern again with improved solutions
-        
-        # Crossmatch sources and reference stars
-        ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, coords_ref)
-
-        # Find scanner pattern and get pattern-subtracted coordinates
-        res = self.find_scanner_pattern(coords_plate[ind_plate][:,0], 
-                                        coords_plate[ind_plate][:,1],
-                                        coords_ref[ind_ref][:,0],
-                                        coords_ref[ind_ref][:,1])
-
-        x_dewobbled = res[0]
-        y_dewobbled = res[1]
-
-        # Calculate scanner pattern and output to file
-        xx = np.append(np.arange(0, self.imwidth, 100), self.imwidth)
-        yy = np.append(np.arange(0, self.imheight, 100), self.imheight)
-        xx_pattern = res[2](xx)
-        yy_pattern = res[3](yy)
-
-        t = Table()
-        t['x'] = xx
-        t['x_pattern'] = xx_pattern
-        fn_out = os.path.join(self.scratch_dir, '{}_pattern2_x.fits'.format(self.basefn))
-        t.write(fn_out, format='fits')
-
-        t = Table()
-        t['y'] = yy
-        t['y_pattern'] = yy_pattern
-        fn_out = os.path.join(self.scratch_dir, '{}_pattern2_y.fits'.format(self.basefn))
-        t.write(fn_out, format='fits')
+        # Increase iteration count
+        self.num_iterations += 1
 
     def output_solution_db(self):
         """
