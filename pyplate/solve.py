@@ -3035,10 +3035,13 @@ class SolveProcess:
                                ''.format(self.write_wcs_dir), level=4, event=36)
                 os.makedirs(self.write_wcs_dir)
 
-            fn_wcshead = os.path.join(self.write_wcs_dir, self.basefn + '.wcs')
-            self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
-                           level=4, event=36)
-            self.wcshead.tofile(fn_wcshead, overwrite=True)
+            for i in np.arange(self.num_solutions):
+                fn_wcshead = '{}-{:02d}.wcs'.format(self.basefn, i+1)
+                fn_wcshead = os.path.join(self.write_wcs_dir, fn_wcshead)
+                self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
+                               level=4, event=36)
+                wcshead = self.solutions[i]['header_scamp']
+                wcshead.tofile(fn_wcshead, overwrite=True)
 
     def get_reference_stars_for_solution(self, solution):
         """
