@@ -1020,9 +1020,6 @@ class SolveProcess:
         """
 
         # Close open FITS files
-        #if isinstance(self.xyclean, fits.HDUList):
-        #    self.xyclean.close()
-
         if isinstance(self.scampref, fits.HDUList):
             self.scampref.close()
 
@@ -1866,12 +1863,6 @@ class SolveProcess:
                     ind1 = ind1[indmask]
                     ind2 = ind2[indmask]
 
-                    #ind1,ind2,ds = pyspherematch.xymatch(self.sources['x_peak'],
-                    #                                     self.sources['y_peak'],
-                    #                                     xpeakpsf,
-                    #                                     ypeakpsf,
-                    #                                     tol=1.)
-
                     num_psf_sources = len(ind1)
                     self.log.write('Replacing x,y values from PSF photometry '
                                    'for {:d} sources'.format(num_psf_sources),
@@ -1907,20 +1898,6 @@ class SolveProcess:
                                'file {} does not exist!'.format(fn_psfcat), 
                                level=2, event=28)
                 self.db_update_process(num_psf_sources=0)
-
-        # Keep clean xy data for later use
-        #self.xyclean = xycat[1].copy()
-        #self.xyclean.data = self.xyclean.data[indclean]
-
-        #xycat[1].data = xycat[1].data[indclean]
-
-        # Output clean xy data to .xy file
-        #fnxy = os.path.join(self.scratch_dir, self.basefn + '.xy')
-
-        #if os.path.exists(fnxy):
-        #    os.remove(fnxy)
-
-        #xycat.writeto(fnxy)
 
     def crossmatch_cartesian_2d(self, x_image, y_image, x_ref, y_ref, 
                                 tolerance=None):
@@ -2130,9 +2107,18 @@ class SolveProcess:
         self.astrom_sources = self.sources[indsel]
         self.solutions = []
 
-        fnxy_short = os.path.join(self.scratch_dir, 
-                                  '{}.xy-short-00'.format(self.basefn))
-        Table(self.astrom_sources).write(fnxy_short, format='fits')
+        # Output short-listed star data to FITS file
+        xycat = Table()
+        xycat['X_IMAGE'] = self.astrom_sources['x_image']
+        xycat['Y_IMAGE'] = self.astrom_sources['y_image']
+        xycat['MAG_AUTO'] = self.astrom_sources['mag_auto']
+        xycat['FLUX'] = self.astrom_sources['flux_auto']
+        xycat['X_IMAGE'].unit = 'pixel'
+        xycat['Y_IMAGE'].unit = 'pixel'
+        xycat['MAG_AUTO'].unit = 'mag'
+        xycat['FLUX'].unit = 'count'
+        fn_xy = os.path.join(self.scratch_dir, '{}.xy'.format(self.basefn))
+        xycat.write(fn_xy, format='fits', overwrite=True)
 
         # Repeat finding astrometric solutions until none is found
         while True:
@@ -2199,43 +2185,25 @@ class SolveProcess:
             use_sources = self.astrom_sources
             num_use_sources = num_astrom_sources
 
-        # Prepare a FITS file with a list of sources and write the file to disk
-        xycat = fits.HDUList()
-        hdu = fits.PrimaryHDU()
-        xycat.append(hdu)
-
-        col1 = fits.Column(name='X_IMAGE', format='1E', unit='pixel', 
-                           disp='F11.4')
-        col2 = fits.Column(name='Y_IMAGE', format='1E', unit='pixel', 
-                           disp='F11.4')
-        col3 = fits.Column(name='MAG_AUTO', format='1E', unit='mag', 
-                           disp='F8.4')
-        col4 = fits.Column(name='FLUX', format='1E', unit='count', 
-                           disp='F12.7')
-
-        try:
-            tbl = fits.BinTableHDU.from_columns([col1, col2, col3, col4], 
-                                                nrows=num_use_sources)
-        except AttributeError:
-            tbl = fits.new_table([col1, col2, col3, col4], nrows=num_use_sources)
-
-        tbl.data.field('X_IMAGE')[:] = use_sources['x_image']
-        tbl.data.field('Y_IMAGE')[:] = use_sources['y_image']
-        tbl.data.field('MAG_AUTO')[:] = use_sources['mag_auto']
-        tbl.data.field('FLUX')[:] = use_sources['flux_auto']
-        xycat.append(tbl)
-
-        fnxy_short = os.path.join(self.scratch_dir, 
-                                  '{}.xy-short-{:02d}'.format(self.basefn, self.num_solutions+1))
-
-        if os.path.exists(fnxy_short):
-            os.remove(fnxy_short)
-
-        xycat.writeto(fnxy_short)
-
+        # Prepare filenames
         basefn_solution = '{}-{:02d}'.format(self.basefn, self.num_solutions+1)
+        fn_xy = '{}.xy'.format(basefn_solution)
         fn_match = '{}.match'.format(basefn_solution)
         fn_corr = '{}.corr'.format(basefn_solution)
+
+        # Prepare FITS file with a list of sources and write the file to disk
+        xycat = Table()
+        xycat['X_IMAGE'] = use_sources['x_image']
+        xycat['Y_IMAGE'] = use_sources['y_image']
+        xycat['MAG_AUTO'] = use_sources['mag_auto']
+        xycat['FLUX'] = use_sources['flux_auto']
+        xycat['X_IMAGE'].unit = 'pixel'
+        xycat['Y_IMAGE'].unit = 'pixel'
+        xycat['MAG_AUTO'].unit = 'mag'
+        xycat['FLUX'].unit = 'count'
+
+        fn_xy = os.path.join(self.scratch_dir, fn_xy)
+        xycat.write(fn_xy, format='fits', overwrite=True)
 
         # Write backend config file
         fconf = open(os.path.join(self.scratch_dir, 
@@ -2249,7 +2217,7 @@ class SolveProcess:
 
         # Construct the solve-field call
         cmd = self.solve_field_path
-        cmd += ' {}'.format(fnxy_short)
+        cmd += ' {}'.format(fn_xy)
         cmd += ' --width {:d}'.format(self.imwidth)
         cmd += ' --height {:d}'.format(self.imheight)
         cmd += ' --x-column X_IMAGE'
@@ -2909,12 +2877,12 @@ class SolveProcess:
             cat[2].data = scampdata
 
             fn_scampcat = os.path.join(self.scratch_dir, 
-                                       '{}-dewobbled.cat'.format(basefn_solution))
+                                       '{}_dewobbled.cat'.format(basefn_solution))
             cat.writeto(fn_scampcat, overwrite=True)
  
             # Write SCAMP header to .ahead file
             fn_ahead = os.path.join(self.scratch_dir, 
-                                    '{}-dewobbled.ahead'.format(basefn_solution))
+                                    '{}_dewobbled.ahead'.format(basefn_solution))
             head = solution['header_scamp']
             head.totextfile(fn_ahead, endcard=True, overwrite=True)
 
@@ -2923,7 +2891,7 @@ class SolveProcess:
 
             # Run SCAMP again on dewobbled pixel coordinates
             cmd = self.scamp_path
-            cmd += ' -c {}_scamp.conf {}-dewobbled.cat'.format(self.basefn, basefn_solution)
+            cmd += ' -c {}_scamp.conf {}_dewobbled.cat'.format(self.basefn, basefn_solution)
             cmd += ' -ASTREF_CATALOG FILE'
             cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
             cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
@@ -2954,7 +2922,7 @@ class SolveProcess:
             head.set('IMAGEW', self.imwidth)
             head.set('IMAGEH', self.imheight)
             fn_scamphead = os.path.join(self.scratch_dir, 
-                                        '{}-dewobbled.head'.format(basefn_solution))
+                                        '{}_dewobbled.head'.format(basefn_solution))
             head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
                                              endcard=False, padding=False))
 
