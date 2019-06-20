@@ -589,6 +589,248 @@ _source_meta = OrderedDict([
 ])
 
 
+class AstrometricSolution(OrderedDict):
+    """
+    Astrometric solution class
+
+    """
+
+    def __init__(self):
+        self.imwidth = None
+        self.imheight = None
+        self.num_sources_sixbins = None
+        self.rel_area_sixbins = None
+        self.wcshead = None
+        self.wcs = None
+        self.log = None
+
+    def populate(self):
+        self['raj2000'] = None
+        self['dej2000'] = None
+        self['raj2000_hms'] = None
+        self['dej2000_dms'] = None
+        self['fov1'] = None
+        self['fov2'] = None
+        self['half_diag'] = None
+        self['pixel_scale'] = None
+        self['source_density'] = None
+        self['cd1_1'] = None
+        self['cd1_2'] = None
+        self['cd2_1'] = None
+        self['cd2_2'] = None
+        self['rotation_angle'] = None
+        self['plate_mirrored'] = None
+        self['ncp_close'] = None
+        self['scp_close'] = None
+        self['ncp_on_plate'] = None
+        self['scp_on_plate'] = None
+        self['stc_box'] = None
+        self['stc_polygon'] = None
+        self['header_astrometry'] = None
+        self['header_scamp'] = None
+
+    def assign_conf(self, conf):
+        """
+        Parse configuration and set class attributes.
+
+        """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+            
+        self.conf = conf
+
+        try:
+            self.archive_id = conf.getint('Archive', 'archive_id')
+        except ValueError:
+            print('Error in configuration file '
+                  '([{}], {})'.format('Archive', attr))
+        except configparser.Error:
+            pass
+
+    @staticmethod
+    def strip_header_comments(header):
+        """
+        Strip comment lines from header.
+
+        """
+
+        header_strip = fits.Header()
+
+        for c in header.cards:
+            if c[0] != 'COMMENT':
+                header_strip.append(c, bottom=True)
+
+        return header_strip
+
+    def calculate_parameters(self):
+        """
+        Calculate solution-related parameters.
+
+        """
+
+        self.log.write('Calculating plate-solution related parameters', 
+                       level=4, event=31)
+
+        if self['header_scamp']:
+            self.wcshead = self['header_scamp']
+        elif self['header_astrometry']:
+            self.wcshead = self['header_astrometry']
+        else:
+            self.log.write('No solution found, cannot calculate '
+                           'solution-related parameters',
+                           level=2, event=33)
+            return
+
+        self.wcs = wcs.WCS(self.wcshead)
+        self['raj2000'] = self.wcshead['CRVAL1']
+        self['dej2000'] = self.wcshead['CRVAL2']
+        self['cd1_1'] = self.wcshead['CD1_1']
+        self['cd1_2'] = self.wcshead['CD1_2']
+        self['cd2_1'] = self.wcshead['CD2_1']
+        self['cd2_2'] = self.wcshead['CD2_2']
+
+        pix_edge_midpoints = np.array([[1., (self.imheight+1.)/2.],
+                                       [self.imwidth, (self.imheight+1.)/2.],
+                                       [(self.imwidth + 1.)/2., 1.],
+                                       [(self.imwidth + 1.)/2., self.imheight]])
+        edge_midpoints = self.wcs.all_pix2world(pix_edge_midpoints, 1)
+
+        c1 = ICRS(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1], 
+                  unit=(units.degree, units.degree))
+        c2 = ICRS(ra=edge_midpoints[1,0], dec=edge_midpoints[1,1],
+                  unit=(units.degree, units.degree))
+        c3 = ICRS(ra=edge_midpoints[2,0], dec=edge_midpoints[2,1],
+                  unit=(units.degree, units.degree))
+        c4 = ICRS(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
+                  unit=(units.degree, units.degree))
+        self['fov1'] = c1.separation(c2).degree
+        self['fov2'] = c3.separation(c4).degree
+
+        self['source_density'] = (self.num_sources_sixbins
+                                  / self.rel_area_sixbins
+                                  / (self['fov1']*self['fov2']))
+
+        pixscale1 = self['fov1'] / self.imwidth * 3600.
+        pixscale2 = self['fov2'] / self.imheight * 3600.
+        self['pixel_scale'] = np.mean([pixscale1, pixscale2])
+
+        # Check if a celestial pole is nearby or on the plate
+        self['half_diag'] = np.sqrt(self['fov1']**2 + self['fov2']**2) / 2.
+        self['ncp_close'] = 90. - self['dej2000'] <= self['half_diag']
+        self['scp_close'] = 90. + self['dej2000'] <= self['half_diag']
+        ncp_on_plate = False
+        scp_on_plate = False
+
+        if self['ncp_close']:
+            ncp_pix = self.wcs.all_world2pix([[self['raj2000'],90.]], 1)
+
+            if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth 
+                and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
+                ncp_on_plate = True
+
+        if self['scp_close']:
+            scp_pix = self.wcs.all_world2pix([[self['raj2000'],-90.]], 1)
+
+            if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth 
+                and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
+                scp_on_plate = True
+
+        self['ncp_on_plate'] = ncp_on_plate
+        self['scp_on_plate'] = scp_on_plate
+
+        # Construct coordinate strings
+        ra_angle = Angle(self['raj2000'], units.deg)
+        dec_angle = Angle(self['dej2000'], units.deg)
+
+        self['raj2000_hms'] = ra_angle.to_string(unit=units.hour, sep=':',
+                                                 precision=1, pad=True)
+        self['dej2000_dms'] = dec_angle.to_string(unit=units.deg, sep=':',
+                                                  precision=1, pad=True)
+        self['stc_box'] = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
+                           .format(self.wcshead['CRVAL1'], 
+                                   self.wcshead['CRVAL2'], 
+                                   self['fov1'], self['fov2']))
+
+        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
+                               [self.imwidth, self.imheight], 
+                               [1., self.imheight]])
+        corners = self.wcs.all_pix2world(pix_corners, 1)
+        self['stc_polygon'] = ('Polygon ICRS {:.5f} {:.5f} {:.5f} {:.5f} '
+                               '{:.5f} {:.5f} {:.5f} {:.5f}'
+                               .format(corners[0,0], corners[0,1], 
+                                       corners[1,0], corners[1,1],
+                                       corners[2,0], corners[2,1],
+                                       corners[3,0], corners[3,1]))
+
+        # Calculate plate rotation angle
+        try:
+            cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
+
+            if dec_angle.deg > 89.:
+                cn = self.wcs.wcs_world2pix([[self['raj2000'],90.]], 1)
+            else:
+                cn = self.wcs.wcs_world2pix([[self['raj2000'],
+                                              self['dej2000']+1.]], 1)
+
+            if ra_angle.deg > 359.:
+                ce = self.wcs.wcs_world2pix([[self['raj2000']-359.,
+                                              self['dej2000']]], 1)
+            else:
+                ce = self.wcs.wcs_world2pix([[self['raj2000']+1.,
+                                              self['dej2000']]], 1)
+
+            naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
+            eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
+
+            if naz < 0:
+                naz += 360.
+
+            if eaz < 0:
+                eaz += 360.
+
+            rotation_angle = naz
+            ne_angle = naz - eaz
+
+            if rotation_angle > 180:
+                rotation_angle -= 360.
+
+            if ne_angle < 0:
+                ne_angle += 360.
+
+            if ne_angle > 180:
+                plate_mirrored = True
+            else:
+                plate_mirrored = False
+        except Exception:
+            rotation_angle = None
+            plate_mirrored = None
+            self.log.write('Could not calculate plate rotation angle', 
+                           level=2, event=32)
+
+        self['rotation_angle'] = rotation_angle
+        self['plate_mirrored'] = plate_mirrored
+
+        self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
+                       ''.format(self['fov1'], self['fov2']),
+                       double_newline=False)
+        self.log.write('Mean pixel scale: {:.3f} arcsec'
+                       ''.format(self['pixel_scale']),
+                       double_newline=False)
+        self.log.write('The image has {:.0f} stars per square degree'
+                       ''.format(self['source_density']))
+        self.log.write('Plate rotation angle: {}'
+                       .format(self['rotation_angle']),
+                       double_newline=False)
+        self.log.write('Plate is mirrored: {}'.format(self['plate_mirrored']),
+                       double_newline=False)
+        self.log.write('North Celestial Pole is on the plate: {}'
+                       .format(self['ncp_on_plate']),
+                       double_newline=False)
+        self.log.write('South Celestial Pole is on the plate: {}'
+                       .format(self['scp_on_plate']))
+
+
 class SolveProcess:
     """
     Plate solve process class
@@ -686,7 +928,6 @@ class SolveProcess:
         self.num_sources = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
-        self.stars_sqdeg = None
         self.min_ra = None
         self.max_ra = None
         self.min_dec = None
@@ -2266,51 +2507,32 @@ class SolveProcess:
                 self.db_update_process(solved=0)
             return None, None
 
-        # Improve solution with SCAMP
-
+        # Read Astrometry.net solution from file
         wcshead = fits.getheader(fn_wcs)
         wcshead.set('NAXIS', 2)
         wcshead.set('NAXIS1', self.imwidth, after='NAXIS')
         wcshead.set('NAXIS2', self.imheight, after='NAXIS1')
-        ra_deg = wcshead['CRVAL1']
-        dec_deg = wcshead['CRVAL2']
-        wcs_plate = wcs.WCS(wcshead)
-        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
-                                [self.imwidth, self.imheight], 
-                                [1., self.imheight]])
-        corners = wcs_plate.all_pix2world(pix_corners, 1)
-        min_dec = corners[:,1].min()
-        max_dec = corners[:,1].max()
-        min_ra = corners[:,0].min()
-        max_ra = corners[:,0].max()
 
-        if max_ra-min_ra > 180:
-            ra_all = corners[:,0]
-            max_below180 = ra_all[np.where(ra_all<180)].max()
-            min_above180 = ra_all[np.where(ra_all>180)].min()
+        # Create AstrometricSolution instance and calculate parameters
+        solution = AstrometricSolution()
+        solution.assign_conf(self.conf)
+        solution.populate()
+        solution.imwidth = self.imwidth
+        solution.imheight = self.imheight
+        solution.num_sources_sixbins = self.num_sources_sixbins
+        solution.rel_area_sixbins = self.rel_area_sixbins
+        solution.log = self.log
 
-            if min_above180-max_below180 > 10:
-                min_ra = min_above180
-                max_ra = max_below180
+        solution['header_astrometry'] = wcshead
+        solution.calculate_parameters()
 
-        match_table = Table.read(fn_match)
-        half_diag = match_table['RADIUS'][0]
-        ncp_close = 90. - dec_deg <= half_diag
-        scp_close = 90. + dec_deg <= half_diag
+        #match_table = Table.read(fn_match)
+        #half_diag = match_table['RADIUS'][0]
 
-        sol = OrderedDict()
-        sol['raj2000'] = ra_deg
-        sol['dej2000'] = dec_deg
-        sol['half_diag'] = half_diag
-        sol['min_ra'] = min_ra
-        sol['max_ra'] = max_ra
-        sol['min_dec'] = min_dec
-        sol['max_dec'] = max_dec
-        sol['ncp_close'] = ncp_close
-        sol['scp_close'] = scp_close
-        sol['header_astrometry'] = wcshead
-        self.sol = sol
-        astref_table = self.get_reference_stars_for_solution(sol)
+        # Get reference stars
+        astref_table = self.get_reference_stars_for_solution(solution)
+
+        # Improve solution with SCAMP
 
         # Create scampref file
         numref = len(astref_table)
@@ -2400,12 +2622,16 @@ class SolveProcess:
                                     '{}.head'.format(basefn_solution))
         head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
                                          endcard=False, padding=False))
-        header_scamp = head
+
+        # Store SCAMP solution and recalculate parameters
+        solution['header_scamp'] = head
+        solution.calculate_parameters()
 
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
-        w = wcs.WCS(header_scamp)
-        xr,yr = w.wcs_world2pix(astref_table['ra'], astref_table['dec'], 1)
+        
+        w = solution.wcs
+        xr,yr = w.all_world2pix(astref_table['ra'], astref_table['dec'], 1)
         coords_ref = np.vstack((xr, yr)).T
         coords_plate = np.vstack((self.astrom_sources['x_source'],
                                   self.astrom_sources['y_source'])).T
@@ -2438,230 +2664,26 @@ class SolveProcess:
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
 
-        # Read list of sources found in the Astrometry.net index files
-        #corr_table = Table.read(fn_corr)
-
-        # Match sources in two lists (distance <= 1 px)
-        # Keep only such sources that did not match
-        #num_astrom_sources = len(self.astrom_sources)
-        #coords1 = np.empty((num_astrom_sources, 2))
-        #coords1[:,0] = self.astrom_sources['x_source']
-        #coords1[:,1] = self.astrom_sources['y_source']
-        #coords2 = np.empty((len(corr_table), 2))
-        #coords2[:,0] = corr_table['field_x']
-        #coords2[:,1] = corr_table['field_y']
-        #kdt = KDT(coords2)
-        #ds,ind2 = kdt.query(coords1)
-        #ind1 = np.arange(num_astrom_sources)
-        #indmask = ds > 1.
-        #self.astrom_sources = self.astrom_sources[ind1[indmask]]
-
-        self.log.write('Calculating plate-solution related parameters', 
-                       level=4, event=31)
-
-        # Read the .wcs file and calculate star density
-        self.wcshead = fits.getheader(fn_wcs)
-        self.wcshead.set('NAXIS', 2)
-        self.wcshead.set('NAXIS1', self.imwidth, after='NAXIS')
-        self.wcshead.set('NAXIS2', self.imheight, after='NAXIS1')
-        self.wcs_plate = wcs.WCS(self.wcshead)
-        ra_deg = self.wcshead['CRVAL1']
-        dec_deg = self.wcshead['CRVAL2']
-
-        pix_edge_midpoints = np.array([[1., (self.imheight+1.)/2.],
-                                       [self.imwidth, (self.imheight+1.)/2.],
-                                       [(self.imwidth + 1.)/2., 1.],
-                                       [(self.imwidth + 1.)/2., self.imheight]])
-        edge_midpoints = self.wcs_plate.all_pix2world(pix_edge_midpoints, 1)
-
-        c1 = ICRS(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1], 
-                  unit=(units.degree, units.degree))
-        c2 = ICRS(ra=edge_midpoints[1,0], dec=edge_midpoints[1,1],
-                  unit=(units.degree, units.degree))
-
-        if use_newangsep:
-            imwidth_deg = c1.separation(c2).degree
-        else:
-            imwidth_deg = c1.separation(c2).degrees
-
-        c3 = ICRS(ra=edge_midpoints[2,0], dec=edge_midpoints[2,1],
-                  unit=(units.degree, units.degree))
-        c4 = ICRS(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
-                  unit=(units.degree, units.degree))
-
-        if use_newangsep:
-            imheight_deg = c3.separation(c4).degree
-        else:
-            imheight_deg = c3.separation(c4).degrees
-
-        #self.stars_sqdeg = self.num_sources / (imwidth_deg * imheight_deg)
-        self.stars_sqdeg = (self.num_sources_sixbins / 
-                            (imwidth_deg*imheight_deg*self.rel_area_sixbins))
-        pixscale1 = imwidth_deg / self.imwidth * 3600.
-        pixscale2 = imheight_deg / self.imheight * 3600.
-        self.mean_pixscale = np.mean([pixscale1, pixscale2])
-
-        # Check if a celestial pole is nearby or on the plate
-        half_diag = math.sqrt(imwidth_deg**2 + imheight_deg**2) / 2.
-        self.ncp_close = 90. - dec_deg <= half_diag
-        self.scp_close = 90. + dec_deg <= half_diag
-        self.ncp_on_plate = False
-        self.scp_on_plate = False
-
-        if self.ncp_close:
-            ncp_pix = self.wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
-
-            if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth 
-                and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
-                self.ncp_on_plate = True
-
-        if self.scp_close:
-            scp_pix = self.wcs_plate.wcs_world2pix([[ra_deg,-90.]], 1)
-
-            if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth 
-                and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
-                self.scp_on_plate = True
-
-        # Construct coordinate strings
-        ra_angle = Angle(ra_deg, units.deg)
-        dec_angle = Angle(dec_deg, units.deg)
-
-        try:
-            ra_str = ra_angle.to_string(unit=units.hour, sep=':', precision=1, 
-                                        pad=True)
-            dec_str = dec_angle.to_string(unit=units.deg, sep=':', precision=1,
-                                          pad=True)
-        except AttributeError:
-            ra_str = ra_angle.format(unit='hour', sep=':', precision=1, 
-                                     pad=True)
-            dec_str = dec_angle.format(sep=':', precision=1, pad=True)
-
-        stc_box = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
-                   .format(self.wcshead['CRVAL1'], self.wcshead['CRVAL2'], 
-                           imwidth_deg, imheight_deg))
-
-        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
-                                [self.imwidth, self.imheight], 
-                                [1., self.imheight]])
-        corners = self.wcs_plate.all_pix2world(pix_corners, 1)
-        stc_polygon = ('Polygon ICRS {:.5f} {:.5f} {:.5f} {:.5f} '
-                       '{:.5f} {:.5f} {:.5f} {:.5f}'
-                       .format(corners[0,0], corners[0,1], 
-                               corners[1,0], corners[1,1],
-                               corners[2,0], corners[2,1],
-                               corners[3,0], corners[3,1]))
-
-        # Calculate plate rotation angle
-        try:
-            cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
-
-            if dec_angle.deg > 89.:
-                cn = self.wcs_plate.wcs_world2pix([[ra_deg,90.]], 1)
-            else:
-                cn = self.wcs_plate.wcs_world2pix([[ra_deg,dec_deg+1.]], 1)
-
-            if ra_angle.deg > 359.:
-                ce = self.wcs_plate.wcs_world2pix([[ra_deg-359.,dec_deg]], 1)
-            else:
-                ce = self.wcs_plate.wcs_world2pix([[ra_deg+1.,dec_deg]], 1)
-
-            naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
-            eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
-
-            if naz < 0:
-                naz += 360.
-
-            if eaz < 0:
-                eaz += 360.
-
-            rotation_angle = naz
-            ne_angle = naz - eaz
-
-            if rotation_angle > 180:
-                rotation_angle -= 360.
-
-            if ne_angle < 0:
-                ne_angle += 360.
-
-            if ne_angle > 180:
-                plate_mirrored = True
-            else:
-                plate_mirrored = False
-        except Exception:
-            rotation_angle = None
-            plate_mirrored = None
-            self.log.write('Could not calculate plate rotation angle', 
-                           level=2, event=32)
-
-        # Prepare WCS header for output
-        wcshead_strip = fits.Header()
-
-        for c in self.wcshead.cards:
-            if c[0] != 'COMMENT':
-                wcshead_strip.append(c, bottom=True)
-
-        solution = OrderedDict([
-            ('raj2000', ra_deg),
-            ('dej2000', dec_deg),
-            ('raj2000_hms', ra_str),
-            ('dej2000_dms', dec_str),
-            ('fov1', imwidth_deg),
-            ('fov2', imheight_deg),
-            ('half_diag', half_diag),
-            ('pixel_scale', self.mean_pixscale),
-            ('source_density', self.stars_sqdeg),
-            ('cd1_1', self.wcshead['CD1_1']),
-            ('cd1_2', self.wcshead['CD1_2']),
-            ('cd2_1', self.wcshead['CD2_1']),
-            ('cd2_2', self.wcshead['CD2_2']),
-            ('rotation_angle', rotation_angle),
-            ('plate_mirrored', plate_mirrored),
-            ('ncp_on_plate', self.ncp_on_plate),
-            ('scp_on_plate', self.scp_on_plate),
-            ('stc_box', stc_box),
-            ('stc_polygon', stc_polygon),
-            ('wcs', wcshead_strip),
-            ('header_scamp', header_scamp)
-        ])
-
-        self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
-                       ''.format(imwidth_deg, imheight_deg),
-                       double_newline=False)
-        self.log.write('Mean pixel scale: {:.3f} arcsec'
-                       ''.format(self.mean_pixscale),
-                       double_newline=False)
-        self.log.write('The image has {:.0f} stars per square degree'
-                       ''.format(self.stars_sqdeg))
-        self.log.write('Plate rotation angle: {}'.format(rotation_angle),
-                       double_newline=False)
-        self.log.write('Plate is mirrored: {}'.format(plate_mirrored),
-                       double_newline=False)
-        self.log.write('North Celestial Pole is on the plate: {}'
-                       ''.format(self.ncp_on_plate),
-                       double_newline=False)
-        self.log.write('South Celestial Pole is on the plate: {}'
-                       ''.format(self.scp_on_plate))
-
         # Convert x,y to RA/Dec with the global WCS solution
         pixcrd = np.column_stack((self.sources['x_source'], 
                                   self.sources['y_source']))
-        worldcrd = self.wcs_plate.all_pix2world(pixcrd, 1)
+        worldcrd = w.all_pix2world(pixcrd, 1)
         self.sources['raj2000_wcs'] = worldcrd[:,0]
         self.sources['dej2000_wcs'] = worldcrd[:,1]
 
-        self.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
-        self.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
-        self.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
-        self.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
+        #solution.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
+        #solution.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
+        #solution.min_ra = np.min((worldcrd[:,0].min(), corners[:,0].min()))
+        #solution.max_ra = np.max((worldcrd[:,0].max(), corners[:,0].max()))
 
-        if self.max_ra-self.min_ra > 180:
-            ra_all = np.append(worldcrd[:,0], corners[:,0])
-            max_below180 = ra_all[np.where(ra_all<180)].max()
-            min_above180 = ra_all[np.where(ra_all>180)].min()
+        #if solution.max_ra-solution.min_ra > 180:
+        #    ra_all = np.append(worldcrd[:,0], corners[:,0])
+        #    max_below180 = ra_all[np.where(ra_all<180)].max()
+        #    min_above180 = ra_all[np.where(ra_all>180)].min()
 
-            if min_above180-max_below180 > 10:
-                self.min_ra = min_above180
-                self.max_ra = max_below180
+        #    if min_above180-max_below180 > 10:
+        #        solution.min_ra = min_above180
+        #        solution.max_ra = max_below180
 
         return solution, astref_table
 
@@ -2889,6 +2911,7 @@ class SolveProcess:
 
             # Store improved solution
             self.solutions[i]['header_scamp'] = head
+            self.solutions[i].calculate_parameters()
 
             # Crossmatch sources with rerefence stars
             w = wcs.WCS(head)
