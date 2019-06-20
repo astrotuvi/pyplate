@@ -1899,42 +1899,6 @@ class SolveProcess:
                                level=2, event=28)
                 self.db_update_process(num_psf_sources=0)
 
-    def crossmatch_cartesian_2d(self, x_image, y_image, x_ref, y_ref, 
-                                tolerance=None):
-        """
-        Crossmatch source coordinates with reference-star coordinates.
-
-        Parameters
-        ----------
-        x_image : scalar or array-like
-            The x coordinates of points to match
-        y_image : scalar or array-like
-            The y coordinates of points to match
-        x_ref : scalar or array-like
-            The x coordinates of reference points to match
-        y_ref : scalar or array-like
-            The y coordinates of reference points to match
-        tolerance : float
-            Crossmatch distance in pixels (default: 5)
-
-        """
-
-        assert len(x_image) == len(y_image), 'x_image and y_image must have the same length'
-        assert len(x_ref) == len(y_ref), 'x_ref and y_ref must have the same length'
-
-        if tolerance is None:
-            tolerance = 5.
-
-        coords_plate = np.vstack((x_image, y_image)).T
-        coords_ref = np.vstack((x_ref, y_ref)).T
-
-        kdt = KDT(coords_ref)
-        ds,ind_ref = kdt.query(coords_plate, k=1)
-        mask_xmatch = ds < tolerance
-        ind_plate = np.arange(len(x_image))
-
-        return ind_plate[mask_xmatch], ind_ref[mask_xmatch]
-
     def crossmatch_cartesian(self, coords_image, coords_ref, 
                              tolerance=None):
         """
@@ -1961,7 +1925,7 @@ class SolveProcess:
 
         return ind_image[mask_xmatch], ind_ref[mask_xmatch]
 
-    def find_scanner_pattern(self, x_image, y_image, x_ref, y_ref):
+    def find_scanner_pattern(self, coords_image, coords_ref):
         """
         Find if there is a pattern along one axis in the scan file.
         If found, fit a smooth curve to the difference between scan
@@ -1970,22 +1934,22 @@ class SolveProcess:
 
         Parameters
         ----------
-        x_image : array-like
-            The x coordinates of sources
-        y_image : array-like
-            The y coordinates of sources
-        x_ref : array-like
-            The x coordinates of reference stars
-        y_ref : array-like
-            The y coordinates of reference stars
+        coords_image : array-like
+            The coordinates of sources
+        coords_ref : array-like
+            The coordinates of reference stars
 
         """
 
         # All input arrays must have the same length
-        assert len(x_image) == len(y_image), 'x_image and y_image must have the same length'
-        assert len(x_ref) == len(y_ref), 'x_ref and y_ref must have the same length'
-        assert len(x_image) == len(x_ref), 'x_image and x_ref must have the same length'
-        assert len(x_image) > 10, 'Number of sources must be larger than 10'
+        assert len(coords_image) == len(coords_ref), 'coords_image and coords_ref must have the same length'
+        assert len(coords_image) > 10, 'Number of sources must be larger than 10'
+
+        # Prepare 1-dimensional arrays
+        x_image = coords_image[:,0]
+        y_image = coords_image[:,1]
+        x_ref = coords_ref[:,0]
+        y_ref = coords_ref[:,1]
 
         # Calculate differences
         dx = x_image - x_ref
@@ -2025,16 +1989,16 @@ class SolveProcess:
                          np.max(x_image) - 0.2 * x_range, 60)
 
         # Scanner pattern exists if the standard deviation of 
-        # 80 points from the smooth curve along that axis is at least
-        # twice as high as the standard deviation along the other axis
+        # 60 points from the smooth curve along that axis is at least
+        # 1.5 times as high as the standard deviation along the other axis
         std_ratio = s_y(yy).std() / s_x(xx).std()
 
-        if std_ratio > 2:
-            y_image = y_image - s_y(y_image)
-        elif std_ratio < 0.5:
-            x_image = x_image - s_x(x_image)
+        if std_ratio > 1.5:
+            coords_image[:,1] = y_image - s_y(y_image)
+        elif std_ratio < 2./3.:
+            coords_image[:,0] = x_image - s_x(x_image)
 
-        return x_image, y_image, s_x, s_y, std_ratio
+        return coords_image, s_x, s_y, std_ratio
 
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
@@ -2106,6 +2070,7 @@ class SolveProcess:
 
         self.astrom_sources = self.sources[indsel]
         self.solutions = []
+        self.num_solutions = 0
 
         # Output short-listed star data to FITS file
         xycat = Table()
@@ -2457,7 +2422,7 @@ class SolveProcess:
         t['dec_ref'] = astref_table['dec']
         t['mag_ref'] = astref_table['mag']
         fn_out = os.path.join(self.scratch_dir, '{}_ref.fits'.format(basefn_solution))
-        t.write(fn_out, format='fits')
+        t.write(fn_out, format='fits', overwrite=True)
 
         # Output crossmatched stars for debugging
         t = Table()
@@ -2468,7 +2433,7 @@ class SolveProcess:
         t['y_ref'] = yr[ind_ref[ind_xmatch]]
         t['dist'] = ds[ind_xmatch]
         fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
-        t.write(fn_out, format='fits')
+        t.write(fn_out, format='fits', overwrite=True)
 
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
@@ -2816,23 +2781,19 @@ class SolveProcess:
         ind_sources = ind_sources[ind_plate]
 
         # Find scanner pattern and get pattern-subtracted coordinates
-        res = self.find_scanner_pattern(coords_plate[ind_plate][:,0], 
-                                        coords_plate[ind_plate][:,1],
-                                        coords_ref[ind_ref][:,0],
-                                        coords_ref[ind_ref][:,1])
+        res = self.find_scanner_pattern(coords_plate[ind_plate], 
+                                        coords_ref[ind_ref])
+        coords_dewobbled, pattern_x, pattern_y, pattern_ratio = res
+        nsrc = len(coords_dewobbled)
 
         self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
-                       '{:.3f}'.format(res[4]), level=4, event=32)
-
-        x_dewobbled = res[0]
-        y_dewobbled = res[1]
-        nsrc = len(x_dewobbled)
+                       '{:.3f}'.format(pattern_ratio), level=4, event=32)
 
         # Calculate scanner pattern and output to file
         xx = np.append(np.arange(0, self.imwidth, 100), self.imwidth)
         yy = np.append(np.arange(0, self.imheight, 100), self.imheight)
-        xx_pattern = res[2](xx)
-        yy_pattern = res[3](yy)
+        xx_pattern = pattern_x(xx)
+        yy_pattern = pattern_y(yy)
 
         t = Table()
         t['x'] = xx
@@ -2867,8 +2828,8 @@ class SolveProcess:
             cat = fits.open(fn_scampcat)
             scampdata = fits.BinTableHDU.from_columns(cat[2].columns,
                                                       nrows=nsrc).data
-            scampdata.field('X_IMAGE')[:] = x_dewobbled
-            scampdata.field('Y_IMAGE')[:] = y_dewobbled
+            scampdata.field('X_IMAGE')[:] = coords_dewobbled[:,0]
+            scampdata.field('Y_IMAGE')[:] = coords_dewobbled[:,1]
             scampdata.field('ERR_A')[:] = self.sources[ind_sources]['erra_source']
             scampdata.field('ERR_B')[:] = self.sources[ind_sources]['errb_source']
             scampdata.field('FLUX')[:] = self.sources[ind_sources]['flux_auto']
@@ -2934,19 +2895,18 @@ class SolveProcess:
             xr,yr = w.wcs_world2pix(astref_table['ra'], 
                                     astref_table['dec'], 1)
 
-            coords_plate_dewobbled = np.vstack((x_dewobbled, y_dewobbled)).T
             coords_ref_sol = np.vstack((xr, yr)).T
             coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
 
             kdt = KDT(coords_ref_sol)
-            ds,ind_ref = kdt.query(coords_plate_dewobbled, k=1)
+            ds,ind_ref = kdt.query(coords_dewobbled, k=1)
             mask_xmatch = ds <= crossid_radius
-            ind_plate = np.arange(len(coords_plate_dewobbled))
+            ind_plate = np.arange(len(coords_dewobbled))
 
             # Output crossmatched stars for debugging
             t = Table()
-            t['x_source'] = x_dewobbled[ind_plate[mask_xmatch]]
-            t['y_source'] = y_dewobbled[ind_plate[mask_xmatch]]
+            t['x_source'] = coords_dewobbled[ind_plate[mask_xmatch]][:,0]
+            t['y_source'] = coords_dewobbled[ind_plate[mask_xmatch]][:,1]
             t['x_ref'] = xr[ind_ref[mask_xmatch]]
             t['y_ref'] = yr[ind_ref[mask_xmatch]]
             t['dist'] = ds[mask_xmatch]
