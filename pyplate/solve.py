@@ -2196,27 +2196,21 @@ class SolveProcess:
         dx = x_image - x_ref
         dy = y_image - y_ref
 
-        # Find smooth curve along y-axis
-
         # Make sure that lowess fraction includes at least 10 stars
-        if len(y_image) > 200:
-            frac = 0.05
+        nstars = len(y_image)
+
+        if nstars > 100:
+            frac = 1. / np.sqrt(nstars)
         else:
             frac = 10. / len(y_image)
 
+        # Find smooth curve along y-axis
         z = sm.nonparametric.lowess(dy, y_image, frac=frac, it=3, 
                                     return_sorted=True)
         _,uind = np.unique(z[:,0], return_index=True)
         s_y = InterpolatedUnivariateSpline(z[uind,0], z[uind,1], k=1)
 
         # Find smooth curve along x-axis
-
-        # Make sure that lowess fraction includes at least 10 stars
-        if len(x_image) > 200:
-            frac = 0.05
-        else:
-            frac = 10. / len(x_image)
-
         z = sm.nonparametric.lowess(dx, x_image, frac=frac, it=3, 
                                     return_sorted=True)
         _,uind = np.unique(z[:,0], return_index=True)
