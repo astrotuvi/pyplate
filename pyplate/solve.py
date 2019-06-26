@@ -2598,6 +2598,9 @@ class SolveProcess:
         cmd += ' -FLAGS_MASK 0x00ff'
         cmd += ' -SN_THRESHOLDS 20.0,100.0'
         cmd += ' -MATCH Y'
+        cmd += ' -PIXSCALE_MAXERR 1.001'
+        cmd += ' -POSANGLE_MAXERR 0.1'
+        cmd += ' -POSITION_MAXERR 0.05'
         cmd += ' -CROSSID_RADIUS {:.2f}'.format(20.)
         cmd += ' -DISTORT_DEGREES 3'
         cmd += ' -PROJECTION_TYPE TPV'
