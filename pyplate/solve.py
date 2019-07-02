@@ -2768,12 +2768,12 @@ class SolveProcess:
         fn_out = os.path.join(self.scratch_dir, '{}_ref_all.fits'.format(self.basefn))
         t.write(fn_out, format='fits', overwrite=True)
 
-        # Take clean sources from annular bins 1-8
-        mask_bins = ((self.sources['annular_bin'] < 9) & 
+        # Take clean sources from annular bins 1-9
+        mask_bins = ((self.sources['annular_bin'] <= 9) & 
                      (self.sources['flag_clean'] == 1))
 
         if mask_bins.sum() <= 10:
-            self.log.write('Too few clean sources in annular bins 1--8: '
+            self.log.write('Too few clean sources in annular bins 1--9: '
                            '{:d}'.format(num_isolated), level=2, event=32)
             return
 
@@ -2788,7 +2788,7 @@ class SolveProcess:
         num_isolated = mask_isolated.sum()
 
         if num_isolated <= 10:
-            self.log.write('Too few isolated sources in annular bins 1--8: '
+            self.log.write('Too few isolated sources in annular bins 1--9: '
                            '{:d}'.format(num_isolated), level=2, event=32)
             return
 
