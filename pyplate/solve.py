@@ -3094,6 +3094,32 @@ class SolveProcess:
 
         return None
 
+    def query_gaia(self):
+        """
+        Query Gaia DR2 catalogue for all plate solutions and
+        store results in FITS files.
+
+        """
+
+        from astroquery.gaia import Gaia
+
+        for i in np.arange(self.num_solutions):
+            solution = self.solutions[i]
+            pos_query = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
+                         'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1'
+                         .format(solution['raj2000'], solution['dej2000'], 
+                                 solution['half_diag']))
+            query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
+                     'phot_bp_mean_mag,phot_rp_mean_mag,bp_rp '
+                     'FROM gaiadr2.gaia_source '
+                     'WHERE {} AND phot_g_mean_mag<20 '
+                     'AND astrometric_params_solved=31'
+                     .format(pos_query))
+            fn_tab = os.path.join(self.scratch_dir, 
+                                  'gaiadr2-{:02d}.fits'.format(i+1))
+            job = Gaia.launch_job_async(query, output_file=fn_tab, 
+                                        output_format='fits', dump_to_file=True)
+
     def get_reference_catalogs(self):
         """
         Get reference catalogs for astrometric and photometric calibration.
