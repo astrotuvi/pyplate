@@ -2592,7 +2592,7 @@ class SolveProcess:
         cmd += ' -FLAGS_MASK 0x00ff'
         cmd += ' -SN_THRESHOLDS 20.0,100.0'
         cmd += ' -MATCH Y'
-        cmd += ' -PIXSCALE_MAXERR 1.001'
+        cmd += ' -PIXSCALE_MAXERR 1.01'
         cmd += ' -POSANGLE_MAXERR 0.1'
         cmd += ' -POSITION_MAXERR 0.05'
         cmd += ' -CROSSID_RADIUS {:.2f}'.format(20.)
@@ -2601,7 +2601,7 @@ class SolveProcess:
         cmd += ' -STABILITY_TYPE EXPOSURE'
         cmd += ' -SOLVE_PHOTOM N'
         cmd += ' -WRITE_XML Y'
-        cmd += ' -XML_NAME scamp.xml'
+        cmd += ' -XML_NAME {}_scamp.xml'.format(basefn_solution)
         cmd += ' -VERBOSE_TYPE LOG'
         cmd += ' -CHECKPLOT_TYPE NONE'
         self.log.write('Subprocess: {}'.format(cmd))
@@ -2887,7 +2887,7 @@ class SolveProcess:
             cmd += ' -STABILITY_TYPE EXPOSURE'
             cmd += ' -SOLVE_PHOTOM N'
             cmd += ' -WRITE_XML Y'
-            cmd += ' -XML_NAME scamp.xml'
+            cmd += ' -XML_NAME {}_dewobbled_scamp.xml'.format(basefn_solution)
             cmd += ' -VERBOSE_TYPE LOG'
             cmd += ' -CHECKPLOT_TYPE NONE'
             self.log.write('Subprocess: {}'.format(cmd))
