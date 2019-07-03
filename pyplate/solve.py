@@ -945,6 +945,9 @@ class SolveProcess:
         self.solutions = None
         self.num_solutions = 0
         self.num_iterations = 0
+        self.pattern_x = None
+        self.pattern_y = None
+        self.pattern_ratio = None
         self.astref_tables = []
         self.astrom_sub = []
         self.phot_cterm = []
@@ -2798,19 +2801,27 @@ class SolveProcess:
         # Crossmatch sources and reference stars
         ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, coords_ref)
         ind_sources = ind_sources[ind_plate]
+        coords_wobble = coords_plate[ind_plate]
 
         # Find scanner pattern and get pattern-subtracted coordinates
         res = self.find_scanner_pattern(coords_plate[ind_plate], 
                                         coords_ref[ind_ref])
         coords_dewobbled, pattern_x, pattern_y, pattern_ratio = res
         nsrc = len(coords_dewobbled)
+        self.pattern_x = pattern_x
+        self.pattern_y = pattern_y
+        self.pattern_ratio = pattern_ratio
 
         self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
                        '{:.3f}'.format(pattern_ratio), level=4, event=32)
 
         # Calculate scanner pattern and output to file
-        xx = np.append(np.arange(0, self.imwidth, 100), self.imwidth)
-        yy = np.append(np.arange(0, self.imheight, 100), self.imheight)
+        xx_min = np.floor(coords_wobble[:,0].min() / 100.) * 100
+        xx_max = np.ceil(coords_wobble[:,0].max() / 100.) * 100
+        yy_min = np.floor(coords_wobble[:,1].min() / 100.) * 100
+        yy_max = np.ceil(coords_wobble[:,1].max() / 100.) * 100
+        xx = np.arange(xx_min, xx_max, 100)
+        yy = np.arange(yy_min, yy_max, 100)
         xx_pattern = pattern_x(xx)
         yy_pattern = pattern_y(yy)
 
@@ -2925,8 +2936,10 @@ class SolveProcess:
 
             # Output crossmatched stars for debugging
             t = Table()
-            t['x_source'] = coords_dewobbled[ind_plate[mask_xmatch]][:,0]
-            t['y_source'] = coords_dewobbled[ind_plate[mask_xmatch]][:,1]
+            t['x_source'] = coords_wobble[ind_plate[mask_xmatch]][:,0]
+            t['y_source'] = coords_wobble[ind_plate[mask_xmatch]][:,1]
+            t['x_dewobbled'] = coords_dewobbled[ind_plate[mask_xmatch]][:,0]
+            t['y_dewobbled'] = coords_dewobbled[ind_plate[mask_xmatch]][:,1]
             t['x_ref'] = xr[ind_ref[mask_xmatch]]
             t['y_ref'] = yr[ind_ref[mask_xmatch]]
             t['dist'] = ds[mask_xmatch]
