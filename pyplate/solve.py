@@ -2664,6 +2664,18 @@ class SolveProcess:
 
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
+        num_astrom_sources = len(self.astrom_sources)
+
+        # Also, throw out stars that appear in the Astrometry.net .corr file
+        corr_tab = Table.read(fn_corr)
+        coords_corr = np.vstack((corr_tab['field_x'], corr_tab['field_y'])).T
+        coords_plate = np.vstack((self.astrom_sources['x_source'],
+                                  self.astrom_sources['y_source'])).T
+        kdt = KDT(coords_corr)
+        ds,ind_ref = kdt.query(coords_plate, k=1)
+        indmask = ds > 1.
+        ind_plate = np.arange(num_astrom_sources)
+        self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
 
         # Convert x,y to RA/Dec with the global WCS solution
         pixcrd = np.column_stack((self.sources['x_source'], 
