@@ -3020,12 +3020,14 @@ class SolveProcess:
         for i,solution in enumerate(self.solutions[1:]):
             if i < 26:
                 suffix = chr(ord('A') + i)
-                sep = ' WCS {}'.format(suffix).rjust(72, '.')
+                sep = (' WCS {} (solution {:d})'.format(suffix, i+2)
+                       .rjust(72, '.'))
                 self.wcs_header.append(('', sep), end=True)
-                wcsname_card = ('WCSNAME', 'Solution_{:d}'.format(i+2))
+                wcsname_card = ('WCSNAME{}'.format(suffix), 
+                                'Solution_{:d}'.format(i+2))
                 self.wcs_header.append(wcsname_card, end=True)
             else:
-                sep = ' WCS {:d}'.format(i+2).rjust(72, '.')
+                sep = ' WCS (solution {:d})'.format(i+2).rjust(72, '.')
                 self.wcs_header.append(('', sep), end=True)
                 wcsname_card = ('', 'WCSNAME = \'Solution_{:d}\''.format(i+2))
                 self.wcs_header.append(wcsname_card, end=True)
