@@ -940,6 +940,7 @@ class SolveProcess:
         self.sources = None
         self.scampref = None
         self.scampcat = None
+        self.wcs_header = None
         self.wcshead = None
         self.wcs_plate = None
         self.solutions = None
@@ -2983,6 +2984,58 @@ class SolveProcess:
             
         platedb.close_connection()
         self.log.write('Closed database connection')
+
+    def create_wcs_header(self):
+        """
+        Stack WCS keywords from solutions into one header. Use alternate
+        WCS keywords specified in the FITS Standard 4.0.
+
+        """
+
+        if self.num_solutions == 0:
+            self.log.write('No plate solution for the FITS header', 
+                           level=2, event=36)
+            return
+
+        self.wcs_header = self.solutions[0].wcshead.copy()
+
+        if self.num_solutions > 1:
+            self.wcs_header.insert(0, ('WCSNAME', 'Solution_1'))
+
+        # Add additional solutions.
+        # If there are more than 27 solutions, add the extra solutions
+        # as comments.
+        for i,solution in enumerate(self.solutions[1:]):
+            if i < 26:
+                suffix = chr(ord('A') + i)
+                sep = ' WCS {}'.format(suffix).rjust(72, '.')
+                self.wcs_header.append(('', sep), end=True)
+                wcsname_card = ('WCSNAME', 'Solution_{:d}'.format(i+2))
+                self.wcs_header.append(wcsname_card, end=True)
+            else:
+                sep = ' WCS {:d}'.format(i+2).rjust(72, '.')
+                self.wcs_header.append(('', sep), end=True)
+                wcsname_card = ('', 'WCSNAME = \'Solution_{:d}\''.format(i+2))
+                self.wcs_header.append(wcsname_card, end=True)
+
+            # For alternate WCS, append only WCS keywords
+            for c in solution.wcshead.cards:
+                kw = c.keyword
+                wcskeys = ['WCSAXES', 'CTYPE', 'CUNIT', 'CRVAL', 'CDELT', 
+                           'CRPIX', 'PC', 'CD', 'PV', 'PS', 'WCSNAME', 
+                           'CNAME', 'CRDER', 'CSYER', 'LONPOLE', 'LATPOLE', 
+                           'EQUINOX', 'RADESYS']
+
+                for k in wcskeys:
+                    if kw.startswith(k):
+                        if i < 26:
+                            kw_alternate = '{}{}'.format(kw, suffix)
+                            newcard = fits.Card(kw_alternate, c.value, 
+                                                c.comment)
+                        else:
+                            newcard = fits.Card('', c.image.strip())
+
+                        self.wcs_header.append(newcard, end=True)
 
     def output_wcs_header(self):
         """
