@@ -37,12 +37,6 @@ except ImportError:
     have_match_coord = False
 
 try:
-    from pyspherematch import spherematch
-    have_pyspherematch = True
-except ImportError:
-    have_pyspherematch = False
-
-try:
     from scipy.spatial import cKDTree as KDT
 except ImportError:
     from scipy.spatial import KDTree as KDT
@@ -4457,11 +4451,6 @@ class SolveProcess:
             _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
             matchdist = ds2d.to(units.arcsec).value
             self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
-        elif have_pyspherematch:
-            _,_,ds = spherematch(ra_finite, dec_finite, ra_finite, dec_finite,
-                                 nnearest=2)
-            matchdist = ds * 3600.
-            self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
@@ -4518,32 +4507,8 @@ class SolveProcess:
                 _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
                                                     nthneighbor=2)
                 nndist = nn_ds2d[ind_ucac].to(units.arcsec).value
-            elif have_pyspherematch:
-                if self.crossmatch_radius is not None:
-                    crossmatch_radius = float(self.crossmatch_radius)
-                else:
-                    crossmatch_radius = (float(self.crossmatch_nsigma) 
-                                         * np.mean(coorderr_finite))
 
-                    if self.crossmatch_maxradius is not None:
-                        if crossmatch_radius > self.crossmatch_maxradius:
-                            crossmatch_radius = float(self.crossmatch_maxradius)
-
-                ind_plate,ind_ucac,ds = \
-                        spherematch(ra_finite, dec_finite, 
-                                    self.ra_ucac, self.dec_ucac,
-                                    tol=crossmatch_radius/3600., 
-                                    nnearest=1)
-                matchdist = ds * 3600.
-
-                _,_,ds2 = spherematch(ra_finite, dec_finite,
-                                      self.ra_ucac, self.dec_ucac, nnearest=2)
-                matchdist2 = ds2[ind_plate] * 3600.
-                _,_,nnds = spherematch(self.ra_ucac, self.dec_ucac,
-                                       self.ra_ucac, self.dec_ucac, nnearest=2)
-                nndist = nnds[ind_ucac] * 3600.
-
-            if have_match_coord or have_pyspherematch:
+            if have_match_coord:
                 num_match = len(ind_plate)
                 self.db_update_process(num_ucac4=num_match)
 
@@ -4599,32 +4564,8 @@ class SolveProcess:
                     _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
                                                         nthneighbor=2)
                     nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
-                elif have_pyspherematch:
-                    if self.crossmatch_radius is not None:
-                        crossmatch_radius = float(self.crossmatch_radius)
-                    else:
-                        crossmatch_radius = (float(self.crossmatch_nsigma) 
-                                             * np.mean(coorderr_finite))
 
-                        if self.crossmatch_maxradius is not None:
-                            if crossmatch_radius > self.crossmatch_maxradius:
-                                crossmatch_radius = float(self.crossmatch_maxradius)
-
-                    ind_plate,ind_tyc,ds = \
-                        spherematch(ra_finite, dec_finite, 
-                                    self.ra_tyc, self.dec_tyc,
-                                    tol=crossmatch_radius/3600., 
-                                    nnearest=1)
-                    matchdist = ds * 3600.
-
-                    _,_,ds2 = spherematch(ra_finite, dec_finite,
-                                          self.ra_tyc, self.dec_tyc, nnearest=2)
-                    matchdist2 = ds2[ind_plate] * 3600.
-                    _,_,nnds = spherematch(self.ra_tyc, self.dec_tyc,
-                                           self.ra_tyc, self.dec_tyc, nnearest=2)
-                    nndist = nnds[ind_tyc] * 3600.
-
-                if have_match_coord or have_pyspherematch:
+                if have_match_coord:
                     num_match = len(ind_plate)
                     self.db_update_process(num_tycho2=num_match)
 
@@ -4693,34 +4634,8 @@ class SolveProcess:
                     _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
                                                         nthneighbor=2)
                     nndist = nn_ds2d[ind_apass].to(units.arcsec).value
-                elif have_pyspherematch:
-                    if self.crossmatch_radius is not None:
-                        crossmatch_radius = float(self.crossmatch_radius)
-                    else:
-                        crossmatch_radius = (float(self.crossmatch_nsigma) 
-                                             * np.mean(coorderr_finite))
 
-                        if self.crossmatch_maxradius is not None:
-                            if crossmatch_radius > self.crossmatch_maxradius:
-                                crossmatch_radius = float(self.crossmatch_maxradius)
-
-                    ind_plate,ind_apass,ds = \
-                            spherematch(ra_finite, dec_finite, 
-                                        ra_apass, dec_apass,
-                                        tol=crossmatch_radius/3600., 
-                                        nnearest=1)
-                    matchdist = ds * 3600.
-
-                    _,_,ds2 = spherematch(ra_finite, dec_finite,
-                                          ra_apass, dec_apass, 
-                                          nnearest=2)
-                    matchdist2 = ds2[ind_plate] * 3600.
-                    _,_,nnds = spherematch(ra_apass, dec_apass,
-                                           ra_apass, dec_apass, 
-                                           nnearest=2)
-                    nndist = nnds[ind_apass] * 3600.
-
-                if have_match_coord or have_pyspherematch:
+                if have_match_coord:
                     num_match = len(ind_plate)
                     self.db_update_process(num_apass=num_match)
                     self.log.write('Matched {:d} sources with APASS'.format(num_match))
