@@ -13,6 +13,7 @@ from astropy import wcs
 from astropy.io import fits, votable
 from astropy.table import Table, vstack
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
+from astropy.coordinates import match_coordinates_sky
 from astropy import units
 from astropy.time import Time
 from astropy.stats import sigma_clip
@@ -29,12 +30,6 @@ except ImportError:
     import ConfigParser as configparser
 
 use_newangsep = True
-
-try:
-    from astropy.coordinates import match_coordinates_sky
-    have_match_coord = True
-except ImportError:
-    have_match_coord = False
 
 try:
     from scipy.spatial import cKDTree as KDT
@@ -4445,16 +4440,15 @@ class SolveProcess:
         self.sources['match_radius'][ind_finite] = matchrad_arcsec
 
         # Find nearest neighbours
-        if have_match_coord:
-            coords = SkyCoord(ra_finite, dec_finite, 
-                              unit=(units.degree, units.degree))
-            _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
-            matchdist = ds2d.to(units.arcsec).value
-            self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
+        coords = SkyCoord(ra_finite, dec_finite, 
+                          unit=(units.degree, units.degree))
+        _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
+        matchdist = ds2d.to(units.arcsec).value
+        self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
-        if (have_match_coord and self.platemeta and 
+        if (self.platemeta and 
                 self.platemeta['site_latitude'] and 
                 self.platemeta['site_longitude'] and 
                 (self.platemeta['numexp'] == 1) and
@@ -4487,54 +4481,52 @@ class SolveProcess:
         if self.ra_ucac is None or self.dec_ucac is None:
             self.log.write('Missing UCAC4 data', level=2, event=62)
         else:
-            if have_match_coord:
-                coords = SkyCoord(ra_finite, dec_finite, 
-                                  unit=(units.degree, units.degree))
-                catalog = SkyCoord(self.ra_ucac, self.dec_ucac, 
-                                   unit=(units.degree, units.degree))
-                ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                             nthneighbor=1)
-                ind_plate = np.arange(ind_ucac.size)
-                indmask = ds2d < matchrad_arcsec
+            coords = SkyCoord(ra_finite, dec_finite, 
+                              unit=(units.degree, units.degree))
+            catalog = SkyCoord(self.ra_ucac, self.dec_ucac, 
+                               unit=(units.degree, units.degree))
+            ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
+                                                         nthneighbor=1)
+            ind_plate = np.arange(ind_ucac.size)
+            indmask = ds2d < matchrad_arcsec
 
-                ind_plate = ind_plate[indmask]
-                ind_ucac = ind_ucac[indmask]
-                matchdist = ds2d[indmask].to(units.arcsec).value
+            ind_plate = ind_plate[indmask]
+            ind_ucac = ind_ucac[indmask]
+            matchdist = ds2d[indmask].to(units.arcsec).value
 
-                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                                  nthneighbor=2)
-                matchdist2 = ds2d2[indmask].to(units.arcsec).value
-                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                    nthneighbor=2)
-                nndist = nn_ds2d[ind_ucac].to(units.arcsec).value
+            _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                              nthneighbor=2)
+            matchdist2 = ds2d2[indmask].to(units.arcsec).value
+            _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                nthneighbor=2)
+            nndist = nn_ds2d[ind_ucac].to(units.arcsec).value
 
-            if have_match_coord:
-                num_match = len(ind_plate)
-                self.db_update_process(num_ucac4=num_match)
+            num_match = len(ind_plate)
+            self.db_update_process(num_ucac4=num_match)
 
-                if num_match > 0:
-                    ind = ind_finite[ind_plate]
-                    self.sources['ucac4_id'][ind] = self.id_ucac[ind_ucac]
-                    self.sources['ucac4_ra'][ind] = self.ra_ucac[ind_ucac]
-                    self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
-                    self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
-                    self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
-                    self.sources['ucac4_bmagerr'][ind] = self.bmagerr_ucac[ind_ucac]
-                    self.sources['ucac4_vmagerr'][ind] = self.vmagerr_ucac[ind_ucac]
-                    self.sources['ucac4_dist'][ind] = (matchdist
-                                                       .astype(np.float32))
-                    self.sources['ucac4_dist2'][ind] = (matchdist2
-                                                        .astype(np.float32))
-                    self.sources['ucac4_nn_dist'][ind] = (nndist
-                                                          .astype(np.float32))
+            if num_match > 0:
+                ind = ind_finite[ind_plate]
+                self.sources['ucac4_id'][ind] = self.id_ucac[ind_ucac]
+                self.sources['ucac4_ra'][ind] = self.ra_ucac[ind_ucac]
+                self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
+                self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
+                self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
+                self.sources['ucac4_bmagerr'][ind] = self.bmagerr_ucac[ind_ucac]
+                self.sources['ucac4_vmagerr'][ind] = self.vmagerr_ucac[ind_ucac]
+                self.sources['ucac4_dist'][ind] = (matchdist
+                                                   .astype(np.float32))
+                self.sources['ucac4_dist2'][ind] = (matchdist2
+                                                    .astype(np.float32))
+                self.sources['ucac4_nn_dist'][ind] = (nndist
+                                                      .astype(np.float32))
 
-                    if self.combined_ucac_apass:
-                        self.sources['apass_ra'][ind] = self.ra_apass[ind_ucac]
-                        self.sources['apass_dec'][ind] = self.dec_apass[ind_ucac]
-                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_ucac]
-                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_ucac]
-                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_ucac]
-                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_ucac]
+                if self.combined_ucac_apass:
+                    self.sources['apass_ra'][ind] = self.ra_apass[ind_ucac]
+                    self.sources['apass_dec'][ind] = self.dec_apass[ind_ucac]
+                    self.sources['apass_bmag'][ind] = self.bmag_apass[ind_ucac]
+                    self.sources['apass_vmag'][ind] = self.vmag_apass[ind_ucac]
+                    self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_ucac]
+                    self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_ucac]
 
         # Match sources with the Tycho-2 catalogue
         if self.use_tycho2_fits:
@@ -4544,48 +4536,46 @@ class SolveProcess:
             if self.num_tyc == 0:
                 self.log.write('Missing Tycho-2 data', level=2, event=63)
             else:
-                if have_match_coord:
-                    coords = SkyCoord(ra_finite, dec_finite, 
-                                      unit=(units.degree, units.degree))
-                    catalog = SkyCoord(self.ra_tyc, self.dec_tyc, 
-                                       unit=(units.degree, units.degree))
-                    ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
-                                                                nthneighbor=1)
-                    ind_plate = np.arange(ind_tyc.size)
-                    indmask = ds2d < matchrad_arcsec
+                coords = SkyCoord(ra_finite, dec_finite, 
+                                  unit=(units.degree, units.degree))
+                catalog = SkyCoord(self.ra_tyc, self.dec_tyc, 
+                                   unit=(units.degree, units.degree))
+                ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
+                                                            nthneighbor=1)
+                ind_plate = np.arange(ind_tyc.size)
+                indmask = ds2d < matchrad_arcsec
 
-                    ind_plate = ind_plate[indmask]
-                    ind_tyc = ind_tyc[indmask]
-                    matchdist = ds2d[indmask].to(units.arcsec).value
+                ind_plate = ind_plate[indmask]
+                ind_tyc = ind_tyc[indmask]
+                matchdist = ds2d[indmask].to(units.arcsec).value
 
-                    _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                                      nthneighbor=2)
-                    matchdist2 = ds2d2[indmask].to(units.arcsec).value
-                    _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                        nthneighbor=2)
-                    nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
+                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                                  nthneighbor=2)
+                matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                    nthneighbor=2)
+                nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
 
-                if have_match_coord:
-                    num_match = len(ind_plate)
-                    self.db_update_process(num_tycho2=num_match)
+                num_match = len(ind_plate)
+                self.db_update_process(num_tycho2=num_match)
 
-                    if num_match > 0:
-                        ind = ind_finite[ind_plate]
-                        self.sources['tycho2_id'][ind] = self.id_tyc[ind_tyc]
-                        self.sources['tycho2_id_pad'][ind] = self.id_tyc_pad[ind_tyc]
-                        self.sources['tycho2_ra'][ind] = self.ra_tyc[ind_tyc]
-                        self.sources['tycho2_dec'][ind] = self.dec_tyc[ind_tyc]
-                        self.sources['tycho2_btmag'][ind] = self.btmag_tyc[ind_tyc]
-                        self.sources['tycho2_vtmag'][ind] = self.vtmag_tyc[ind_tyc]
-                        self.sources['tycho2_btmagerr'][ind] = self.btmagerr_tyc[ind_tyc]
-                        self.sources['tycho2_vtmagerr'][ind] = self.vtmagerr_tyc[ind_tyc]
-                        self.sources['tycho2_hip'][ind] = self.hip_tyc[ind_tyc]
-                        self.sources['tycho2_dist'][ind] = (matchdist
-                                                            .astype(np.float32))
-                        self.sources['tycho2_dist2'][ind] = (matchdist2
-                                                             .astype(np.float32))
-                        self.sources['tycho2_nn_dist'][ind] = (nndist
-                                                               .astype(np.float32))
+                if num_match > 0:
+                    ind = ind_finite[ind_plate]
+                    self.sources['tycho2_id'][ind] = self.id_tyc[ind_tyc]
+                    self.sources['tycho2_id_pad'][ind] = self.id_tyc_pad[ind_tyc]
+                    self.sources['tycho2_ra'][ind] = self.ra_tyc[ind_tyc]
+                    self.sources['tycho2_dec'][ind] = self.dec_tyc[ind_tyc]
+                    self.sources['tycho2_btmag'][ind] = self.btmag_tyc[ind_tyc]
+                    self.sources['tycho2_vtmag'][ind] = self.vtmag_tyc[ind_tyc]
+                    self.sources['tycho2_btmagerr'][ind] = self.btmagerr_tyc[ind_tyc]
+                    self.sources['tycho2_vtmagerr'][ind] = self.vtmagerr_tyc[ind_tyc]
+                    self.sources['tycho2_hip'][ind] = self.hip_tyc[ind_tyc]
+                    self.sources['tycho2_dist'][ind] = (matchdist
+                                                        .astype(np.float32))
+                    self.sources['tycho2_dist2'][ind] = (matchdist2
+                                                         .astype(np.float32))
+                    self.sources['tycho2_nn_dist'][ind] = (nndist
+                                                           .astype(np.float32))
 
         # Match sources with the APASS catalogue
         if self.use_apass_db:
@@ -4614,49 +4604,47 @@ class SolveProcess:
                     ra_apass = self.ra_apass
                     dec_apass = self.dec_apass
 
-                if have_match_coord:
-                    coords = SkyCoord(ra_finite, dec_finite, 
-                                      unit=(units.degree, units.degree))
-                    catalog = SkyCoord(ra_apass, dec_apass, 
-                                       unit=(units.degree, units.degree))
-                    ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                                  nthneighbor=1)
-                    ind_plate = np.arange(ind_apass.size)
-                    indmask = ds2d < matchrad_arcsec
+                coords = SkyCoord(ra_finite, dec_finite, 
+                                  unit=(units.degree, units.degree))
+                catalog = SkyCoord(ra_apass, dec_apass, 
+                                   unit=(units.degree, units.degree))
+                ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
+                                                              nthneighbor=1)
+                ind_plate = np.arange(ind_apass.size)
+                indmask = ds2d < matchrad_arcsec
 
-                    ind_plate = ind_plate[indmask]
-                    ind_apass = ind_apass[indmask]
-                    matchdist = ds2d[indmask].to(units.arcsec).value
+                ind_plate = ind_plate[indmask]
+                ind_apass = ind_apass[indmask]
+                matchdist = ds2d[indmask].to(units.arcsec).value
 
-                    _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                                      nthneighbor=2)
-                    matchdist2 = ds2d2[indmask].to(units.arcsec).value
-                    _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                        nthneighbor=2)
-                    nndist = nn_ds2d[ind_apass].to(units.arcsec).value
+                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
+                                                  nthneighbor=2)
+                matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
+                                                    nthneighbor=2)
+                nndist = nn_ds2d[ind_apass].to(units.arcsec).value
 
-                if have_match_coord:
-                    num_match = len(ind_plate)
-                    self.db_update_process(num_apass=num_match)
-                    self.log.write('Matched {:d} sources with APASS'.format(num_match))
+                num_match = len(ind_plate)
+                self.db_update_process(num_apass=num_match)
+                self.log.write('Matched {:d} sources with APASS'.format(num_match))
 
-                    if num_match > 0:
-                        ind = ind_finite[ind_plate]
+                if num_match > 0:
+                    ind = ind_finite[ind_plate]
 
-                        if not self.combined_ucac_apass:
-                            self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
-                            self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
-                            self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
-                            self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
-                            self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
-                            self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
+                    if not self.combined_ucac_apass:
+                        self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
+                        self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
+                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
+                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
+                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
+                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
 
-                        self.sources['apass_dist'][ind] = (matchdist
-                                                           .astype(np.float32))
-                        self.sources['apass_dist2'][ind] = (matchdist2
-                                                            .astype(np.float32))
-                        self.sources['apass_nn_dist'][ind] = (nndist
-                                                              .astype(np.float32))
+                    self.sources['apass_dist'][ind] = (matchdist
+                                                       .astype(np.float32))
+                    self.sources['apass_dist2'][ind] = (matchdist2
+                                                        .astype(np.float32))
+                    self.sources['apass_nn_dist'][ind] = (nndist
+                                                          .astype(np.float32))
 
     def calibrate_photometry(self):
         """
