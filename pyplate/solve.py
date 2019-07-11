@@ -29,8 +29,6 @@ try:
 except ImportError:
     import ConfigParser as configparser
 
-use_newangsep = True
-
 try:
     from scipy.spatial import cKDTree as KDT
 except ImportError:
@@ -580,7 +578,6 @@ class AstrometricSolution(OrderedDict):
         self.imheight = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
-        self.wcshead = None
         self.wcs = None
         self.log = None
 
@@ -606,8 +603,9 @@ class AstrometricSolution(OrderedDict):
         self['scp_on_plate'] = None
         self['stc_box'] = None
         self['stc_polygon'] = None
-        self['header_astrometry'] = None
+        self['header_anet'] = None
         self['header_scamp'] = None
+        self['header_wcs'] = None
         self['skycoord_corners'] = None
 
     def assign_conf(self, conf):
@@ -644,6 +642,44 @@ class AstrometricSolution(OrderedDict):
 
         return header_strip
 
+    def get_header(self, keyword=None):
+        """
+        Return Astrometry.net or SCAMP header.
+
+        Parameters
+        ----------
+        keyword : str
+            A keyword specifying which header to return
+
+        """
+
+        if self['header_scamp']:
+            header = self['header_scamp'].copy()
+        elif self['header_anet']:
+            header = self['header_anet'].copy()
+        else:
+            header = None
+
+        if keyword == 'header_scamp':
+            if self['header_scamp']:
+                header = self['header_scamp'].copy()
+            else:
+                header = None
+
+        if keyword == 'header_anet':
+            if self['header_anet']:
+                header = self['header_anet'].copy()
+            else:
+                header = None
+
+        if keyword == 'header_wcs':
+            if self['header_wcs']:
+                header = self['header_wcs'].copy()
+            else:
+                header = None
+
+        return header
+
     def calculate_parameters(self):
         """
         Calculate solution-related parameters.
@@ -653,23 +689,19 @@ class AstrometricSolution(OrderedDict):
         self.log.write('Calculating plate-solution related parameters', 
                        level=4, event=31)
 
-        if self['header_scamp']:
-            self.wcshead = self['header_scamp']
-        elif self['header_astrometry']:
-            self.wcshead = self['header_astrometry']
-        else:
+        if self['header_wcs'] is None:
             self.log.write('No solution found, cannot calculate '
                            'solution-related parameters',
                            level=2, event=33)
             return
 
-        self.wcs = wcs.WCS(self.wcshead)
-        self['raj2000'] = self.wcshead['CRVAL1']
-        self['dej2000'] = self.wcshead['CRVAL2']
-        self['cd1_1'] = self.wcshead['CD1_1']
-        self['cd1_2'] = self.wcshead['CD1_2']
-        self['cd2_1'] = self.wcshead['CD2_1']
-        self['cd2_2'] = self.wcshead['CD2_2']
+        self.wcs = wcs.WCS(self['header_wcs'])
+        self['raj2000'] = self['header_wcs']['CRVAL1']
+        self['dej2000'] = self['header_wcs']['CRVAL2']
+        self['cd1_1'] = self['header_wcs']['CD1_1']
+        self['cd1_2'] = self['header_wcs']['CD1_2']
+        self['cd2_1'] = self['header_wcs']['CD2_1']
+        self['cd2_2'] = self['header_wcs']['CD2_2']
 
         pix_edge_midpoints = np.array([[1., (self.imheight+1.)/2.],
                                        [self.imwidth, (self.imheight+1.)/2.],
@@ -729,8 +761,8 @@ class AstrometricSolution(OrderedDict):
         self['dej2000_dms'] = dec_angle.to_string(unit=units.deg, sep=':',
                                                   precision=1, pad=True)
         self['stc_box'] = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
-                           .format(self.wcshead['CRVAL1'], 
-                                   self.wcshead['CRVAL2'], 
+                           .format(self['header_wcs']['CRVAL1'], 
+                                   self['header_wcs']['CRVAL2'], 
                                    self['fov1'], self['fov2']))
 
         pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
@@ -749,7 +781,8 @@ class AstrometricSolution(OrderedDict):
 
         # Calculate plate rotation angle
         try:
-            cp = np.array([self.wcshead['CRPIX1'], self.wcshead['CRPIX2']])
+            cp = np.array([self['header_wcs']['CRPIX1'], 
+                           self['header_wcs']['CRPIX2']])
 
             if dec_angle.deg > 89.:
                 cn = self.wcs.wcs_world2pix([[self['raj2000'],90.]], 1)
@@ -2493,10 +2526,11 @@ class SolveProcess:
             return None, None
 
         # Read Astrometry.net solution from file
-        wcshead = fits.getheader(fn_wcs)
-        wcshead.set('NAXIS', 2)
-        wcshead.set('NAXIS1', self.imwidth, after='NAXIS')
-        wcshead.set('NAXIS2', self.imheight, after='NAXIS1')
+        header_anet = fits.getheader(fn_wcs)
+        header_wcs = header_anet.copy()
+        header_wcs.set('NAXIS', 2)
+        header_wcs.set('NAXIS1', self.imwidth, after='NAXIS')
+        header_wcs.set('NAXIS2', self.imheight, after='NAXIS1')
 
         # Create AstrometricSolution instance and calculate parameters
         solution = AstrometricSolution()
@@ -2508,7 +2542,8 @@ class SolveProcess:
         solution.rel_area_sixbins = self.rel_area_sixbins
         solution.log = self.log
 
-        solution['header_astrometry'] = wcshead
+        solution['header_anet'] = header_anet
+        solution['header_wcs'] = header_wcs
         solution.calculate_parameters()
 
         #match_table = Table.read(fn_match)
@@ -2571,6 +2606,9 @@ class SolveProcess:
                                  '{}.ahead'.format(basefn_solution))
         ahead.totextfile(aheadfile, endcard=True, overwrite=True)
 
+        # Use crossid radius of 5 pixels and transform it to arcsec scale
+        crossid_radius = 5. * solution['pixel_scale']
+
         # Run SCAMP
         cmd = self.scamp_path
         cmd += ' -c {}_scamp.conf {}.cat'.format(self.basefn, basefn_solution)
@@ -2583,10 +2621,11 @@ class SolveProcess:
         cmd += ' -FLAGS_MASK 0x00ff'
         cmd += ' -SN_THRESHOLDS 20.0,100.0'
         cmd += ' -MATCH Y'
+        #cmd += ' -ASTREF_WEIGHT 100'
         cmd += ' -PIXSCALE_MAXERR 1.01'
         cmd += ' -POSANGLE_MAXERR 0.1'
         cmd += ' -POSITION_MAXERR 0.05'
-        cmd += ' -CROSSID_RADIUS {:.2f}'.format(20.)
+        cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius)
         cmd += ' -DISTORT_DEGREES 3'
         cmd += ' -PROJECTION_TYPE TPV'
         cmd += ' -STABILITY_TYPE EXPOSURE'
@@ -2600,19 +2639,21 @@ class SolveProcess:
                 stderr=self.log.handle, cwd=self.scratch_dir)
 
         # Read SCAMP solution
-        head = fits.PrimaryHDU().header
-        head.set('NAXIS', 2)
-        head.set('NAXIS1', self.imwidth)
-        head.set('NAXIS2', self.imheight)
-        head.set('IMAGEW', self.imwidth)
-        head.set('IMAGEH', self.imheight)
         fn_scamphead = os.path.join(self.scratch_dir, 
                                     '{}.head'.format(basefn_solution))
-        head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
-                                         endcard=False, padding=False))
+        header_scamp = fits.Header.fromfile(fn_scamphead, sep='\n', 
+                                            endcard=False, padding=False)
+        header_wcs = fits.PrimaryHDU().header
+        header_wcs.set('NAXIS', 2)
+        header_wcs.set('NAXIS1', self.imwidth)
+        header_wcs.set('NAXIS2', self.imheight)
+        header_wcs.set('IMAGEW', self.imwidth)
+        header_wcs.set('IMAGEH', self.imheight)
+        header_wcs.extend(header_scamp)
 
         # Store SCAMP solution and recalculate parameters
-        solution['header_scamp'] = head
+        solution['header_scamp'] = header_scamp
+        solution['header_wcs'] = header_wcs
         solution.calculate_parameters()
 
         # Crossmatch sources with rerefence stars and throw out
@@ -2722,7 +2763,7 @@ class SolveProcess:
             astref_table = self.astref_tables[i]
 
             if len(astref_table) > 0:
-                w = wcs.WCS(solution['header_scamp'])
+                w = wcs.WCS(solution['header_wcs'])
                 xr,yr = w.all_world2pix(astref_table['ra'], 
                                         astref_table['dec'], 1)
                 xy_ref = np.vstack((xr, yr)).T
@@ -2874,8 +2915,8 @@ class SolveProcess:
             # Write SCAMP header to .ahead file
             fn_ahead = os.path.join(self.scratch_dir, 
                                     '{}_dewobbled.ahead'.format(basefn_solution))
-            head = solution['header_scamp']
-            head.totextfile(fn_ahead, endcard=True, overwrite=True)
+            header = solution['header_wcs']
+            header.totextfile(fn_ahead, endcard=True, overwrite=True)
 
             # Use crossid radius of 3 pixels and transform it to arcsec scale
             crossid_radius = 3. * solution['pixel_scale']
@@ -2906,23 +2947,25 @@ class SolveProcess:
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
             # Read SCAMP solution
-            head = fits.PrimaryHDU().header
-            head.set('NAXIS', 2)
-            head.set('NAXIS1', self.imwidth)
-            head.set('NAXIS2', self.imheight)
-            head.set('IMAGEW', self.imwidth)
-            head.set('IMAGEH', self.imheight)
-            fn_scamphead = os.path.join(self.scratch_dir, 
-                                        '{}_dewobbled.head'.format(basefn_solution))
-            head.extend(fits.Header.fromfile(fn_scamphead, sep='\n', 
-                                             endcard=False, padding=False))
+            fn_scamphead = '{}_dewobbled.head'.format(basefn_solution)
+            fn_scamphead = os.path.join(self.scratch_dir, fn_scamphead)
+            header_scamp = fits.Header.fromfile(fn_scamphead, sep='\n', 
+                                                endcard=False, padding=False)
+            header_wcs = fits.PrimaryHDU().header
+            header_wcs.set('NAXIS', 2)
+            header_wcs.set('NAXIS1', self.imwidth)
+            header_wcs.set('NAXIS2', self.imheight)
+            header_wcs.set('IMAGEW', self.imwidth)
+            header_wcs.set('IMAGEH', self.imheight)
+            header_wcs.extend(header_scamp)
 
             # Store improved solution
-            self.solutions[i]['header_scamp'] = head
+            self.solutions[i]['header_scamp'] = header_scamp
+            self.solutions[i]['header_wcs'] = header_wcs
             self.solutions[i].calculate_parameters()
 
             # Crossmatch sources with rerefence stars
-            w = wcs.WCS(head)
+            w = wcs.WCS(header_wcs)
             xr,yr = w.wcs_world2pix(astref_table['ra'], 
                                     astref_table['dec'], 1)
 
@@ -2996,7 +3039,7 @@ class SolveProcess:
                            level=2, event=36)
             return
 
-        self.wcs_header = self.solutions[0].wcshead.copy()
+        self.wcs_header = self.solutions[0].get_header()
 
         if self.num_solutions > 1:
             self.wcs_header.insert(0, ('WCSNAME', 'Solution_1'))
@@ -3020,7 +3063,7 @@ class SolveProcess:
                 self.wcs_header.append(wcsname_card, end=True)
 
             # For alternate WCS, append only WCS keywords
-            for c in solution.wcshead.cards:
+            for c in solution.get_header().cards:
                 kw = c.keyword
                 wcskeys = ['WCSAXES', 'CTYPE', 'CUNIT', 'CRVAL', 'CDELT', 
                            'CRPIX', 'PC', 'CD', 'PV', 'PS', 'WCSNAME', 
@@ -3090,7 +3133,7 @@ class SolveProcess:
             ind = np.arange(len(tab))[mask_dist]
 
             # Check which stars fall inside image area
-            w = wcs.WCS(solution['header_astrometry'])
+            w = wcs.WCS(solution['header_wcs'])
             xr,yr = w.all_world2pix(ra_ref[mask_dist], dec_ref[mask_dist], 1)
             mask_inside = ((xr > 0) & (xr < self.imwidth) & 
                            (yr > 0) & (yr < self.imheight))
@@ -3141,7 +3184,7 @@ class SolveProcess:
             ind = np.arange(len(tycho2))[mask_dist]
 
             # Check which stars fall inside image area
-            w = wcs.WCS(solution['header_astrometry'])
+            w = wcs.WCS(solution['header_wcs'])
             xr,yr = w.all_world2pix(ra_tyc[mask_dist], dec_tyc[mask_dist], 1)
             mask_inside = ((xr > 0) & (xr < self.imwidth) & 
                            (yr > 0) & (yr < self.imheight))
