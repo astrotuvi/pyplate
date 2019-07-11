@@ -2578,7 +2578,7 @@ class SolveProcess:
         cmd += ' -y 1'
         cmd += ' -W {:f}'.format(self.imwidth)
         cmd += ' -H {:f}'.format(self.imheight)
-        cmd += ' -N 10'
+        cmd += ' -N 20'
         cmd += ' -o {}'.format(fn_tan)
         self.log.write('Subprocess: {}'.format(cmd))
         sp.call(cmd, shell=True, stdout=self.log.handle, 
