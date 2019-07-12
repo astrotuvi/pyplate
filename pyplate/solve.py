@@ -490,10 +490,11 @@ _source_meta = OrderedDict([
     ('sextractor_flags',    ('i2', '%3d', 'FLAGS')),
     ('dist_center',         ('f4', '%9.3f', '')),
     ('dist_edge',           ('f4', '%9.3f', '')),
-    ('annular_bin',         ('i1', '%1d', '')),
+    ('annular_bin',         ('i2', '%1d', '')),
     ('flag_negradius',      ('i1', '%1d', '')),
     ('flag_rim',            ('i1', '%1d', '')),
     ('flag_clean',          ('i1', '%1d', '')),
+    ('solution_num',        ('i2', '%1d', '')),
     ('raj2000',             ('f8', '%11.7f', '')),
     ('dej2000',             ('f8', '%11.7f', '')),
     ('x_sphere',            ('f8', '%10.7f', '')),
@@ -967,6 +968,7 @@ class SolveProcess:
         self.pattern_y = None
         self.pattern_ratio = None
         self.astref_tables = []
+        self.gaia_files = None
         self.sol_centroid = None
         self.sol_radius = None
         self.sol_max_sep = None
@@ -3310,7 +3312,10 @@ class SolveProcess:
             job = Gaia.launch_job_async(query, output_file=fn_tab, 
                                         output_format='fits', 
                                         dump_to_file=True)
+            self.gaia_files = fn_tab
         else:
+            self.gaia_files = []
+
             for i in np.arange(self.num_solutions):
                 solution = self.solutions[i]
                 pos_query = (pos_query_str
@@ -3322,6 +3327,53 @@ class SolveProcess:
                 job = Gaia.launch_job_async(query, output_file=fn_tab, 
                                             output_format='fits', 
                                             dump_to_file=True)
+                self.gaia_files += [fn_tab]
+
+    def crossmatch_gaia(self):
+        """
+        Crossmatch sources with Gaia objects, considering multiple solutions.
+
+        """
+
+        assert self.num_solutions > 0
+
+        if isinstance(self.gaia_files, str):
+            try:
+                gaia_table = Table.read(self.gaia_files)
+            except Exception:
+                self.log.write('Cannot read Gaia catalog file {}'
+                               .format(self.gaia_files),
+                               level=2, event=0)
+                return
+
+        # Calculate RA and Dec for the plate epoch
+        ra_ref = (gaia_table['ra'] + (self.plate_epoch - 2015.5) 
+                  * gaia_table['pmra']
+                  / np.cos(gaia_table['dec'] * np.pi / 180.) / 3600000.)
+        dec_ref = (gaia_table['dec'] + (self.plate_epoch - 2015.5) 
+                   * gaia_table['pmdec'] / 3600000.)
+        #catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
+        xy_ref = np.empty((0, 2))
+        sol_ref = np.empty((0,))
+
+        # Build a list of Gaia stars in image coordinates
+        for i in np.arange(self.num_solutions):
+            solution = self.solutions[i]
+
+            w = wcs.WCS(solution['header_wcs'])
+            xr,yr = w.all_world2pix(ra_ref, dec_ref, 1)
+            mask_inside = ((xr > 0) & (xr < self.imwidth) & 
+                           (yr > 0) & (yr < self.imheight))
+            num_inside = mask_inside.sum()
+            xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
+            xy_ref = np.vstack((xy_ref, xyr))
+            sol_ref = np.hstack((sol_ref, np.full(num_inside, i+1)))
+
+        # Crossmatch sources and Gaia stars
+        coords_plate = np.vstack((self.sources['x_source'],
+                                  self.sources['y_source'])).T
+        ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, xy_ref)
+        self.sources['solution_num'][ind_plate] = sol_ref[ind_ref]
 
     def get_reference_catalogs(self):
         """
