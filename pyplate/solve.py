@@ -3211,6 +3211,8 @@ class SolveProcess:
 
         """
 
+        assert self.num_solutions > 0
+
         # Collect center coordinates of solutions
         sol_ra = np.array([sol['raj2000'] for sol in self.solutions])
         sol_dec = np.array([sol['dej2000'] for sol in self.solutions])
@@ -3255,30 +3257,55 @@ class SolveProcess:
         self.sol_radius = radius
         self.sol_max_sep = max_sep
 
-    def query_gaia(self):
+    def query_gaia(self, mag_range=[0,20]):
         """
         Query Gaia DR2 catalogue for all plate solutions and
         store results in FITS files.
+
+        Parameters
+        ----------
+        mag_range : list
+            A two-element list specifying bright and faint magnitude limits
+            for Gaia catalog query.
 
         """
 
         from astroquery.gaia import Gaia
 
+        assert not isinstance(mag_range, str)
+        assert len(mag_range) == 2
+        assert self.num_solutions > 0
+
+        if self.sol_max_sep is None:
+            self.calculate_solutions_centroid()
+
+        if mag_range[0] is None:
+            mag_range[0] = 0
+
+        if mag_range[1] is None:
+            mag_range[1] = 99
+
+        pos_query_str = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
+                         'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1')
+        query_str = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
+                     'phot_bp_mean_mag,phot_rp_mean_mag,bp_rp '
+                     'FROM gaiadr2.gaia_source '
+                     'WHERE {{}} '
+                     'AND phot_g_mean_mag >= {} '
+                     'AND phot_g_mean_mag < {} '
+                     'AND astrometric_params_solved=31'
+                     .format(str(mag_range[0]), str(mag_range[1])))
+        fov_diag = 2 * self.solutions[0]['half_diag'] * units.deg
+
         # If max angular separation between solutions is less than
         # FOV diagonal, then query Gaia once for all solutions. 
         # Otherwise, query Gaia separately for individual solutions.
-        if self.sol_max_sep < 2 * self.solutions[0]['half_diag'] * units.deg:
-            pos_query = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
-                         'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1'
+        if self.sol_max_sep < fov_diag:
+            pos_query = (pos_query_str
                          .format(self.sol_centroid.ra.to(units.deg).value,
                                  self.sol_centroid.dec.to(units.deg).value,
                                  self.sol_radius.to(units.deg).value))
-            query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
-                     'phot_bp_mean_mag,phot_rp_mean_mag,bp_rp '
-                     'FROM gaiadr2.gaia_source '
-                     'WHERE {} AND phot_g_mean_mag<20 '
-                     'AND astrometric_params_solved=31'
-                     .format(pos_query))
+            query = query_str.format(pos_query)
             fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
             job = Gaia.launch_job_async(query, output_file=fn_tab, 
                                         output_format='fits', 
@@ -3286,16 +3313,10 @@ class SolveProcess:
         else:
             for i in np.arange(self.num_solutions):
                 solution = self.solutions[i]
-                pos_query = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
-                             'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1'
+                pos_query = (pos_query_str
                              .format(solution['raj2000'], solution['dej2000'], 
                                      solution['half_diag']))
-                query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
-                         'phot_bp_mean_mag,phot_rp_mean_mag,bp_rp '
-                         'FROM gaiadr2.gaia_source '
-                         'WHERE {} AND phot_g_mean_mag<20 '
-                         'AND astrometric_params_solved=31'
-                         .format(pos_query))
+                query = query_str.format(pos_query)
                 fn_tab = os.path.join(self.scratch_dir, 
                                       'gaiadr2-{:02d}.fits'.format(i+1))
                 job = Gaia.launch_job_async(query, output_file=fn_tab, 
