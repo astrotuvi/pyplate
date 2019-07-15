@@ -534,6 +534,14 @@ _source_meta = OrderedDict([
     ('color_bv_err',        ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
     ('match_radius',        ('f4', '%7.3f', '')),
+    ('gaiadr2_id',          ('i8', '%d', '')),
+    ('gaiadr2_ra',          ('f8', '%11.7f', '')),
+    ('gaiadr2_dec',         ('f8', '%11.7f', '')),
+    ('gaiadr2_gmag',        ('f4', '%7.4f', '')),
+    ('gaiadr2_bpmag',       ('f4', '%7.4f', '')),
+    ('gaiadr2_rpmag',       ('f4', '%7.4f', '')),
+    ('gaiadr2_bp_rp',       ('f4', '%7.4f', '')),
+    ('gaiadr2_dist',        ('f4', '%6.3f', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
@@ -2190,7 +2198,7 @@ class SolveProcess:
         mask_xmatch = ds < tolerance
         ind_image = np.arange(len(coords_image))
 
-        return ind_image[mask_xmatch], ind_ref[mask_xmatch]
+        return ind_image[mask_xmatch], ind_ref[mask_xmatch], ds[mask_xmatch]
 
     def find_scanner_pattern(self, coords_image, coords_ref):
         """
@@ -2360,6 +2368,10 @@ class SolveProcess:
         # Improve astrometric solutions (two iterations)
         self.improve_astrometric_solutions(distort=3)
         self.improve_astrometric_solutions()
+
+        # Calculate mean pixel scale across all solutions
+        pixscales = np.array([sol['pixel_scale'] for sol in self.solutions])
+        self.mean_pixscale = pixscales.mean()
 
     def find_astrometric_solution(self, ref_year=None, sip=None):
         """
@@ -2842,7 +2854,7 @@ class SolveProcess:
         ind_sources = ind_sources[mask_isolated]
 
         # Crossmatch sources and reference stars
-        ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, coords_ref)
+        ind_plate, ind_ref, _ = self.crossmatch_cartesian(coords_plate, coords_ref)
         ind_sources = ind_sources[ind_plate]
         coords_wobble = coords_plate[ind_plate]
 
@@ -3289,7 +3301,7 @@ class SolveProcess:
 
         pos_query_str = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
                          'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1')
-        query_str = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
+        query_str = ('SELECT source_id,ra,dec,pmra,pmdec,phot_g_mean_mag,'
                      'phot_bp_mean_mag,phot_rp_mean_mag,bp_rp '
                      'FROM gaiadr2.gaia_source '
                      'WHERE {{}} '
@@ -3346,6 +3358,9 @@ class SolveProcess:
                                level=2, event=0)
                 return
 
+        # Number of Gaia stars
+        num_gaia = len(gaia_table)
+
         # Calculate RA and Dec for the plate epoch
         ra_ref = (gaia_table['ra'] + (self.plate_epoch - 2015.5) 
                   * gaia_table['pmra']
@@ -3354,7 +3369,8 @@ class SolveProcess:
                    * gaia_table['pmdec'] / 3600000.)
         #catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
         xy_ref = np.empty((0, 2))
-        sol_ref = np.empty((0,))
+        sol_ref = np.empty((0,), dtype=np.int8)
+        index_ref = np.empty((0,), dtype=np.int32)
 
         # Build a list of Gaia stars in image coordinates
         for i in np.arange(self.num_solutions):
@@ -3368,12 +3384,22 @@ class SolveProcess:
             xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
             xy_ref = np.vstack((xy_ref, xyr))
             sol_ref = np.hstack((sol_ref, np.full(num_inside, i+1)))
+            index_ref = np.hstack((index_ref, np.arange(num_gaia)[mask_inside]))
 
         # Crossmatch sources and Gaia stars
         coords_plate = np.vstack((self.sources['x_source'],
                                   self.sources['y_source'])).T
-        ind_plate, ind_ref = self.crossmatch_cartesian(coords_plate, xy_ref)
+        ind_plate, ind_ref, ds = self.crossmatch_cartesian(coords_plate, xy_ref)
+        ind_gaia = index_ref[ind_ref]
         self.sources['solution_num'][ind_plate] = sol_ref[ind_ref]
+        self.sources['gaiadr2_id'][ind_plate] = gaia_table['source_id'][ind_gaia]
+        self.sources['gaiadr2_ra'][ind_plate] = ra_ref[ind_gaia]
+        self.sources['gaiadr2_dec'][ind_plate] = dec_ref[ind_gaia]
+        self.sources['gaiadr2_gmag'][ind_plate] = gaia_table['phot_g_mean_mag'][ind_gaia]
+        self.sources['gaiadr2_bpmag'][ind_plate] = gaia_table['phot_bp_mean_mag'][ind_gaia]
+        self.sources['gaiadr2_rpmag'][ind_plate] = gaia_table['phot_rp_mean_mag'][ind_gaia]
+        self.sources['gaiadr2_bp_rp'][ind_plate] = gaia_table['bp_rp'][ind_gaia]
+        self.sources['gaiadr2_dist'][ind_plate] = ds * self.mean_pixscale
 
     def get_reference_catalogs(self):
         """
