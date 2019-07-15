@@ -2269,6 +2269,21 @@ class SolveProcess:
 
         return coords_image, s_x, s_y, std_ratio
 
+    def apply_scanner_pattern(self):
+        """
+        Correct source coordinates for scanner pattern.
+
+        """
+
+        assert self.pattern_ratio is not None
+
+        if self.pattern_ratio > 1.5:
+            y_source = self.sources['y_source']
+            self.sources['y_source'] = (y_source - self.pattern_y(y_source))
+        elif self.pattern_ratio < 2./3.:
+            x_image = self.sources['x_source']
+            self.sources['x_source'] = (x_source - self.pattern_x(x_source))
+
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
         Solve astrometry in a FITS file.
@@ -2343,8 +2358,8 @@ class SolveProcess:
 
         # Output short-listed star data to FITS file
         xycat = Table()
-        xycat['X_IMAGE'] = self.astrom_sources['x_image']
-        xycat['Y_IMAGE'] = self.astrom_sources['y_image']
+        xycat['X_IMAGE'] = self.astrom_sources['x_source']
+        xycat['Y_IMAGE'] = self.astrom_sources['y_source']
         xycat['MAG_AUTO'] = self.astrom_sources['mag_auto']
         xycat['FLUX'] = self.astrom_sources['flux_auto']
         xycat['X_IMAGE'].unit = 'pixel'
@@ -2431,8 +2446,8 @@ class SolveProcess:
 
         # Prepare FITS file with a list of sources and write the file to disk
         xycat = Table()
-        xycat['X_IMAGE'] = use_sources['x_image']
-        xycat['Y_IMAGE'] = use_sources['y_image']
+        xycat['X_IMAGE'] = use_sources['x_source']
+        xycat['Y_IMAGE'] = use_sources['y_source']
         xycat['MAG_AUTO'] = use_sources['mag_auto']
         xycat['FLUX'] = use_sources['flux_auto']
         xycat['X_IMAGE'].unit = 'pixel'
@@ -2720,11 +2735,11 @@ class SolveProcess:
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
 
         # Convert x,y to RA/Dec with the global WCS solution
-        pixcrd = np.column_stack((self.sources['x_source'], 
-                                  self.sources['y_source']))
-        worldcrd = w.all_pix2world(pixcrd, 1)
-        self.sources['raj2000_wcs'] = worldcrd[:,0]
-        self.sources['dej2000_wcs'] = worldcrd[:,1]
+        #pixcrd = np.column_stack((self.sources['x_source'], 
+        #                          self.sources['y_source']))
+        #worldcrd = w.all_pix2world(pixcrd, 1)
+        #self.sources['raj2000_wcs'] = worldcrd[:,0]
+        #self.sources['dej2000_wcs'] = worldcrd[:,1]
 
         #solution.min_dec = np.min((worldcrd[:,1].min(), corners[:,1].min()))
         #solution.max_dec = np.max((worldcrd[:,1].max(), corners[:,1].max()))
