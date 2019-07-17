@@ -591,31 +591,18 @@ class AstrometricSolution(OrderedDict):
         self.log = None
 
     def populate(self):
-        self['raj2000'] = None
-        self['dej2000'] = None
-        self['raj2000_hms'] = None
-        self['dej2000_dms'] = None
-        self['fov1'] = None
-        self['fov2'] = None
-        self['half_diag'] = None
-        self['pixel_scale'] = None
-        self['source_density'] = None
-        self['cd1_1'] = None
-        self['cd1_2'] = None
-        self['cd2_1'] = None
-        self['cd2_2'] = None
-        self['rotation_angle'] = None
-        self['plate_mirrored'] = None
-        self['ncp_close'] = None
-        self['scp_close'] = None
-        self['ncp_on_plate'] = None
-        self['scp_on_plate'] = None
-        self['stc_box'] = None
-        self['stc_polygon'] = None
-        self['header_anet'] = None
-        self['header_scamp'] = None
-        self['header_wcs'] = None
-        self['skycoord_corners'] = None
+        keys = ['raj2000', 'dej2000', 'raj2000_hms', 'dej2000_dms',
+                'fov1', 'fov2', 'half_diag', 'pixel_scale', 'source_density',
+                'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 'rotation_angle',
+                'plate_mirrored', 'ncp_close', 'scp_close',
+                'ncp_on_plate', 'scp_on_plate', 'stc_box', 'stc_polygon',
+                'header_anet', 'header_scamp', 'header_wcs',
+                'skycoord_corners',
+                'scamp_dscale', 'scamp_dangle', 'scamp_dx', 'scamp_dy',
+                'scamp_sigma_1', 'scamp_sigma_2', 'scamp_chi2', 'scamp_ndeg']
+
+        for k in keys:
+            self[k] = None
 
     def assign_conf(self, conf):
         """
@@ -2638,6 +2625,9 @@ class SolveProcess:
         # Use crossid radius of 5 pixels and transform it to arcsec scale
         crossid_radius = 5. * solution['pixel_scale']
 
+        # Filename for XML output
+        fn_xml = '{}_scamp.xml'.format(basefn_solution)
+
         # Run SCAMP
         cmd = self.scamp_path
         cmd += ' -c {}_scamp.conf {}.cat'.format(self.basefn, basefn_solution)
@@ -2660,7 +2650,7 @@ class SolveProcess:
         cmd += ' -STABILITY_TYPE EXPOSURE'
         cmd += ' -SOLVE_PHOTOM N'
         cmd += ' -WRITE_XML Y'
-        cmd += ' -XML_NAME {}_scamp.xml'.format(basefn_solution)
+        cmd += ' -XML_NAME {}'.format(fn_xml)
         cmd += ' -VERBOSE_TYPE LOG'
         cmd += ' -CHECKPLOT_TYPE NONE'
         self.log.write('Subprocess: {}'.format(cmd))
@@ -2679,6 +2669,21 @@ class SolveProcess:
         header_wcs.set('IMAGEW', self.imwidth)
         header_wcs.set('IMAGEH', self.imheight)
         header_wcs.extend(header_scamp)
+
+        # Read SCAMP XML output
+        fn_xml = os.path.join(self.scratch_dir, fn_xml)
+        warnings.filterwarnings('ignore', message='.*W42.*',
+                                category=votable.exceptions.VOTableSpecWarning)
+        scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
+        solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
+        solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
+        solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(units.arcsec)
+        solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(units.arcsec)
+        scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
+        solution['scamp_sigma_1'] = scamp_sigmas[0]
+        solution['scamp_sigma_2'] = scamp_sigmas[1]
+        solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
+        solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
 
         # Store SCAMP solution and recalculate parameters
         solution['header_scamp'] = header_scamp
@@ -2950,6 +2955,9 @@ class SolveProcess:
             # Use crossid radius of 3 pixels and transform it to arcsec scale
             crossid_radius = 3. * solution['pixel_scale']
 
+            # Filename for XML output
+            fn_xml = '{}_dewobbled_scamp.xml'.format(basefn_solution)
+
             # Run SCAMP again on dewobbled pixel coordinates
             cmd = self.scamp_path
             cmd += ' -c {}_scamp.conf {}_dewobbled.cat'.format(self.basefn, basefn_solution)
@@ -2968,7 +2976,7 @@ class SolveProcess:
             cmd += ' -STABILITY_TYPE EXPOSURE'
             cmd += ' -SOLVE_PHOTOM N'
             cmd += ' -WRITE_XML Y'
-            cmd += ' -XML_NAME {}_dewobbled_scamp.xml'.format(basefn_solution)
+            cmd += ' -XML_NAME {}'.format(fn_xml)
             cmd += ' -VERBOSE_TYPE LOG'
             cmd += ' -CHECKPLOT_TYPE NONE'
             self.log.write('Subprocess: {}'.format(cmd))
@@ -2987,6 +2995,17 @@ class SolveProcess:
             header_wcs.set('IMAGEW', self.imwidth)
             header_wcs.set('IMAGEH', self.imheight)
             header_wcs.extend(header_scamp)
+
+            # Read SCAMP XML output
+            fn_xml = os.path.join(self.scratch_dir, fn_xml)
+            warnings.filterwarnings('ignore', message='.*W42.*',
+                                    category=votable.exceptions.VOTableSpecWarning)
+            scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
+            scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
+            self.solutions[i]['scamp_sigma_1'] = scamp_sigmas[0]
+            self.solutions[i]['scamp_sigma_2'] = scamp_sigmas[1]
+            self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
+            self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
 
             # Store improved solution
             self.solutions[i]['header_scamp'] = header_scamp
