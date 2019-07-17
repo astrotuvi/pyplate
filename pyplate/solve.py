@@ -713,21 +713,21 @@ class AstrometricSolution(OrderedDict):
                       unit=(u.deg, u.deg))
         c4 = SkyCoord(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
                       unit=(u.deg, u.deg))
-        self['fov1'] = c1.separation(c2).deg
-        self['fov2'] = c3.separation(c4).deg
+        self['fov1'] = c1.separation(c2)
+        self['fov2'] = c3.separation(c4)
 
         self['source_density'] = (self.num_sources_sixbins
                                   / self.rel_area_sixbins
                                   / (self['fov1']*self['fov2']))
 
-        pixscale1 = self['fov1'] / self.imwidth * 3600.
-        pixscale2 = self['fov2'] / self.imheight * 3600.
-        self['pixel_scale'] = np.mean([pixscale1, pixscale2])
+        pixscale1 = self['fov1'].to(u.arcsec) / (self.imwidth * u.pixel)
+        pixscale2 = self['fov2'].to(u.arcsec) / (self.imheight * u.pixel)
+        self['pixel_scale'] = (pixscale1 + pixscale2) / 2.
 
         # Check if a celestial pole is nearby or on the plate
         self['half_diag'] = np.sqrt(self['fov1']**2 + self['fov2']**2) / 2.
-        self['ncp_close'] = 90. - self['dej2000'] <= self['half_diag']
-        self['scp_close'] = 90. + self['dej2000'] <= self['half_diag']
+        self['ncp_close'] = 90. - self['dej2000'] <= self['half_diag'] / u.deg
+        self['scp_close'] = 90. + self['dej2000'] <= self['half_diag'] / u.deg
         ncp_on_plate = False
         scp_on_plate = False
 
@@ -759,7 +759,7 @@ class AstrometricSolution(OrderedDict):
         self['stc_box'] = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
                            .format(self['header_wcs']['CRVAL1'], 
                                    self['header_wcs']['CRVAL2'], 
-                                   self['fov1'], self['fov2']))
+                                   self['fov1'].value, self['fov2'].value))
 
         pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
                                [self.imwidth, self.imheight], 
@@ -821,19 +821,19 @@ class AstrometricSolution(OrderedDict):
             self.log.write('Could not calculate plate rotation angle', 
                            level=2, event=32)
 
-        self['rotation_angle'] = rotation_angle
+        self['rotation_angle'] = rotation_angle * u.deg
         self['plate_mirrored'] = plate_mirrored
 
         self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
-                       ''.format(self['fov1'], self['fov2']),
+                       ''.format(self['fov1'].value, self['fov2'].value),
                        double_newline=False)
         self.log.write('Mean pixel scale: {:.3f} arcsec'
-                       ''.format(self['pixel_scale']),
+                       ''.format(self['pixel_scale'].value),
                        double_newline=False)
         self.log.write('The image has {:.0f} stars per square degree'
-                       ''.format(self['source_density']))
+                       ''.format(self['source_density'].value))
         self.log.write('Plate rotation angle: {}'
-                       .format(self['rotation_angle']),
+                       .format(self['rotation_angle'].value),
                        double_newline=False)
         self.log.write('Plate is mirrored: {}'.format(self['plate_mirrored']),
                        double_newline=False)
@@ -964,6 +964,7 @@ class SolveProcess:
         self.pattern_ratio = None
         self.astref_tables = []
         self.gaia_files = None
+        self.neighbors_gaia = None
         self.sol_centroid = None
         self.sol_radius = None
         self.sol_max_sep = None
@@ -2372,7 +2373,7 @@ class SolveProcess:
         self.improve_astrometric_solutions()
 
         # Calculate mean pixel scale across all solutions
-        pixscales = np.array([sol['pixel_scale'] for sol in self.solutions])
+        pixscales = u.Quantity([sol['pixel_scale'] for sol in self.solutions])
         self.mean_pixscale = pixscales.mean()
 
     def find_astrometric_solution(self, ref_year=None, sip=None):
@@ -2482,8 +2483,8 @@ class SolveProcess:
             scale_low = 0.95 * scale0
             scale_high = 1.05 * scale0
             cmd += ' --scale-units arcsecperpix'
-            cmd += ' --scale-low {:.3f}'.format(scale_low)
-            cmd += ' --scale-high {:.3f}'.format(scale_high)
+            cmd += ' --scale-low {:.3f}'.format(scale_low.value)
+            cmd += ' --scale-high {:.3f}'.format(scale_high.value)
 
         # If the number of solutions is larger than 4, then accept
         # solutions with lower odds
@@ -2623,7 +2624,7 @@ class SolveProcess:
         ahead.totextfile(aheadfile, endcard=True, overwrite=True)
 
         # Use crossid radius of 5 pixels and transform it to arcsec scale
-        crossid_radius = 5. * solution['pixel_scale']
+        crossid_radius = 5. * u.pixel * solution['pixel_scale']
 
         # Filename for XML output
         fn_xml = '{}_scamp.xml'.format(basefn_solution)
@@ -2644,7 +2645,8 @@ class SolveProcess:
         cmd += ' -PIXSCALE_MAXERR 1.01'
         cmd += ' -POSANGLE_MAXERR 0.1'
         cmd += ' -POSITION_MAXERR 0.05'
-        cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius)
+        cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius
+                                                .to(u.arcsec).value)
         cmd += ' -DISTORT_DEGREES 3'
         cmd += ' -PROJECTION_TYPE TPV'
         cmd += ' -STABILITY_TYPE EXPOSURE'
@@ -2953,7 +2955,7 @@ class SolveProcess:
             header.totextfile(fn_ahead, endcard=True, overwrite=True)
 
             # Use crossid radius of 3 pixels and transform it to arcsec scale
-            crossid_radius = 3. * solution['pixel_scale']
+            crossid_radius = 3. * u.pixel * solution['pixel_scale']
 
             # Filename for XML output
             fn_xml = '{}_dewobbled_scamp.xml'.format(basefn_solution)
@@ -2970,7 +2972,8 @@ class SolveProcess:
             cmd += ' -FLAGS_MASK 0x00ff'
             cmd += ' -SN_THRESHOLDS 20.0,100.0'
             cmd += ' -MATCH N'
-            cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius)
+            cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius
+                                                    .to(u.arcsec).value)
             cmd += ' -DISTORT_DEGREES {:d}'.format(distort)
             cmd += ' -PROJECTION_TYPE TPV'
             cmd += ' -STABILITY_TYPE EXPOSURE'
@@ -3022,7 +3025,7 @@ class SolveProcess:
 
             kdt = KDT(coords_ref_sol)
             ds,ind_ref = kdt.query(coords_dewobbled, k=1)
-            mask_xmatch = ds <= crossid_radius
+            mask_xmatch = ds <= 5
             ind_plate = np.arange(len(coords_dewobbled))
 
             # Output crossmatched stars for debugging
@@ -3177,7 +3180,7 @@ class SolveProcess:
             c = SkyCoord(solution['raj2000'] * u.deg, 
                          solution['dej2000'] * u.deg, frame='icrs')
             dist = catalog.separation(c)
-            mask_dist = dist < solution['half_diag'] * u.deg
+            mask_dist = dist < solution['half_diag']
             ind = np.arange(len(tab))[mask_dist]
 
             # Check which stars fall inside image area
@@ -3228,7 +3231,7 @@ class SolveProcess:
             c = SkyCoord(solution['raj2000'] * u.deg, 
                          solution['dej2000'] * u.deg, frame='icrs')
             dist = catalog.separation(c)
-            mask_dist = dist < solution['half_diag'] * u.deg
+            mask_dist = dist < solution['half_diag']
             ind = np.arange(len(tycho2))[mask_dist]
 
             # Check which stars fall inside image area
@@ -3343,7 +3346,7 @@ class SolveProcess:
                      'AND phot_g_mean_mag < {} '
                      'AND astrometric_params_solved=31'
                      .format(str(mag_range[0]), str(mag_range[1])))
-        fov_diag = 2 * self.solutions[0]['half_diag'] * u.deg
+        fov_diag = 2 * self.solutions[0]['half_diag']
 
         # If max angular separation between solutions is less than
         # FOV diagonal, then query Gaia once for all solutions. 
@@ -3366,7 +3369,7 @@ class SolveProcess:
                 solution = self.solutions[i]
                 pos_query = (pos_query_str
                              .format(solution['raj2000'], solution['dej2000'], 
-                                     solution['half_diag']))
+                                     solution['half_diag'].to(u.deg).value))
                 query = query_str.format(pos_query)
                 fn_tab = os.path.join(self.scratch_dir, 
                                       'gaiadr2-{:02d}.fits'.format(i+1))
@@ -3420,10 +3423,19 @@ class SolveProcess:
             sol_ref = np.hstack((sol_ref, np.full(num_inside, i+1)))
             index_ref = np.hstack((index_ref, np.arange(num_gaia)[mask_inside]))
 
+        # Calculate mean astrometric error
+        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in self.solutions])
+        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in self.solutions])
+        mean_scamp_sigma = np.sqrt(sigma1.mean()**2 + sigma2.mean()**2)
+
         # Crossmatch sources and Gaia stars
         coords_plate = np.vstack((self.sources['x_source'],
                                   self.sources['y_source'])).T
-        ind_plate, ind_ref, ds = self.crossmatch_cartesian(coords_plate, xy_ref)
+        tolerance = ((5. * mean_scamp_sigma / self.mean_pixscale)
+                     .to(u.pixel).value)
+        ind_plate, ind_ref, ds = self.crossmatch_cartesian(coords_plate, xy_ref, 
+                                                           tolerance=tolerance)
+        dist_arcsec = (ds * u.pixel * self.mean_pixscale).to(u.arcsec).value
         ind_gaia = index_ref[ind_ref]
         self.sources['solution_num'][ind_plate] = sol_ref[ind_ref]
         self.sources['gaiadr2_id'][ind_plate] = gaia_table['source_id'][ind_gaia]
@@ -3433,7 +3445,25 @@ class SolveProcess:
         self.sources['gaiadr2_bpmag'][ind_plate] = gaia_table['phot_bp_mean_mag'][ind_gaia]
         self.sources['gaiadr2_rpmag'][ind_plate] = gaia_table['phot_rp_mean_mag'][ind_gaia]
         self.sources['gaiadr2_bp_rp'][ind_plate] = gaia_table['bp_rp'][ind_gaia]
-        self.sources['gaiadr2_dist'][ind_plate] = ds * self.mean_pixscale
+        self.sources['gaiadr2_dist'][ind_plate] = dist_arcsec
+
+        # Crossmatch: find all neighbours for sources
+        kdt_ref = KDT(xy_ref)
+        kdt_plate = KDT(coords_plate)
+        max_distance = ((20. * mean_scamp_sigma / self.mean_pixscale)
+                        .to(u.pixel).value)
+        mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
+        mtrx_keys = np.array([a for a in mtrx.keys()])
+        k_plate = mtrx_keys[:,0]
+        k_ref = mtrx_keys[:,1]
+        dist = np.fromiter(mtrx.values(), dtype=float) * u.pixel
+
+        # Construct neighbors table
+        nbs = Table()
+        nbs['source_num'] = self.sources[k_plate]['source_num']
+        nbs['gaia_id'] = gaia_table[index_ref[k_ref]]['source_id']
+        nbs['dist'] = dist
+        self.neighbors_gaia = nbs
 
     def get_reference_catalogs(self):
         """
@@ -4601,8 +4631,8 @@ class SolveProcess:
                            '{:.2f} times log10(isoarea)'
                            ''.format(float(self.crossmatch_nlogarea)), 
                            level=4, event=60)
-            logarea_arcsec = (logarea_finite * self.mean_pixscale
-                              * float(self.crossmatch_nlogarea) * u.arcsec)
+            logarea_arcsec = (logarea_finite * u.pixel * self.mean_pixscale
+                              * float(self.crossmatch_nlogarea))
             matchrad_arcsec = np.maximum(matchrad_arcsec, logarea_arcsec)
 
         if self.crossmatch_maxradius is not None:
