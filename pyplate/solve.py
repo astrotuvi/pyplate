@@ -14,7 +14,7 @@ from astropy.io import fits, votable
 from astropy.table import Table, vstack
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
 from astropy.coordinates import match_coordinates_sky
-from astropy import units
+from astropy import units as u
 from astropy.time import Time
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline
@@ -706,15 +706,15 @@ class AstrometricSolution(OrderedDict):
         edge_midpoints = self.wcs.all_pix2world(pix_edge_midpoints, 1)
 
         c1 = SkyCoord(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1], 
-                      unit=(units.degree, units.degree))
+                      unit=(u.deg, u.deg))
         c2 = SkyCoord(ra=edge_midpoints[1,0], dec=edge_midpoints[1,1],
-                      unit=(units.degree, units.degree))
+                      unit=(u.deg, u.deg))
         c3 = SkyCoord(ra=edge_midpoints[2,0], dec=edge_midpoints[2,1],
-                      unit=(units.degree, units.degree))
+                      unit=(u.deg, u.deg))
         c4 = SkyCoord(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
-                      unit=(units.degree, units.degree))
-        self['fov1'] = c1.separation(c2).degree
-        self['fov2'] = c3.separation(c4).degree
+                      unit=(u.deg, u.deg))
+        self['fov1'] = c1.separation(c2).deg
+        self['fov2'] = c3.separation(c4).deg
 
         self['source_density'] = (self.num_sources_sixbins
                                   / self.rel_area_sixbins
@@ -749,12 +749,12 @@ class AstrometricSolution(OrderedDict):
         self['scp_on_plate'] = scp_on_plate
 
         # Construct coordinate strings
-        ra_angle = Angle(self['raj2000'], units.deg)
-        dec_angle = Angle(self['dej2000'], units.deg)
+        ra_angle = Angle(self['raj2000'], u.deg)
+        dec_angle = Angle(self['dej2000'], u.deg)
 
-        self['raj2000_hms'] = ra_angle.to_string(unit=units.hour, sep=':',
+        self['raj2000_hms'] = ra_angle.to_string(unit=u.hour, sep=':',
                                                  precision=1, pad=True)
-        self['dej2000_dms'] = dec_angle.to_string(unit=units.deg, sep=':',
+        self['dej2000_dms'] = dec_angle.to_string(unit=u.deg, sep=':',
                                                   precision=1, pad=True)
         self['stc_box'] = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
                            .format(self['header_wcs']['CRVAL1'], 
@@ -771,8 +771,8 @@ class AstrometricSolution(OrderedDict):
                                        corners[1,0], corners[1,1],
                                        corners[2,0], corners[2,1],
                                        corners[3,0], corners[3,1]))
-        self['skycoord_corners'] = SkyCoord(corners[:,0]*units.deg, 
-                                            corners[:,1]*units.deg,
+        self['skycoord_corners'] = SkyCoord(corners[:,0] * u.deg, 
+                                            corners[:,1] * u.deg,
                                             frame='icrs')
 
         # Calculate plate rotation angle
@@ -2677,8 +2677,8 @@ class SolveProcess:
         scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
         solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
         solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
-        solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(units.arcsec)
-        solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(units.arcsec)
+        solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(u.arcsec)
+        solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(u.arcsec)
         scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
         solution['scamp_sigma_1'] = scamp_sigmas[0]
         solution['scamp_sigma_2'] = scamp_sigmas[1]
@@ -3174,10 +3174,10 @@ class SolveProcess:
             catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
 
             # Query stars around the plate center
-            c = SkyCoord(solution['raj2000']*units.deg, 
-                         solution['dej2000']*units.deg, frame='icrs')
+            c = SkyCoord(solution['raj2000'] * u.deg, 
+                         solution['dej2000'] * u.deg, frame='icrs')
             dist = catalog.separation(c)
-            mask_dist = dist < solution['half_diag']*units.deg
+            mask_dist = dist < solution['half_diag'] * u.deg
             ind = np.arange(len(tab))[mask_dist]
 
             # Check which stars fall inside image area
@@ -3225,10 +3225,10 @@ class SolveProcess:
             catalog = SkyCoord(ra_tyc, dec_tyc, frame='icrs')
 
             # Query stars around the plate center
-            c = SkyCoord(solution['raj2000']*units.deg, 
-                         solution['dej2000']*units.deg, frame='icrs')
+            c = SkyCoord(solution['raj2000'] * u.deg, 
+                         solution['dej2000'] * u.deg, frame='icrs')
             dist = catalog.separation(c)
-            mask_dist = dist < solution['half_diag']*units.deg
+            mask_dist = dist < solution['half_diag'] * u.deg
             ind = np.arange(len(tycho2))[mask_dist]
 
             # Check which stars fall inside image area
@@ -3264,7 +3264,7 @@ class SolveProcess:
         # Collect center coordinates of solutions
         sol_ra = np.array([sol['raj2000'] for sol in self.solutions])
         sol_dec = np.array([sol['dej2000'] for sol in self.solutions])
-        c_sol = SkyCoord(sol_ra*units.deg, sol_dec*units.deg, frame='icrs')
+        c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
 
         # Create an offset frame based on the first solution
         aframe = c_sol[0].skyoffset_frame()
@@ -3285,7 +3285,7 @@ class SolveProcess:
         # Collect corner coordinates of the two solutions
         corners1 = self.solutions[ind_max1]['skycoord_corners']
         corners2 = self.solutions[ind_max2]['skycoord_corners']
-        max_sep_corners = 0 * units.deg
+        max_sep_corners = 0 * u.deg
 
         # Find corners that are most distant from each other
         for c in corners1:
@@ -3297,7 +3297,7 @@ class SolveProcess:
                 max_sep_corners = sep_corners.max()
 
         # Take the point between two corners as a centroid of solutions
-        pos_angle = c1.position_angle(c2).to(units.deg)
+        pos_angle = c1.position_angle(c2).to(u.deg)
         radius = max_sep_corners / 2.
         centroid = c1.directional_offset_by(pos_angle, radius)
 
@@ -3343,16 +3343,16 @@ class SolveProcess:
                      'AND phot_g_mean_mag < {} '
                      'AND astrometric_params_solved=31'
                      .format(str(mag_range[0]), str(mag_range[1])))
-        fov_diag = 2 * self.solutions[0]['half_diag'] * units.deg
+        fov_diag = 2 * self.solutions[0]['half_diag'] * u.deg
 
         # If max angular separation between solutions is less than
         # FOV diagonal, then query Gaia once for all solutions. 
         # Otherwise, query Gaia separately for individual solutions.
         if self.sol_max_sep < fov_diag:
             pos_query = (pos_query_str
-                         .format(self.sol_centroid.ra.to(units.deg).value,
-                                 self.sol_centroid.dec.to(units.deg).value,
-                                 self.sol_radius.to(units.deg).value))
+                         .format(self.sol_centroid.ra.to(u.deg).value,
+                                 self.sol_centroid.dec.to(u.deg).value,
+                                 self.sol_radius.to(u.deg).value))
             query = query_str.format(pos_query)
             fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
             job = Gaia.launch_job_async(query, output_file=fn_tab, 
@@ -4587,14 +4587,14 @@ class SolveProcess:
             self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
                            ''.format(float(self.crossmatch_radius)), 
                            level=4, event=60)
-            matchrad_arcsec = float(self.crossmatch_radius)*units.arcsec
+            matchrad_arcsec = float(self.crossmatch_radius)*u.arcsec
         else:
             self.log.write('Using scaled cross-match radius of '
                            '{:.2f} astrometric sigmas'
                            ''.format(float(self.crossmatch_nsigma)), 
                            level=4, event=60)
             matchrad_arcsec = (coorderr_finite * float(self.crossmatch_nsigma)
-                               * units.arcsec)
+                               * u.arcsec)
 
         if self.crossmatch_nlogarea is not None:
             self.log.write('Using scaled cross-match radius of '
@@ -4602,7 +4602,7 @@ class SolveProcess:
                            ''.format(float(self.crossmatch_nlogarea)), 
                            level=4, event=60)
             logarea_arcsec = (logarea_finite * self.mean_pixscale
-                              * float(self.crossmatch_nlogarea) * units.arcsec)
+                              * float(self.crossmatch_nlogarea) * u.arcsec)
             matchrad_arcsec = np.maximum(matchrad_arcsec, logarea_arcsec)
 
         if self.crossmatch_maxradius is not None:
@@ -4610,16 +4610,15 @@ class SolveProcess:
                            ''.format(float(self.crossmatch_maxradius)), 
                            level=4, event=60)
             maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                * units.arcsec)
+                                * u.arcsec)
             matchrad_arcsec = np.minimum(matchrad_arcsec, maxradius_arcsec)
 
         self.sources['match_radius'][ind_finite] = matchrad_arcsec
 
         # Find nearest neighbours
-        coords = SkyCoord(ra_finite, dec_finite, 
-                          unit=(units.degree, units.degree))
+        coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
         _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
-        matchdist = ds2d.to(units.arcsec).value
+        matchdist = ds2d.to(u.arcsec).value
         self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
         # Calculate zenith angle and air mass for each source
@@ -4657,10 +4656,8 @@ class SolveProcess:
         if self.ra_ucac is None or self.dec_ucac is None:
             self.log.write('Missing UCAC4 data', level=2, event=62)
         else:
-            coords = SkyCoord(ra_finite, dec_finite, 
-                              unit=(units.degree, units.degree))
-            catalog = SkyCoord(self.ra_ucac, self.dec_ucac, 
-                               unit=(units.degree, units.degree))
+            coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
+            catalog = SkyCoord(self.ra_ucac, self.dec_ucac, unit=(u.deg, u.deg))
             ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                          nthneighbor=1)
             ind_plate = np.arange(ind_ucac.size)
@@ -4668,14 +4665,14 @@ class SolveProcess:
 
             ind_plate = ind_plate[indmask]
             ind_ucac = ind_ucac[indmask]
-            matchdist = ds2d[indmask].to(units.arcsec).value
+            matchdist = ds2d[indmask].to(u.arcsec).value
 
             _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
                                               nthneighbor=2)
-            matchdist2 = ds2d2[indmask].to(units.arcsec).value
+            matchdist2 = ds2d2[indmask].to(u.arcsec).value
             _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
                                                 nthneighbor=2)
-            nndist = nn_ds2d[ind_ucac].to(units.arcsec).value
+            nndist = nn_ds2d[ind_ucac].to(u.arcsec).value
 
             num_match = len(ind_plate)
             self.db_update_process(num_ucac4=num_match)
@@ -4712,10 +4709,9 @@ class SolveProcess:
             if self.num_tyc == 0:
                 self.log.write('Missing Tycho-2 data', level=2, event=63)
             else:
-                coords = SkyCoord(ra_finite, dec_finite, 
-                                  unit=(units.degree, units.degree))
+                coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
                 catalog = SkyCoord(self.ra_tyc, self.dec_tyc, 
-                                   unit=(units.degree, units.degree))
+                                   unit=(u.deg, u.deg))
                 ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
                                                             nthneighbor=1)
                 ind_plate = np.arange(ind_tyc.size)
@@ -4723,14 +4719,14 @@ class SolveProcess:
 
                 ind_plate = ind_plate[indmask]
                 ind_tyc = ind_tyc[indmask]
-                matchdist = ds2d[indmask].to(units.arcsec).value
+                matchdist = ds2d[indmask].to(u.arcsec).value
 
                 _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
                                                   nthneighbor=2)
-                matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                matchdist2 = ds2d2[indmask].to(u.arcsec).value
                 _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
                                                     nthneighbor=2)
-                nndist = nn_ds2d[ind_tyc].to(units.arcsec).value
+                nndist = nn_ds2d[ind_tyc].to(u.arcsec).value
 
                 num_match = len(ind_plate)
                 self.db_update_process(num_tycho2=num_match)
@@ -4780,10 +4776,8 @@ class SolveProcess:
                     ra_apass = self.ra_apass
                     dec_apass = self.dec_apass
 
-                coords = SkyCoord(ra_finite, dec_finite, 
-                                  unit=(units.degree, units.degree))
-                catalog = SkyCoord(ra_apass, dec_apass, 
-                                   unit=(units.degree, units.degree))
+                coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
+                catalog = SkyCoord(ra_apass, dec_apass, unit=(u.deg, u.deg))
                 ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
                                                               nthneighbor=1)
                 ind_plate = np.arange(ind_apass.size)
@@ -4791,14 +4785,14 @@ class SolveProcess:
 
                 ind_plate = ind_plate[indmask]
                 ind_apass = ind_apass[indmask]
-                matchdist = ds2d[indmask].to(units.arcsec).value
+                matchdist = ds2d[indmask].to(u.arcsec).value
 
                 _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
                                                   nthneighbor=2)
-                matchdist2 = ds2d2[indmask].to(units.arcsec).value
+                matchdist2 = ds2d2[indmask].to(u.arcsec).value
                 _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
                                                     nthneighbor=2)
-                nndist = nn_ds2d[ind_apass].to(units.arcsec).value
+                nndist = nn_ds2d[ind_apass].to(u.arcsec).value
 
                 num_match = len(ind_plate)
                 self.db_update_process(num_apass=num_match)
