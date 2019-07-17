@@ -3463,6 +3463,9 @@ class SolveProcess:
         nbs['source_num'] = self.sources[k_plate]['source_num']
         nbs['gaia_id'] = gaia_table[index_ref[k_ref]]['source_id']
         nbs['dist'] = dist
+        nbs['solution_num'] = sol_ref[k_ref]
+        nbs['gaia_x'] = xy_ref[k_ref,0]
+        nbs['gaia_y'] = xy_ref[k_ref,1]
         self.neighbors_gaia = nbs
 
     def get_reference_catalogs(self):
