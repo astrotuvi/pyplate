@@ -1906,6 +1906,12 @@ class SolveProcess:
         self.sources['nn_dist'] = np.nan
         self.sources['zenith_angle'] = np.nan
         self.sources['airmass'] = np.nan
+        self.sources['gaiadr2_ra'] = np.nan
+        self.sources['gaiadr2_dec'] = np.nan
+        self.sources['gaiadr2_bpmag'] = np.nan
+        self.sources['gaiadr2_rpmag'] = np.nan
+        self.sources['gaiadr2_bp_rp'] = np.nan
+        self.sources['gaiadr2_dist'] = np.nan
         self.sources['ucac4_ra'] = np.nan
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
@@ -4868,11 +4874,14 @@ class SolveProcess:
                     self.sources['apass_nn_dist'][ind] = (nndist
                                                           .astype(np.float32))
 
-    def calibrate_photometry_gaia(self):
+    def calibrate_photometry_gaia(self, solution_num=None):
         """
         Calibrate extracted magnitudes with Gaia data.
 
         """
+
+        assert (solution_num is None or 
+                (solution_num > 0 and solution_num <= self.num_solutions))
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
 
@@ -4915,7 +4924,12 @@ class SolveProcess:
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
                        level=3, event=71)
-        ind_cal = np.where((self.sources['mag_auto'] > 0) & 
+
+        if solution_num is None:
+            solution_num = 1
+
+        ind_cal = np.where((self.sources['solution_num'] == solution_num) &
+                           (self.sources['mag_auto'] > 0) & 
                            (self.sources['mag_auto'] < 90) &
                            ((self.sources['sextractor_flags'] == 0) |
                            (self.sources['sextractor_flags'] == 2)) &
@@ -5255,6 +5269,7 @@ class SolveProcess:
 
         # Store color term result
         self.phot_color = OrderedDict([
+            ('solution_num', solution_num),
             ('color_term', cterm),
             ('color_term_err', cterm_err),
             ('stdev_fit', stdev_fit),
@@ -5265,8 +5280,9 @@ class SolveProcess:
             ('num_stars', num_stars)
         ])
 
-        self.log.write('Plate color term: {:.3f} ({:.3f})'
-                       ''.format(cterm, cterm_err), level=4, event=72)
+        self.log.write('Plate color term (solution {:d}): {:.3f} ({:.3f})'
+                       .format(solution_num, cterm, cterm_err), 
+                       level=4, event=72)
         self.db_update_process(color_term=cterm)
 
         self.log.write('Photometric calibration using annular bins 1-8', 
@@ -5678,6 +5694,7 @@ class SolveProcess:
 
             # Store calibration statistics
             self.phot_calib.append(OrderedDict([
+                ('solution_num', solution_num),
                 ('annular_bin', b),
                 ('color_term', cterm),
                 ('color_term_err', cterm_err),
@@ -5695,13 +5712,15 @@ class SolveProcess:
 
             # Apply photometric calibration to sources in the annular bin
             if b == 0:
-                ind_bin = np.where((self.sources['annular_bin'] <= 9) &
+                ind_bin = np.where((self.sources['solution_num'] == solution_num) &
+                                   (self.sources['annular_bin'] <= 9) &
                                    (self.sources['mag_auto'] < 90.))[0]
                 self.log.write('Applying photometric calibration to sources '
                                'in annular bins 1-9', 
                                level=3, event=74)
             else:
-                ind_bin = np.where((self.sources['annular_bin'] == b) &
+                ind_bin = np.where((self.sources['solution_num'] == solution_num) &
+                                   (self.sources['annular_bin'] == b) &
                                    (self.sources['mag_auto'] < 90.))[0]
                 self.log.write('Applying photometric calibration to sources '
                                'in annular bin {:d}'.format(b), 
