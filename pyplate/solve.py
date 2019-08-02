@@ -3026,7 +3026,9 @@ class SolveProcess:
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
         num_astrom_sources = len(self.astrom_sources)
-        self.exp_numbers = self.exp_numbers[ind_plate[indmask]]
+
+        if self.exp_numbers is not None:
+            self.exp_numbers = self.exp_numbers[ind_plate[indmask]]
 
         # Also, throw out stars that appear in the Astrometry.net .corr file
         corr_tab = Table.read(fn_corr)
@@ -3038,7 +3040,9 @@ class SolveProcess:
         indmask = ds > 1.
         ind_plate = np.arange(num_astrom_sources)
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
-        self.exp_numbers = self.exp_numbers[ind_plate[indmask]]
+
+        if self.exp_numbers is not None:
+            self.exp_numbers = self.exp_numbers[ind_plate[indmask]]
 
         # Convert x,y to RA/Dec with the global WCS solution
         #pixcrd = np.column_stack((self.sources['x_source'], 
