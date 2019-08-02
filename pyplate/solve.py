@@ -19,6 +19,7 @@ from astropy.time import Time
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.ndimage.filters import generic_filter
+from scipy.linalg import lstsq
 from collections import OrderedDict
 from .database import PlateDB
 from .conf import read_conf
@@ -33,6 +34,12 @@ try:
     from scipy.spatial import cKDTree as KDT
 except ImportError:
     from scipy.spatial import KDTree as KDT
+
+try:
+    from sklearn.cluster import DBSCAN
+    have_sklearn = True
+except ImportError:
+    have_sklearn = False
 
 try:
     import MySQLdb
@@ -957,6 +964,7 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solutions = None
+        self.exp_numbers = None
         self.num_solutions = 0
         self.num_iterations = 0
         self.pattern_x = None
@@ -2278,6 +2286,236 @@ class SolveProcess:
             x_image = self.sources['x_source']
             self.sources['x_source'] = (x_source - self.pattern_x(x_source))
 
+    def find_peak_separation(self, coords):
+        """
+        Find characteristic distance between nearest neighbors in coords.
+
+        """
+
+        n, dim = coords.shape
+        assert dim == 2
+
+        kdt = KDT(coords)
+        ds,_ = kdt.query(coords, k=2)
+
+        # Kernel density estimation (KDE) to distances
+        kde = sm.nonparametric.KDEUnivariate(ds[:,1].astype(np.double))
+        kde.fit()
+
+        # Find peak in density
+        a = kde.density.argmax()
+        dist_peak = kde.support[a]
+
+        # Return peak distance
+        return dist_peak
+
+    def _get_scale_rotation(xy1, xy2):
+        """
+        Find scale and rotation between two point clouds.
+
+        """
+
+        assert xy1.shape == xy2.shape
+        n, dim = xy1.shape
+
+        H = (xy1.T @ xy2) / n
+        V, S, W = np.linalg.svd(H)
+
+        if (np.linalg.det(V) * np.linalg.det(W)) < 0:
+            S[-1] = -S[-1]
+            V[:,-1] = -V[:,-1]
+
+        R = V @ W
+        scale = (np.sqrt((xy2**2).sum(axis=1)).sum()
+                 / np.sqrt((xy1**2).sum(axis=1)).sum())
+        rot_angle = np.degrees(np.arctan2(R[1,0], R[0,0]))
+
+        if rot_angle > 90:
+            rot_angle -= 180.
+        elif rot_angle < -90:
+            rot_angle += 180.
+
+        return scale, rot_angle, R
+
+    def find_multiexp_pattern(self, coords, dist_peak, numexp):
+        """
+        Find multi-exposure pattern in coords.
+
+        """
+
+        n, dim = coords.shape
+        assert dim == 2
+
+        # Choose optimal clustering parameters
+        if numexp > 20:
+            eps = dist_peak * 2
+            min_samples = 1
+            num_select = 25 * numexp
+        elif numexp > 10:
+            eps = dist_peak * 3
+            min_samples = 2
+            num_select = 50 * numexp
+        else:
+            eps = dist_peak * 4
+            min_samples = 4
+            num_select = 100 * numexp
+
+        coords_select = coords[:num_select]
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(coords_select)
+        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+        labels = db.labels_
+        num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        self.log.write('Found {:d} source clusters'.format(num_clusters), 
+                       level=4, double_newline=False)
+
+        # Find cluster sizes (label counts)
+        lab, cnt = np.unique(labels[labels>-1], return_counts=True)
+
+        # Group cluster sizes
+        c, cc = np.unique(cnt, return_counts=True)
+
+        # Sort by difference between cluster size and numexp
+        ind_sort = np.argsort(np.abs(c-numexp))
+
+        # Accept most probable cluster size (label count)
+        count_prob = c[ind_sort[0]]
+        num_accepted_clusters = cc[ind_sort[0]]
+        self.log.write('Use clusters with {:d} members'
+                       .format(count_prob), level=4, double_newline=False)
+        self.log.write('Such clusters appear {:d} times'
+                       .format(num_accepted_clusters), level=4, 
+                       double_newline=False)
+
+        # Select labels that have the accepted cluster size
+        labels_sel = lab[cnt == count_prob]
+        label_mask = np.isin(labels, labels_sel)
+
+        # Create array for source coordinates relative to cluster center
+        xy = coords_select.copy()
+        xy_mean = np.zeros((len(labels_sel), 2))
+        pattern_angle = np.zeros(len(labels_sel))
+        pattern_scale = np.zeros(len(labels_sel)) + 1.
+
+        for i,k in enumerate(labels_sel):
+            class_member_mask = (labels == k)
+            xy_mean[i,0] = np.mean(xy[class_member_mask,0])
+            xy_mean[i,1] = np.mean(xy[class_member_mask,1])    
+
+        # Analyse scale and rotation only if number of clusters is
+        # above threshold
+        if num_accepted_clusters > 10:
+            scale_rot = True
+
+            # Find cluster nearest to image center
+            im_center = np.array(((self.imwidth + 1.) / 2.,
+                                  (self.imheight + 1.) / 2.))
+            dist_center = np.linalg.norm(xy_mean-im_center, axis=1)
+            ind_nearest = dist_center.argmin()
+
+            # Find scale and rotation relative to the cluster closest to
+            # image center
+            for i,k in enumerate(labels_sel):
+                class_member_mask = (labels == k)
+                
+                if i == ind_nearest:
+                    xy0 = xy[class_member_mask]
+                else:
+                    pattern_scale[i],pattern_angle[i],_ = \
+                            self._get_scale_rotation(xy[class_member_mask], xy0)
+                    
+            # Fit 2D plane
+            angle_mask = np.abs(pattern_rot) < 10
+            A_angle = np.c_[xy_mean[angle_mask,0], xy_mean[angle_mask,1], 
+                            np.ones(angle_mask.sum())]
+            C_angle,_,_,_ = lstsq(A_angle, pattern_angle[angle_mask])
+            A_scale = np.c_[xy_mean[:,0], xy_mean[:,1],
+                            np.ones(xy_mean.shape[0])]
+            C_scale,_,_,_ = lstsq(A_scale, pattern_scale)
+        else:
+            scale_rot = False
+
+        # Subtract cluster center coordinates and apply scale/rotation
+        for i,k in enumerate(labels_sel):
+            class_member_mask = (labels == k)
+            xy[class_member_mask,0] -= xy_mean[i,0]
+            xy[class_member_mask,1] -= xy_mean[i,1]
+
+            if scale_rot:
+                theta = np.radians(C_angle[0] * xy_mean[i,0] + 
+                                   C_angle[1] * xy_mean[i,1] + C_angle[2])
+                rot = np.array(((np.cos(theta), -np.sin(theta)),
+                                (np.sin(theta),  np.cos(theta))))
+                scale = (C_scale[0] * xy_mean[i,0] +
+                         C_scale[1] * xy_mean[i,1] + C_scale[2])
+                xy[class_member_mask] = xy[class_member_mask].dot(scale*rot)
+
+        xy_local = xy[label_mask]
+
+        # Analyse clustering on xy_local
+        eps = 5.
+
+        if num_accepted_clusters > 4:
+            min_samples = 4
+        else:
+            min_samples = num_accepted_clusters
+
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(xy_local)
+        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+        core_samples_mask[db.core_sample_indices_] = True
+        noise_mask = (db.labels_ == -1)
+        exp_labels = db.labels_
+        num_exp_clusters = len(set(exp_labels)) - (1 if -1 in exp_labels else 0)
+        self.log.write('Number of clusters within source pattern: {:d}'
+                       .format(num_exp_clusters), level=4, double_newline=False)
+
+        # Find cluster centers and sort them
+        xy_mean_exp = np.zeros((num_exp_clusters, 2))
+
+        for i,e in enumerate(set(exp_labels[~noise_mask])):
+            xy_exp = xy_local[exp_labels == e].copy()
+            xy_mean_exp[i,0] = np.mean(xy_exp[:,0])
+            xy_mean_exp[i,1] = np.mean(xy_exp[:,1])
+
+        # Check wether exposure pattern in horizontal or vertical
+        exp_pattern_ratio = ((xy_mean_exp[:,1].max() - xy_mean_exp[:,1].min()) /
+                             (xy_mean_exp[:,0].max() - xy_mean_exp[:,0].min()))
+
+        # Sort cluster centers
+        sort_axis = 1 if exp_pattern_ratio > 1 else 0
+        xy_mean_exp = xy_mean_exp[np.argsort(xy_mean_exp[:,sort_axis])]
+        xy_mean_exp[:,0] -= xy_mean_exp[0,0]
+        xy_mean_exp[:,1] -= xy_mean_exp[0,1]
+
+        # Find locations of pattern and assign sources to exposures
+        exp_num = np.zeros(len(coords), dtype=np.int)
+        kdt_coords = KDT(coords)
+        xy_found = np.empty((0, 2))
+
+        for i in np.arange(len(coords)):
+            # Take a source from list
+            xy_eval = coords[i]
+            
+            # Search for matches
+            if scale_rot:
+                theta = np.radians(C_angle[0] * xy_eval[0] + C_angle[2])
+                rot = np.array(((np.cos(-theta), -np.sin(-theta)),
+                                (np.sin(-theta),  np.cos(-theta))))
+                scale = 1./(C_scale[1] * xy_eval[1] + C_scale[2])
+                xy_transform = xy_eval + xy_mean_exp.dot(scale*rot)
+                ds,ind = kdt_coords.query(xy_transform)
+            else:
+                ds,ind = kdt_coords.query(xy_eval+xy_mean_exp)
+            
+            if (ds < 10).sum() == num_exp_clusters:
+                # Append found pattern to list of finds
+                xy_found = np.vstack((xy_found, xy_eval))
+                exp_num[ind] = np.arange(1, num_exp_clusters+1)
+                
+        self.log.write('Found {:d} patterns'.format(len(xy_found)))
+
+        return exp_num
+
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
         Solve astrometry in a FITS file.
@@ -2350,6 +2588,19 @@ class SolveProcess:
         self.solutions = []
         self.num_solutions = 0
 
+        try:
+            numexp = self.platemeta['numexp']
+        except Exception:
+            numexp = 1
+
+        if numexp > 4:
+            coords = np.empty((nrows, 2))
+            coords[:,0] = self.astrom_sources['x_source']
+            coords[:,1] = self.astrom_sources['y_source']
+            dist_peak = self.find_peak_separation(coords)
+            self.exp_numbers = self.find_multiexp_pattern(coords, dist_peak, 
+                                                          numexp)
+
         # Output short-listed star data to FITS file
         xycat = Table()
         xycat['X_IMAGE'] = self.astrom_sources['x_source']
@@ -2410,10 +2661,19 @@ class SolveProcess:
         except Exception:
             num_remain_exp = 1
 
+        # If sources have been numbered according to exposures,
+        # then select sources that match the current exposure number
+        if (self.exp_numbers is not None
+            and len(self.exp_numbers) > 4
+            and self.exp_numbers.max() > self.num_solutions):
+            indmask = (self.exp_numbers == self.num_solutions+1)
+            use_sources = self.astrom_sources[indmask]
+            num_use_sources = indmask.sum()
+
         # If number of remaining exposures is larger than 2, then
         # select sources that have two nearest neighbours within 90-degree
         # angle
-        if num_remain_exp > 2:
+        elif num_remain_exp > 2:
             coords = np.empty((num_astrom_sources, 2))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
@@ -2426,8 +2686,34 @@ class SolveProcess:
             x2 = coords[ind[:,2],0]
             y2 = coords[ind[:,2],1]
             indmask = (x1-x0)*(x2-x0)+(y1-y0)*(y2-y0) > 0
-            use_sources = self.astrom_sources[indmask]
-            num_use_sources = indmask.sum()
+
+            # Find clusters of vectors and take the largest cluster
+            if have_sklearn:
+                dx = x2[indmask] - x1[indmask]
+                dy = y2[indmask] - y1[indmask]
+                dxdy = np.vstack((dx, dy)).T
+                db = DBSCAN(eps=2.0, min_samples=10).fit(dxdy)
+                labels = db.labels_
+                lab, cnt = np.unique(labels[labels>-1], return_counts=True)
+                ind_max = np.argmax(cnt)
+                clumpmask = (labels == lab[ind_max])
+                use_sources = self.astrom_sources[indmask][clumpmask]
+                num_use_sources = clumpmask.sum()
+            else:
+                use_sources = self.astrom_sources[indmask]
+                num_use_sources = indmask.sum()
+
+            # Output for checking
+            t = Table()
+            t['x'] = x0[indmask]
+            t['y'] = y0[indmask]
+            t['dx1'] = x1[indmask] - x0[indmask]
+            t['dy1'] = y1[indmask] - y0[indmask]
+            t['dx2'] = x2[indmask] - x0[indmask]
+            t['dy2'] = y2[indmask] - y0[indmask]
+            basefn_solution = '{}-{:02d}'.format(self.basefn, self.num_solutions+1)
+            fn_out = os.path.join(self.scratch_dir, '{}_dxy.fits'.format(basefn_solution))
+            t.write(fn_out, format='fits', overwrite=True)
         else:
             use_sources = self.astrom_sources
             num_use_sources = num_astrom_sources
@@ -2498,8 +2784,13 @@ class SolveProcess:
             cmd += ' --odds-to-solve 1e8'
 
         if num_remain_exp > 0:
-            cmd += ' --cpulimit 120'
+            # Higher limit for the first solution
+            if self.num_solutions == 0:
+                cmd += ' --cpulimit 600'
+            else:
+                cmd += ' --cpulimit 300'
         else:
+            # Low limit for extra solutions (after numexp from metadata)
             cmd += ' --cpulimit 30'
 
         cmd_no_tweak = cmd + ' --no-tweak'
@@ -2650,7 +2941,7 @@ class SolveProcess:
         #cmd += ' -ASTREF_WEIGHT 100'
         cmd += ' -PIXSCALE_MAXERR 1.01'
         cmd += ' -POSANGLE_MAXERR 0.1'
-        cmd += ' -POSITION_MAXERR 0.05'
+        cmd += ' -POSITION_MAXERR 0.2'
         cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius
                                                 .to(u.arcsec).value)
         cmd += ' -DISTORT_DEGREES 3'
@@ -2735,6 +3026,7 @@ class SolveProcess:
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
         num_astrom_sources = len(self.astrom_sources)
+        self.exp_numbers = self.exp_numbers[ind_plate[indmask]]
 
         # Also, throw out stars that appear in the Astrometry.net .corr file
         corr_tab = Table.read(fn_corr)
@@ -2746,6 +3038,7 @@ class SolveProcess:
         indmask = ds > 1.
         ind_plate = np.arange(num_astrom_sources)
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
+        self.exp_numbers = self.exp_numbers[ind_plate[indmask]]
 
         # Convert x,y to RA/Dec with the global WCS solution
         #pixcrd = np.column_stack((self.sources['x_source'], 
@@ -3366,7 +3659,8 @@ class SolveProcess:
                      'AND astrometric_params_solved=31'
                      .format(passband, str(mag_range[0]), 
                              passband, str(mag_range[1])))
-        fov_diag = 2 * self.solutions[0]['half_diag']
+        half_diag = u.Quantity([sol['half_diag'] for sol in self.solutions])
+        fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
 
         # If max angular separation between solutions is less than
         # FOV diagonal, then query Gaia once for all solutions. 
