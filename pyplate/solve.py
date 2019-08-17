@@ -2511,8 +2511,13 @@ class SolveProcess:
                 # Append found pattern to list of finds
                 xy_found = np.vstack((xy_found, xy_eval))
                 exp_num[ind] = np.arange(1, num_exp_clusters+1)
-                
-        self.log.write('Found {:d} patterns'.format(len(xy_found)))
+
+        num_found = len(xy_found)
+        self.log.write('Found {:d} patterns'.format(num_found))
+
+        if num_found < 10:
+            self.log.write('Not enough patterns found (<10)!')
+            exp_num = None
 
         return exp_num
 
@@ -2695,10 +2700,39 @@ class SolveProcess:
                 db = DBSCAN(eps=2.0, min_samples=10).fit(dxdy)
                 labels = db.labels_
                 lab, cnt = np.unique(labels[labels>-1], return_counts=True)
-                ind_max = np.argmax(cnt)
-                clumpmask = (labels == lab[ind_max])
-                use_sources = self.astrom_sources[indmask][clumpmask]
-                num_use_sources = clumpmask.sum()
+
+                # Sort clusters by the number of members (descending order)
+                if len(lab) > 1:
+                    ind_sort = np.argsort(cnt)[::-1]
+
+                    for i in ind_sort:
+                        clumpmask = (labels == lab[i])
+                        dxm = np.mean(dx[clumpmask])
+                        dym = np.mean(dy[clumpmask])
+                        dxs = np.std(dx[clumpmask])
+                        dys = np.std(dy[clumpmask])
+
+                        #self.log.write('i, count: {:d} {:d}'.format(i, cnt[i]))
+                        #self.log.write('dx mean, stddev: {:.3f} {:.3f}'
+                        #               .format(dxm, dxs), double_newline=False)
+                        #self.log.write('dy mean, stddev: {:.3f} {:.3f}'
+                        #               .format(dym, dys))
+
+                        # Check if cluster is compact and away from center
+                        # If yes, then interrupt the loop
+                        if np.maximum(dxs, dys) < np.sqrt(dxm**2 + dym**2):
+                            break
+                        
+                    #self.log.write('i: {:d}'.format(i))
+                    #self.log.write('dx mean, stddev: {:.3f} {:.3f}'
+                    #               .format(dxm, dxs), double_newline=False)
+                    #self.log.write('dy mean, stddev: {:.3f} {:.3f}'
+                    #               .format(dym, dys))
+                    use_sources = self.astrom_sources[indmask][clumpmask]
+                    num_use_sources = clumpmask.sum()
+                else:
+                    use_sources = self.astrom_sources[indmask]
+                    num_use_sources = indmask.sum()
             else:
                 use_sources = self.astrom_sources[indmask]
                 num_use_sources = indmask.sum()
