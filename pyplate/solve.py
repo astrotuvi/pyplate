@@ -2619,12 +2619,19 @@ class SolveProcess:
         fn_xy = os.path.join(self.scratch_dir, '{}.xy'.format(self.basefn))
         xycat.write(fn_xy, format='fits', overwrite=True)
 
+        brute_force = False
+
         # Repeat finding astrometric solutions until none is found
         while True:
-            solution, astref_table = self.find_astrometric_solution(ref_year=plate_year, sip=sip)
+            solution, astref_table = self.find_astrometric_solution(ref_year=plate_year, sip=sip,
+                                                                    brute_force=brute_force)
 
             if solution is None:
-                break
+                if brute_force:
+                    break
+                else:
+                    brute_force = True
+                    continue
 
             self.solutions.append(solution)
             self.astref_tables.append(astref_table)
@@ -2638,7 +2645,8 @@ class SolveProcess:
         pixscales = u.Quantity([sol['pixel_scale'] for sol in self.solutions])
         self.mean_pixscale = pixscales.mean()
 
-    def find_astrometric_solution(self, ref_year=None, sip=None):
+    def find_astrometric_solution(self, ref_year=None, sip=None, 
+                                  brute_force=False):
         """
         Solve astrometry for a list of sources.
 
@@ -2670,7 +2678,8 @@ class SolveProcess:
         # then select sources that match the current exposure number
         if (self.exp_numbers is not None
             and len(self.exp_numbers) > 4
-            and self.exp_numbers.max() > self.num_solutions):
+            and self.exp_numbers.max() > self.num_solutions
+            and brute_force == False):
             indmask = (self.exp_numbers == self.num_solutions+1)
             use_sources = self.astrom_sources[indmask]
             num_use_sources = indmask.sum()
@@ -2678,7 +2687,7 @@ class SolveProcess:
         # If number of remaining exposures is larger than 2, then
         # select sources that have two nearest neighbours within 90-degree
         # angle
-        elif num_remain_exp > 2:
+        elif num_remain_exp > 2 and brute_force == False:
             coords = np.empty((num_astrom_sources, 2))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
@@ -2692,7 +2701,8 @@ class SolveProcess:
             y2 = coords[ind[:,2],1]
             indmask = (x1-x0)*(x2-x0)+(y1-y0)*(y2-y0) > 0
 
-            # Find clusters of vectors and take the largest cluster
+            # Find clusters of vectors (from the nearest neighbor to the
+            # second nearest) and take the largest cluster
             if have_sklearn:
                 dx = x2[indmask] - x1[indmask]
                 dy = y2[indmask] - y1[indmask]
@@ -2818,11 +2828,13 @@ class SolveProcess:
             cmd += ' --odds-to-solve 1e8'
 
         if num_remain_exp > 0:
-            # Higher limit for the first solution
-            if self.num_solutions == 0:
+            # Higher cpu limit for the first solution
+            if brute_force:
                 cmd += ' --cpulimit 600'
-            else:
+            elif self.num_solutions == 0:
                 cmd += ' --cpulimit 300'
+            else:
+                cmd += ' --cpulimit 180'
         else:
             # Low limit for extra solutions (after numexp from metadata)
             cmd += ' --cpulimit 30'
