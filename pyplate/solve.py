@@ -5966,10 +5966,15 @@ class SolveProcess:
 
                 # Find magnitude at which density becomes larger than 0.05 of
                 # the max density
-                ind_dense_005 = np.where(kde.density > 0.05*kde.density.max())[0]
+                #ind_dense_005 = np.where(kde.density > 0.05*kde.density.max())[0]
                 # Index of kde.support at which density becomes 0.05 of max
-                ind0 = ind_dense_005[0]
-                brightmag = kde.support[ind0]
+                #ind0 = ind_dense_005[0]
+                #brightmag = kde.support[ind0]
+                #nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+
+                # Find magnitude at which density becomes larger than 0.2 of
+                # the max density
+                brightmag = kde.support[ind_dense[0]]
                 nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
                 if nbright < 20:
@@ -5995,19 +6000,20 @@ class SolveProcess:
                 t['plate_mag'] = plate_mag_u[:nbright]
                 t['cat_natmag'] = cat_natmag[:nbright]
                 t['fit_mag'] = vals
+                basefn_solution = '{}-{:02d}'.format(self.basefn, solution_num)
                 fn_tab = os.path.join(self.scratch_dir, 
-                                      '{}_bright.fits'.format(self.basefn))
+                                      '{}_bright.fits'.format(basefn_solution))
                 t.write(fn_tab, format='fits', overwrite=True)
 
                 # Normalise density to max density of the bright range
-                d_bright = kde.density[:ind0] / kde.density[:ind0].max()
+                #d_bright = kde.density[:ind0] / kde.density[:ind0].max()
                 # Find a smooth density curve and use values as weights
-                s_bright = InterpolatedUnivariateSpline(kde.support[:ind0],
-                                                        d_bright, k=1)
-                weight2 = s_bright(plate_mag_u[:nbright])
+                #s_bright = InterpolatedUnivariateSpline(kde.support[:ind0],
+                #                                        d_bright, k=1)
+                #weight2 = s_bright(plate_mag_u[:nbright])
 
                 # Linearly increasing weight
-                #weight2 = np.arange(nbright, dtype=float) / nbright
+                weight2 = np.arange(nbright, dtype=float) / nbright
 
                 weight1 = 1. - weight2
 
