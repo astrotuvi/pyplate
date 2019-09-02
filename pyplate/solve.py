@@ -5276,7 +5276,8 @@ class SolveProcess:
                            (self.sources['mag_auto'] > 0) & 
                            (self.sources['mag_auto'] < 90) &
                            ((self.sources['sextractor_flags'] == 0) |
-                           (self.sources['sextractor_flags'] == 2)) &
+                           (self.sources['sextractor_flags'] == 2) |
+                           (self.sources['sextractor_flags'] == 3)) &
                            (self.sources['flag_clean'] == 1))[0]
 
         if len(ind_cal) == 0:
@@ -5309,13 +5310,13 @@ class SolveProcess:
             plate_bin = np.array([])
             ind_calibstar = np.array([], dtype=int)
 
-        # Discard very red stars (B-V > 2)
+        # Discard very red stars (BP-RP > 2)
         if len(plate_mag) > 0:
             ind_nored = np.where(cat_bmag-cat_vmag <= 2)[0]
 
             if len(ind_nored) > 0:
                 num_red = len(plate_mag) - len(ind_nored)
-                self.log.write('Discarded {:d} red stars (B-V > 2)'
+                self.log.write('Discarded {:d} red stars (BP-RP > 2)'
                                ''.format(num_red), level=4, event=71)
                 cat_bmag = cat_bmag[ind_nored]
                 cat_vmag = cat_vmag[ind_nored]
