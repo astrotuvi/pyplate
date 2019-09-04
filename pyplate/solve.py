@@ -5630,7 +5630,7 @@ class SolveProcess:
                        level=4, event=72)
         self.db_update_process(color_term=cterm)
 
-        self.log.write('Photometric calibration using annular bins 1-8', 
+        self.log.write('Photometric calibration using annular bins 1-9', 
                        level=3, event=73)
 
         num_calib = 0  # counter for calibration stars
@@ -5640,8 +5640,8 @@ class SolveProcess:
         # Currently, use bin 0, which means all bins together
         for b in np.arange(1):
             if b == 0:
-                ind_bin = np.where(plate_bin < 9)[0]
-                bintxt = 'Bins 1-8'
+                ind_bin = np.where(plate_bin <= 9)[0]
+                bintxt = 'Bins 1-9'
             else:
                 ind_bin = np.where(plate_bin == b)[0]
 
