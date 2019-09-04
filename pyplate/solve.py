@@ -6097,8 +6097,8 @@ class SolveProcess:
             if brange.sum() > 0:
                 ind_range = ind_bin[np.where(brange)]
                 self.sources['phot_plate_flags'][ind_range] = 1
-                self.sources['natmagerr'][ind_bin] = s_rmse(plate_mag_brightest)
-                self.sources['natmagerr_plate'][ind_bin] = s_rmse(plate_mag_brightest)
+                self.sources['natmagerr'][ind_range] = s_rmse(plate_mag_brightest)
+                self.sources['natmagerr_plate'][ind_range] = s_rmse(plate_mag_brightest)
 
             brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
 
