@@ -17,7 +17,7 @@ from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
 from astropy.time import Time
 from astropy.stats import sigma_clip
-from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
 from scipy.ndimage.filters import generic_filter
 from scipy.linalg import lstsq
 from collections import OrderedDict
@@ -6029,6 +6029,11 @@ class SolveProcess:
                 # Calculate residuals
                 residuals = cat_natmag-s(plate_mag_u)
 
+                # Smooth residuals with spline
+                X = self.sources['x_source'][ind_calibstar_valid]
+                Y = self.sources['y_source'][ind_calibstar_valid]
+                s_corr = SmoothBivariateSpline(X, Y, residuals, kx=5, ky=5)
+
                 # Evaluate RMS errors from the calibration residuals
                 rmse_list = generic_filter(residuals, _rmse, size=10)
                 rmse_lowess = sm.nonparametric.lowess(rmse_list, plate_mag_u, 
@@ -6081,8 +6086,20 @@ class SolveProcess:
 
             src_bin = self.sources[ind_bin]
 
-            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+            # Correct magnitudes for positional effects
+            natmag_corr = src_bin['natmag_correction']
+            xsrc = src_bin['x_source']
+            ysrc = src_bin['y_source']
+
+            # Do a for-cycle, because SmoothBivariateSpline may crash with
+            # large input arrays
+            for i in np.arange(len(ind_bin)):
+                natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
+
+            # Assign magnitudes and errors
+            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto']) + natmag_corr
             self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
+            self.sources['natmag_correction'][ind_bin] = natmag_corr
             self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
             self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
             self.sources['color_term'][ind_bin] = cterm
