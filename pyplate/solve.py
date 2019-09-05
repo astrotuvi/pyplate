@@ -549,6 +549,7 @@ _source_meta = OrderedDict([
     ('gaiadr2_rpmag',       ('f4', '%7.4f', '')),
     ('gaiadr2_bp_rp',       ('f4', '%7.4f', '')),
     ('gaiadr2_dist',        ('f4', '%6.3f', '')),
+    ('gaiadr2_neighbors',   ('i4', '%3d', '')),
     ('ucac4_id',            ('a10', '%s', '')),
     ('ucac4_ra',            ('f8', '%11.7f', '')),
     ('ucac4_dec',           ('f8', '%11.7f', '')),
@@ -1920,6 +1921,7 @@ class SolveProcess:
         self.sources['gaiadr2_rpmag'] = np.nan
         self.sources['gaiadr2_bp_rp'] = np.nan
         self.sources['gaiadr2_dist'] = np.nan
+        self.sources['gaiadr2_neighbors'] = 0
         self.sources['ucac4_ra'] = np.nan
         self.sources['ucac4_dec'] = np.nan
         self.sources['ucac4_bmag'] = np.nan
@@ -3837,6 +3839,12 @@ class SolveProcess:
         nbs['gaia_y'] = xy_ref[k_ref,1]
         self.neighbors_gaia = nbs
 
+        # Calculate neighbor counts
+        source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
+        mask = np.isin(self.sources['source_num'], source_num)
+        ind_mask = np.where(mask)[0]
+        self.sources['gaiadr2_neighbors'][ind_mask] = cnt
+
     def get_reference_catalogs(self):
         """
         Get reference catalogs for astrometric and photometric calibration.
@@ -5272,12 +5280,19 @@ class SolveProcess:
         if solution_num is None:
             solution_num = 1
 
+        # For single exposures, exclude blended sources.
+        # For multiple exposures, include them, because otherwise the bright
+        # end will lack calibration stars.
+        if self.num_solutions == 1:
+            bflags = ((self.sources['sextractor_flags'] == 0) |
+                      (self.sources['sextractor_flags'] == 2))
+        else:
+            bflags = self.sources['sextractor_flags'] <= 3
+
         ind_cal = np.where((self.sources['solution_num'] == solution_num) &
                            (self.sources['mag_auto'] > 0) & 
                            (self.sources['mag_auto'] < 90) &
-                           ((self.sources['sextractor_flags'] == 0) |
-                           (self.sources['sextractor_flags'] == 2) |
-                           (self.sources['sextractor_flags'] == 3)) &
+                           bflags &
                            (self.sources['flag_clean'] == 1))[0]
 
         if len(ind_cal) == 0:
@@ -5290,7 +5305,8 @@ class SolveProcess:
         ind_calibstar = ind_cal
 
         ind_ucacmag = np.where((src_cal['gaiadr2_bpmag'] > 0) &
-                               (src_cal['gaiadr2_rpmag'] > 0))[0]
+                               (src_cal['gaiadr2_rpmag'] > 0) &
+                               (src_cal['gaiadr2_neighbors'] == 1))[0]
         ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
         self.log.write('Found {:d} usable Gaia stars'
                        ''.format(len(ind_ucacmag)), level=4, event=71)
