@@ -5703,8 +5703,7 @@ class SolveProcess:
                 ind_maxden = np.argmax(kde.density)
                 plate_mag_maxden = kde.support[ind_maxden]
                 ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
-                #brightmag = kde.support[ind_dense[0]]
-                brightmag = 8.5
+                brightmag = kde.support[ind_dense[0]]
                 plate_mag_lim = kde.support[ind_dense[-1]]
                 plate_mag_brt = plate_mag_u.min()
                 plate_mag_mid = (plate_mag_brt + 
@@ -5992,8 +5991,7 @@ class SolveProcess:
 
                 # Find magnitude at which density becomes larger than 0.2 of
                 # the max density
-                #brightmag = kde.support[ind_dense[0]]
-                brightmag = 8.5
+                brightmag = kde.support[ind_dense[0]]
                 nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
                 if nbright < 20:
