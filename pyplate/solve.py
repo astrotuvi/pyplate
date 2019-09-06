@@ -6046,7 +6046,13 @@ class SolveProcess:
                 # Smooth residuals with spline
                 X = self.sources['x_source'][ind_calibstar_valid]
                 Y = self.sources['y_source'][ind_calibstar_valid]
-                s_corr = SmoothBivariateSpline(X, Y, residuals, kx=5, ky=5)
+
+                if num_valid > 100:
+                    s_corr = SmoothBivariateSpline(X, Y, residuals, kx=5, ky=5)
+                elif num_valid > 50:
+                    s_corr = SmoothBivariateSpline(X, Y, residuals, kx=3, ky=3)
+                else:
+                    s_corr = None
 
                 # Evaluate RMS errors from the calibration residuals
                 rmse_list = generic_filter(residuals, _rmse, size=10)
@@ -6101,21 +6107,26 @@ class SolveProcess:
             src_bin = self.sources[ind_bin]
 
             # Correct magnitudes for positional effects
-            natmag_corr = src_bin['natmag_correction']
-            xsrc = src_bin['x_source']
-            ysrc = src_bin['y_source']
+            if s_corr is not None:
+                natmag_corr = src_bin['natmag_correction']
+                xsrc = src_bin['x_source']
+                ysrc = src_bin['y_source']
 
-            # Do a for-cycle, because SmoothBivariateSpline may crash with
-            # large input arrays
-            for i in np.arange(len(ind_bin)):
-                natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
+                # Do a for-cycle, because SmoothBivariateSpline may crash with
+                # large input arrays
+                for i in np.arange(len(ind_bin)):
+                    natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
 
             # Assign magnitudes and errors
-            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto']) + natmag_corr
-            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
-            self.sources['natmag_correction'][ind_bin] = natmag_corr
             self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
             self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
+            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
+
+            if s_corr is not None:
+                self.sources['natmag_correction'][ind_bin] = natmag_corr
+                self.sources['natmag'][ind_bin] += natmag_corr
+
             self.sources['color_term'][ind_bin] = cterm
             self.sources['natmag_residual'][ind_calibstar_u] = \
                     (self.sources['cat_natmag'][ind_calibstar_u] - 
