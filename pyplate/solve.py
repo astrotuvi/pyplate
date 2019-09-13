@@ -6135,10 +6135,9 @@ class SolveProcess:
 
                     while True:
                         if plate_mag_srt[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1] > 0.5:
-                            bin_mag.append((plate_mag_srt[ind_lastmag+100] 
-                                            + bin_mag[-1] + bin_hw[-1]) / 2.)
-                            bin_hw.append((plate_mag_srt[ind_lastmag+100] 
-                                           - bin_mag[-1] - bin_hw[-1]) / 2.)
+                            bin_edge = bin_mag[-1] + bin_hw[-1]
+                            bin_mag.append((plate_mag_srt[ind_lastmag+100] + bin_edge) / 2.)
+                            bin_hw.append((plate_mag_srt[ind_lastmag+100] - bin_edge) / 2.)
                             ind_lastmag += 100
                         else:
                             bin_mag.append(bin_mag[-1] + bin_hw[-1] + 0.25)
