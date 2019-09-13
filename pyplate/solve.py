@@ -1660,11 +1660,37 @@ class SolveProcess:
                         self.log.write('Using filter {}'.format(filter_path), 
                                        level=4, event=23)
 
+                    # Calculate threshold for PSF sources based on 
+                    # extracted sources without PSF model
+                    fn_cat = os.path.join(self.scratch_dir, 
+                                          self.basefn + '.cat')
+                    t = Table.read(fn_cat, hdu=2)
+                    num_sources = len(t)
+                    flux_peak = np.sort(t['FLUX_MAX'] - t['BACKGROUND'])[::-1]
+
+                    if self.min_model_sources < num_sources:
+                        th_max = flux_peak[self.min_model_sources]
+                        th_max_sigma = th_max / sky_sigma
+
+                    if self.max_model_sources < num_sources:
+                        th_min = flux_peak[self.max_model_sources]
+                        th_min_sigma = th_min / sky_sigma
+
                     if use_fix_threshold:
+                        if psf_model_threshold < th_min:
+                            psf_model_threshold = th_min
+                        elif psf_model_threshold > th_max:
+                            psf_model_threshold = th_max
+
                         self.log.write('Using threshold {:f} ADU'
                                        .format(psf_model_threshold), 
                                        level=4, event=23)
                     else:
+                        if psf_model_sigma < th_min_sigma:
+                            psf_model_sigma = th_min_sigma
+                        elif psf_model_sigma > th_max_sigma:
+                            psf_model_sigma = th_max_sigma
+
                         threshold_adu = sky_sigma * psf_model_sigma
                         self.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
                                        .format(psf_model_sigma, threshold_adu), 
@@ -1733,12 +1759,10 @@ class SolveProcess:
                                    .format(num_psf_sources), level=4, event=23)
                     enough_psf_sources = False
 
-                    if (num_psf_sources >= self.min_model_sources and 
-                        num_psf_sources <= self.max_model_sources):
+                    if num_psf_sources >= self.min_model_sources: 
                         enough_psf_sources = True
                         break
-
-                    if num_psf_sources < self.min_model_sources:
+                    else:
                         # Repeat with lower threshold to get more sources
                         if use_fix_threshold:
                             psf_model_threshold *= 0.9
@@ -1751,18 +1775,18 @@ class SolveProcess:
                                        .format(self.min_model_sources), 
                                        level=4, event=23)
 
-                    if num_psf_sources > self.max_model_sources:
-                        # Repeat with higher threshold to get less sources
-                        if use_fix_threshold:
-                            psf_model_threshold *= 1.2
-                        else:
-                            psf_model_sigma *= 1.2
+                    #if num_psf_sources > self.max_model_sources:
+                    #    # Repeat with higher threshold to get less sources
+                    #    if use_fix_threshold:
+                    #        psf_model_threshold *= 1.2
+                    #    else:
+                    #        psf_model_sigma *= 1.2
 
-                        self.log.write('Too many PSF-model sources (max {:d}), '
-                                       'repeating extraction with higher '
-                                       'threshold'
-                                       .format(self.max_model_sources), 
-                                       level=4, event=23)
+                    #    self.log.write('Too many PSF-model sources (max {:d}), '
+                    #                   'repeating extraction with higher '
+                    #                   'threshold'
+                    #                   .format(self.max_model_sources), 
+                    #                   level=4, event=23)
 
             # Run PSFEx
             if (enough_psf_sources and
@@ -6109,8 +6133,6 @@ class SolveProcess:
                     bin_hw = [(plate_mag_srt[99] - plate_mag_srt[0]) / 2.]
                     ind_lastmag = 99
 
-                    #print(bin_mag, bin_hw, ind_lastmag)
-
                     while True:
                         if plate_mag_srt[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1] > 0.5:
                             bin_mag.append((plate_mag_srt[ind_lastmag+100] 
@@ -6123,15 +6145,11 @@ class SolveProcess:
                             bin_hw.append(0.25)
                             ind_lastmag = (plate_mag_srt < bin_mag[-1] + 0.25).sum() - 1
 
-                        print(bin_mag, bin_hw, ind_lastmag)
-
                         # If less than 100 sources remain
                         if ind_lastmag > num_valid - 101:
                             add_width = plate_mag_srt[-1] - bin_mag[-1] - bin_hw[-1]
                             bin_mag[-1] += add_width / 2.
                             bin_hw[-1] += add_width / 2.
-                            #print(add_width)
-                            #print(bin_mag, bin_hw, ind_lastmag)
                             break
 
                     # Evaluate natmag correction in magnitude bins
