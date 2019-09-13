@@ -6104,32 +6104,42 @@ class SolveProcess:
                         residuals2[i] = residuals[i] - s_corr(X[i], Y[i])
 
                     # Create magnitude bins
-                    bin_mag = [(plate_mag_u[99] + plate_mag_u[0]) / 2.]
-                    bin_hw = [(plate_mag_u[99] - plate_mag_u[0]) / 2.]
+                    plate_mag_srt = np.sort(plate_mag_u)
+                    bin_mag = [(plate_mag_srt[99] + plate_mag_srt[0]) / 2.]
+                    bin_hw = [(plate_mag_srt[99] - plate_mag_srt[0]) / 2.]
                     ind_lastmag = 99
 
+                    #print(bin_mag, bin_hw, ind_lastmag)
+
                     while True:
-                        if plate_mag_u[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1] > 0.5:
-                            bin_mag.append((plate_mag_u[ind_lastmag+100] + bin_mag[-1] + bin_hw[-1]) / 2.)
-                            bin_hw.append((plate_mag_u[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1]) / 2.)
+                        if plate_mag_srt[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1] > 0.5:
+                            bin_mag.append((plate_mag_srt[ind_lastmag+100] 
+                                            + bin_mag[-1] + bin_hw[-1]) / 2.)
+                            bin_hw.append((plate_mag_srt[ind_lastmag+100] 
+                                           - bin_mag[-1] - bin_hw[-1]) / 2.)
                             ind_lastmag += 100
                         else:
                             bin_mag.append(bin_mag[-1] + bin_hw[-1] + 0.25)
                             bin_hw.append(0.25)
-                            ind_lastmag = (plate_mag_u < bin_mag[-1] + 0.25).sum() - 1
+                            ind_lastmag = (plate_mag_srt < bin_mag[-1] + 0.25).sum() - 1
+
+                        print(bin_mag, bin_hw, ind_lastmag)
 
                         # If less than 100 sources remain
                         if ind_lastmag > num_valid - 101:
-                            add_width = plate_mag_u[-1] - bin_mag[-1] - bin_hw[-1]
+                            add_width = plate_mag_srt[-1] - bin_mag[-1] - bin_hw[-1]
                             bin_mag[-1] += add_width / 2.
                             bin_hw[-1] += add_width / 2.
+                            #print(add_width)
+                            #print(bin_mag, bin_hw, ind_lastmag)
                             break
 
                     # Evaluate natmag correction in magnitude bins
                     s_magcorr = []
 
                     for i, (m, hw) in enumerate(zip(bin_mag, bin_hw)):
-                        binmask = (plate_mag_u > m-hw) & (plate_mag_u < m+hw)
+                        binmask = (plate_mag_u > m-hw) & (plate_mag_u <= m+hw)
+                        #print(m, m-hw, m+hw, binmask.sum())
                         smag = SmoothBivariateSpline(X[binmask], Y[binmask],
                                                      residuals2[binmask],
                                                      kx=3, ky=3)
