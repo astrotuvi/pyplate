@@ -3661,7 +3661,8 @@ class SolveProcess:
         self.sol_radius = radius
         self.sol_max_sep = max_sep
 
-    def query_gaia(self, mag_range=[0,20], color_term=None):
+    def query_gaia(self, mag_range=[0,20], color_term=None, skycoord=None, 
+                   radius=None, filename=None):
         """
         Query Gaia DR2 catalogue for all plate solutions and
         store results in FITS files.
@@ -3679,12 +3680,12 @@ class SolveProcess:
 
         from astroquery.gaia import Gaia
 
+        use_coord_radius = (isinstance(skycoord, SkyCoord) and 
+                            isinstance(radius, u.Quantity))
+
         assert not isinstance(mag_range, str)
         assert len(mag_range) == 2
-        assert self.num_solutions > 0
-
-        if self.sol_max_sep is None:
-            self.calculate_solutions_centroid()
+        assert self.num_solutions > 0 or use_coord_radius
 
         if mag_range[0] is None:
             mag_range[0] = 0
@@ -3713,40 +3714,75 @@ class SolveProcess:
                      'AND astrometric_params_solved=31'
                      .format(passband, str(mag_range[0]), 
                              passband, str(mag_range[1])))
-        half_diag = u.Quantity([sol['half_diag'] for sol in self.solutions])
-        fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
 
-        # If max angular separation between solutions is less than
-        # FOV diagonal, then query Gaia once for all solutions. 
-        # Otherwise, query Gaia separately for individual solutions.
-        if self.sol_max_sep < fov_diag:
+        # Use given coordinates and radius for query
+        if use_coord_radius:
             pos_query = (pos_query_str
-                         .format(self.sol_centroid.ra.to(u.deg).value,
-                                 self.sol_centroid.dec.to(u.deg).value,
-                                 self.sol_radius.to(u.deg).value))
+                         .format(skycoord.ra.to(u.deg).value,
+                                 skycoord.dec.to(u.deg).value,
+                                 radius.to(u.deg).value))
             query = query_str.format(query_cols, pos_query)
-            self.log.write('Gaia query: {}'.format(query), level=4, event=0)
-            fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
+
+            if self.log is not None:
+                self.log.write('Gaia query: {}'.format(query), 
+                               level=4, event=0)
+
+            if filename is None:
+                if self.basefn:
+                    filename = 'gaiadr2_{}.fits'.format(self.basefn)
+                else:
+                    filename = ('gaiadr2_{:.2f}_{:.2f}_{:.2f}.fits'
+                                .format(skycoord.ra.to(u.deg).value,
+                                        skycoord.dec.to(u.deg).value,
+                                        radius.to(u.deg).value))
+            else:
+                filename = os.path.basename(filename)
+
+            fn_tab = os.path.join(self.gaia_dir, filename)
             job = Gaia.launch_job_async(query, output_file=fn_tab, 
                                         output_format='fits', 
                                         dump_to_file=True)
             self.gaia_files = fn_tab
-        else:
-            self.gaia_files = []
 
-            for i in np.arange(self.num_solutions):
-                solution = self.solutions[i]
+        # Use astrometric solutions for query
+        else:
+            if self.sol_max_sep is None:
+                self.calculate_solutions_centroid()
+
+            half_diag = u.Quantity([sol['half_diag'] for sol in self.solutions])
+            fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
+
+            # If max angular separation between solutions is less than
+            # FOV diagonal, then query Gaia once for all solutions. 
+            # Otherwise, query Gaia separately for individual solutions.
+            if self.sol_max_sep < fov_diag:
                 pos_query = (pos_query_str
-                             .format(solution['raj2000'], solution['dej2000'], 
-                                     solution['half_diag'].to(u.deg).value))
+                             .format(self.sol_centroid.ra.to(u.deg).value,
+                                     self.sol_centroid.dec.to(u.deg).value,
+                                     self.sol_radius.to(u.deg).value))
                 query = query_str.format(query_cols, pos_query)
                 self.log.write('Gaia query: {}'.format(query), level=4, event=0)
-                fn_tab = os.path.join(self.scratch_dir, 
-                                      'gaiadr2-{:02d}.fits'.format(i+1))
+                fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
                 job = Gaia.launch_job_async(query, output_file=fn_tab, 
                                             output_format='fits', 
                                             dump_to_file=True)
-                self.gaia_files += [fn_tab]
+                self.gaia_files = fn_tab
+            else:
+                self.gaia_files = []
+
+                for i in np.arange(self.num_solutions):
+                    solution = self.solutions[i]
+                    pos_query = (pos_query_str
+                                 .format(solution['raj2000'], solution['dej2000'], 
+                                         solution['half_diag'].to(u.deg).value))
+                    query = query_str.format(query_cols, pos_query)
+                    self.log.write('Gaia query: {}'.format(query), level=4, event=0)
+                    fn_tab = os.path.join(self.scratch_dir, 
+                                          'gaiadr2-{:02d}.fits'.format(i+1))
+                    job = Gaia.launch_job_async(query, output_file=fn_tab, 
+                                                output_format='fits', 
+                                                dump_to_file=True)
+                    self.gaia_files += [fn_tab]
 
     def crossmatch_gaia(self):
         """
