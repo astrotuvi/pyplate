@@ -3866,6 +3866,11 @@ class SolveProcess:
                                   self.sources['y_source'])).T
         tolerance = ((5. * mean_scamp_sigma / self.mean_pixscale)
                      .to(u.pixel).value)
+
+        #if (5. * mean_scamp_sigma) < 2 * u.arcsec:
+        #    tolerance = ((2 * u.arcsec / self.mean_pixscale)
+        #                 .to(u.pixel).value)
+
         ind_plate, ind_ref, ds = self.crossmatch_cartesian(coords_plate, xy_ref, 
                                                            tolerance=tolerance)
         dist_arcsec = (ds * u.pixel * self.mean_pixscale).to(u.arcsec).value
@@ -3885,6 +3890,11 @@ class SolveProcess:
         kdt_plate = KDT(coords_plate)
         max_distance = ((20. * mean_scamp_sigma / self.mean_pixscale)
                         .to(u.pixel).value)
+
+        if (20. * mean_scamp_sigma) < 5 * u.arcsec:
+            max_distance = ((5 * u.arcsec / self.mean_pixscale)
+                            .to(u.pixel).value)
+
         mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
         mtrx_keys = np.array([a for a in mtrx.keys()])
         k_plate = mtrx_keys[:,0]
