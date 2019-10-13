@@ -489,29 +489,47 @@ class SourceTable(Table):
                     if _source_meta[n][2]]:
             self[k] = xycat[1].data.field(v)
 
-    def apply_scanner_pattern(self):
+    def apply_scanner_pattern(self, plate_solution=None):
         """
         Correct source coordinates for scanner pattern.
 
+        Parameters
+        ----------
+        plate_solution: PlateSolution instance
+
         """
 
-        assert self.pattern_ratio is not None
+        from .solve import PlateSolution
+        assert isinstance(plate_solution, PlateSolution)
+        assert plate_solution.pattern_ratio is not None
 
-        if self.pattern_ratio > 1.5:
+        if plate_solution.pattern_ratio > 1.5:
             y_source = self['y_source']
-            self['y_source'] = (y_source - self.pattern_y(y_source))
-        elif self.pattern_ratio < 2./3.:
+            self['y_source'] = (y_source - plate_solution.pattern_y(y_source))
+        elif plate_solution.pattern_ratio < 2./3.:
             x_image = self['x_source']
-            self['x_source'] = (x_source - self.pattern_x(x_source))
+            self['x_source'] = (x_source - plate_solution.pattern_x(x_source))
 
-    def crossmatch_gaia(self):
+    def crossmatch_gaia(self, plate_solution=None):
         """
         Crossmatch sources with Gaia objects, considering multiple solutions.
 
+        Parameters
+        ----------
+        plate_solution: PlateSolution instance
+
         """
 
-        assert self.num_solutions > 0
+        from .solve import PlateSolution
+        assert isinstance(plate_solution, PlateSolution)
+        assert plate_solution.num_solutions > 0
 
+        # Take parameters from plate_solution
+        num_solutions = plate_solution.num_solutions
+        solutions = plate_solution.solutions
+        mean_pixscale = plate_solution.mean_pixscale
+
+        # Read Gaia sources
         if isinstance(self.gaia_files, str):
             try:
                 gaia_table = Table.read(self.gaia_files)
@@ -539,13 +557,13 @@ class SourceTable(Table):
         index_ref = np.empty((0,), dtype=np.int32)
 
         # Build a list of Gaia stars in image coordinates
-        for i in np.arange(self.num_solutions):
-            solution = self.solutions[i]
+        for i in np.arange(plate_solution.num_solutions):
+            solution = solutions[i]
 
             w = wcs.WCS(solution['header_wcs'])
             xr,yr = w.all_world2pix(ra_ref, dec_ref, 1)
-            mask_inside = ((xr > 0) & (xr < self.imwidth) & 
-                           (yr > 0) & (yr < self.imheight))
+            mask_inside = ((xr > 0) & (xr < plate_solution.imwidth) & 
+                           (yr > 0) & (yr < plate_solution.imheight))
             num_inside = mask_inside.sum()
             xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
             xy_ref = np.vstack((xy_ref, xyr))
@@ -553,22 +571,22 @@ class SourceTable(Table):
             index_ref = np.hstack((index_ref, np.arange(num_gaia)[mask_inside]))
 
         # Calculate mean astrometric error
-        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in self.solutions])
-        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in self.solutions])
+        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in solutions])
+        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in solutions])
         mean_scamp_sigma = np.sqrt(sigma1.mean()**2 + sigma2.mean()**2)
 
         # Crossmatch sources and Gaia stars
         coords_plate = np.vstack((self['x_source'], self['y_source'])).T
-        tolerance = ((5. * mean_scamp_sigma / self.mean_pixscale)
+        tolerance = ((5. * mean_scamp_sigma / mean_pixscale)
                      .to(u.pixel).value)
 
         #if (5. * mean_scamp_sigma) < 2 * u.arcsec:
-        #    tolerance = ((2 * u.arcsec / self.mean_pixscale)
+        #    tolerance = ((2 * u.arcsec / mean_pixscale)
         #                 .to(u.pixel).value)
 
         ind_plate, ind_ref, ds = crossmatch_cartesian(coords_plate, xy_ref, 
                                                       tolerance=tolerance)
-        dist_arcsec = (ds * u.pixel * self.mean_pixscale).to(u.arcsec).value
+        dist_arcsec = (ds * u.pixel * mean_pixscale).to(u.arcsec).value
         ind_gaia = index_ref[ind_ref]
         self['solution_num'][ind_plate] = sol_ref[ind_ref]
         self['gaiadr2_id'][ind_plate] = gaia_table['source_id'][ind_gaia]
@@ -583,12 +601,11 @@ class SourceTable(Table):
         # Crossmatch: find all neighbours for sources
         kdt_ref = KDT(xy_ref)
         kdt_plate = KDT(coords_plate)
-        max_distance = ((20. * mean_scamp_sigma / self.mean_pixscale)
+        max_distance = ((20. * mean_scamp_sigma / mean_pixscale)
                         .to(u.pixel).value)
 
         if (20. * mean_scamp_sigma) < 5 * u.arcsec:
-            max_distance = ((5 * u.arcsec / self.mean_pixscale)
-                            .to(u.pixel).value)
+            max_distance = (5 * u.arcsec / mean_pixscale).to(u.pixel).value
 
         mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
         mtrx_keys = np.array([a for a in mtrx.keys()])

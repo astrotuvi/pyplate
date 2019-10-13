@@ -170,6 +170,8 @@ class PhotometryProcess:
         self.scp_on_plate = None
 
         self.sources = None
+        self.plate_solution = None
+
         self.scampref = None
         self.scampcat = None
         self.wcs_header = None
@@ -378,8 +380,10 @@ class PhotometryProcess:
 
         """
 
+        num_solutions = self.plate_solution.num_solutions
+
         assert (solution_num is None or 
-                (solution_num > 0 and solution_num <= self.num_solutions))
+                (solution_num > 0 and solution_num <= num_solutions))
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
 
@@ -429,7 +433,7 @@ class PhotometryProcess:
         # For single exposures, exclude blended sources.
         # For multiple exposures, include them, because otherwise the bright
         # end will lack calibration stars.
-        if self.num_solutions == 1:
+        if num_solutions == 1:
             bflags = ((self.sources['sextractor_flags'] == 0) |
                       (self.sources['sextractor_flags'] == 2))
         else:

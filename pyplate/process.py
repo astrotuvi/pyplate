@@ -262,7 +262,6 @@ class Process:
         self.imwidth = None
         self.imheight = None
         self.plate_solved = False
-        self.mean_pixscale = None
         self.num_sources = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
@@ -278,30 +277,15 @@ class Process:
         self.sources = None
         self.solveproc = None
 
+        self.plate_solution = None
         self.scampref = None
         self.scampcat = None
-        self.wcs_header = None
-        self.wcshead = None
-        self.wcs_plate = None
-        self.solutions = None
-        self.exp_numbers = None
-        self.num_solutions = 0
-        self.num_iterations = 0
-        self.pattern_x = None
-        self.pattern_y = None
-        self.pattern_ratio = None
-        self.astref_tables = []
         self.gaia_files = None
         self.neighbors_gaia = None
-        self.sol_centroid = None
-        self.sol_radius = None
-        self.sol_max_sep = None
-        self.astrom_sub = []
         self.phot_cterm = []
         self.phot_color = None
         self.phot_calib = []
         self.phot_calibrated = False
-        self.phot_sub = []
 
         self.id_tyc = None
         self.id_tyc_pad = None
@@ -1475,30 +1459,16 @@ class Process:
         solveproc.sources = self.sources.as_array()
 
         # Do plate solving
-        solveproc.solve_plate(plate_epoch=plate_epoch, sip=sip,
-                              skip_bright=skip_bright)
+        plate_solution = solveproc.solve_plate(plate_epoch=plate_epoch, sip=sip,
+                                               skip_bright=skip_bright)
 
         # Retrieve solutions
-        self.plate_solved = solveproc.plate_solved
-        self.num_solutions = solveproc.num_solutions
-        self.solutions = solveproc.solutions
-        self.mean_pixscale = solveproc.mean_pixscale
-        self.pattern_x = solveproc.pattern_x
-        self.pattern_y = solveproc.pattern_y
-        self.pattern_ratio = solveproc.pattern_ratio
+        self.plate_solution = plate_solution
+        self.plate_solved = plate_solution.plate_solved
 
         # Apply scanner pattern to source coordinates
         if self.plate_solved:
-            self.sources.pattern_x = self.pattern_x
-            self.sources.pattern_y = self.pattern_y
-            self.sources.pattern_ratio = self.pattern_ratio
-            self.sources.apply_scanner_pattern()
-
-            self.sources.num_solutions = self.num_solutions
-            self.sources.solutions = self.solutions
-            self.sources.mean_pixscale = self.mean_pixscale
-            self.sources.imwidth = self.imwidth
-            self.sources.imheight = self.imheight
+            self.sources.apply_scanner_pattern(self.plate_solution)
 
     def output_solution_db(self):
         """
@@ -1509,7 +1479,7 @@ class Process:
         self.log.to_db(3, 'Writing astrometric solution to the database', 
                        event=35)
 
-        if self.num_solutions == 0:
+        if self.plate_solution.num_solutions == 0:
             self.log.write('No plate solution to write to the database', 
                            level=2, event=35)
             return
@@ -1524,7 +1494,7 @@ class Process:
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
-            for solution in self.solutions:
+            for solution in self.plate_solution.solutions:
                 platedb.write_solution(solution, process_id=self.process_id,
                                        scan_id=self.scan_id,
                                        plate_id=self.plate_id,
@@ -1532,136 +1502,6 @@ class Process:
             
         platedb.close_connection()
         self.log.write('Closed database connection')
-
-    def create_wcs_header(self):
-        """
-        Stack WCS keywords from solutions into one header. Use alternate
-        WCS keywords specified in the FITS Standard 4.0.
-
-        """
-
-        if self.num_solutions == 0:
-            self.log.write('No plate solution for the FITS header', 
-                           level=2, event=36)
-            return
-
-        self.wcs_header = self.solutions[0].get_header()
-
-        if self.num_solutions > 1:
-            self.wcs_header.insert(0, ('WCSNAME', 'Solution_1'))
-
-        # Add additional solutions.
-        # If there are more than 27 solutions, add the extra solutions
-        # as comments.
-        for i,solution in enumerate(self.solutions[1:]):
-            if i < 26:
-                suffix = chr(ord('A') + i)
-                sep = (' WCS {} (solution {:d})'.format(suffix, i+2)
-                       .rjust(72, '.'))
-                self.wcs_header.append(('', sep), end=True)
-                wcsname_card = ('WCSNAME{}'.format(suffix), 
-                                'Solution_{:d}'.format(i+2))
-                self.wcs_header.append(wcsname_card, end=True)
-            else:
-                sep = ' WCS (solution {:d})'.format(i+2).rjust(72, '.')
-                self.wcs_header.append(('', sep), end=True)
-                wcsname_card = ('', 'WCSNAME = \'Solution_{:d}\''.format(i+2))
-                self.wcs_header.append(wcsname_card, end=True)
-
-            # For alternate WCS, append only WCS keywords
-            for c in solution.get_header().cards:
-                kw = c.keyword
-                wcskeys = ['WCSAXES', 'CTYPE', 'CUNIT', 'CRVAL', 'CDELT', 
-                           'CRPIX', 'PC', 'CD', 'PV', 'PS', 'WCSNAME', 
-                           'CNAME', 'CRDER', 'CSYER', 'LONPOLE', 'LATPOLE', 
-                           'EQUINOX', 'RADESYS']
-
-                for k in wcskeys:
-                    if kw.startswith(k):
-                        if i < 26:
-                            kw_alternate = '{}{}'.format(kw, suffix)
-                            newcard = fits.Card(kw_alternate, c.value, 
-                                                c.comment)
-                        else:
-                            newcard = fits.Card('', c.image.strip())
-
-                        self.wcs_header.append(newcard, end=True)
-
-    def output_wcs_header(self):
-        """
-        Write WCS header to an ASCII file.
-
-        """
-
-        if self.plate_solved:
-            self.log.write('Writing WCS header to a file', level=3, event=36)
-
-            # Create output directory, if missing
-            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
-                self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir), level=4, event=36)
-                os.makedirs(self.write_wcs_dir)
-
-            for i in np.arange(self.num_solutions):
-                fn_wcshead = '{}-{:02d}.wcs'.format(self.basefn, i+1)
-                fn_wcshead = os.path.join(self.write_wcs_dir, fn_wcshead)
-                self.log.write('Writing WCS output file {}'.format(fn_wcshead), 
-                               level=4, event=36)
-                wcshead = self.solutions[i]['header_scamp']
-                wcshead.tofile(fn_wcshead, overwrite=True)
-
-    def calculate_solutions_centroid(self):
-        """
-        Calculate coordinates of a mid-point of solutions, and distance from
-        centroid to the furthest plate corner.
-
-        """
-
-        assert self.num_solutions > 0
-
-        # Collect center coordinates of solutions
-        sol_ra = np.array([sol['raj2000'] for sol in self.solutions])
-        sol_dec = np.array([sol['dej2000'] for sol in self.solutions])
-        c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
-
-        # Create an offset frame based on the first solution
-        aframe = c_sol[0].skyoffset_frame()
-        fr_sol = c_sol.transform_to(aframe)
-
-        # Find mean coordinates of solutions in the offset frame
-        fr_cntr = SkyCoord(fr_sol.lon.mean(), fr_sol.lat.mean(), frame=aframe)
-        c_cntr = fr_cntr.transform_to(ICRS)
-
-        # Find solution that is furthest from mean coordinates
-        ind_max1 = c_cntr.separation(c_sol).argmax()
-
-        # Find solution that is furthest from the previously found solution
-        sep2 = c_sol[ind_max1].separation(c_sol)
-        ind_max2 = sep2.argmax()
-        max_sep = sep2[ind_max2]
-
-        # Collect corner coordinates of the two solutions
-        corners1 = self.solutions[ind_max1]['skycoord_corners']
-        corners2 = self.solutions[ind_max2]['skycoord_corners']
-        max_sep_corners = 0 * u.deg
-
-        # Find corners that are most distant from each other
-        for c in corners1:
-            sep_corners = c.separation(corners2)
-
-            if sep_corners.max() > max_sep_corners:
-                c1 = c
-                c2 = corners2[sep_corners.argmax()]
-                max_sep_corners = sep_corners.max()
-
-        # Take the point between two corners as a centroid of solutions
-        pos_angle = c1.position_angle(c2).to(u.deg)
-        radius = max_sep_corners / 2.
-        centroid = c1.directional_offset_by(pos_angle, radius)
-
-        self.sol_centroid = centroid
-        self.sol_radius = radius
-        self.sol_max_sep = max_sep
 
     def query_gaia(self, mag_range=[0,20], color_term=None, skycoord=None, 
                    radius=None, filename=None):
@@ -1684,10 +1524,11 @@ class Process:
 
         use_coord_radius = (isinstance(skycoord, SkyCoord) and 
                             isinstance(radius, u.Quantity))
+        psol = self.plate_solution
 
         assert not isinstance(mag_range, str)
         assert len(mag_range) == 2
-        assert self.num_solutions > 0 or use_coord_radius
+        assert psol.num_solutions > 0 or use_coord_radius
 
         if mag_range[0] is None:
             mag_range[0] = 0
@@ -1748,20 +1589,17 @@ class Process:
 
         # Use astrometric solutions for query
         else:
-            if self.sol_max_sep is None:
-                self.calculate_solutions_centroid()
-
-            half_diag = u.Quantity([sol['half_diag'] for sol in self.solutions])
+            half_diag = u.Quantity([sol['half_diag'] for sol in psol.solutions])
             fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
 
             # If max angular separation between solutions is less than
             # FOV diagonal, then query Gaia once for all solutions. 
             # Otherwise, query Gaia separately for individual solutions.
-            if self.sol_max_sep < fov_diag:
+            if psol.max_sep < fov_diag:
                 pos_query = (pos_query_str
-                             .format(self.sol_centroid.ra.to(u.deg).value,
-                                     self.sol_centroid.dec.to(u.deg).value,
-                                     self.sol_radius.to(u.deg).value))
+                             .format(psol.centroid.ra.to(u.deg).value,
+                                     psol.centroid.dec.to(u.deg).value,
+                                     psol.radius.to(u.deg).value))
                 query = query_str.format(query_cols, pos_query)
                 self.log.write('Gaia query: {}'.format(query), level=4, event=0)
                 fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
@@ -1772,8 +1610,8 @@ class Process:
             else:
                 self.gaia_files = []
 
-                for i in np.arange(self.num_solutions):
-                    solution = self.solutions[i]
+                for i in np.arange(psol.num_solutions):
+                    solution = psol.solutions[i]
                     pos_query = (pos_query_str
                                  .format(solution['raj2000'], solution['dej2000'], 
                                          solution['half_diag'].to(u.deg).value))
@@ -2166,7 +2004,7 @@ class Process:
         # Carry out photometric calibration for all solutions
         phot_color = []
 
-        for i in np.arange(1, self.num_solutions+1):
+        for i in np.arange(1, self.plate_solution.num_solutions+1):
             photproc.calibrate_photometry_gaia(solution_num=i)
 
             # Retrieve phot_color
