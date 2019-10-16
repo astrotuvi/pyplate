@@ -218,7 +218,8 @@ class SourceTable(Table):
 
     """
 
-    def __init__(self, num_sources=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
+        num_sources = kwargs.pop('num_sources', None)
         super().__init__(*args, **kwargs)
 
         #self.filename = os.path.basename(filename)
@@ -263,7 +264,7 @@ class SourceTable(Table):
         self.imheight = None
         self.plate_solved = False
         self.mean_pixscale = None
-        self.num_sources = None
+        self.num_sources = num_sources
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
         self.min_ra = None
@@ -277,6 +278,12 @@ class SourceTable(Table):
         self.pattern_x = None
         self.pattern_y = None
         self.pattern_ratio = None
+
+    def populate(self, num_sources=0):
+        """
+        Populate table with columns.
+
+        """
 
         for k in _source_meta:
             zerodata = np.zeros(num_sources, dtype=_source_meta[k][0])
