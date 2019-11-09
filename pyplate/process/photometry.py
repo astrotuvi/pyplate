@@ -196,6 +196,7 @@ class PhotometryProcess:
         self.phot_calib = []
         self.phot_calibrated = False
         self.phot_sub = []
+        self.phot_calib_curve = None
 
         self.id_tyc = None
         self.id_tyc_pad = None
@@ -628,7 +629,134 @@ class PhotometryProcess:
                        .format(solution_num, cterm, cterm_err),
                        level=4, event=72)
 
-        return self.phot_cterm, self.phot_color
+    def improve_color_term(self, sources, cterm_value, solution_num=0):
+        """
+        Evaluate color term using the calibration curve and magnitude
+        corrections from the previous iteration.
+
+        Parameters
+        ----------
+        sources: SourceTable object
+            Source catalog with plate magnitudes and external catalog
+            (Gaia DR2) magnitudes
+        cterm_value: float
+            Color term value from previous iteration of photometric
+            calibration
+        solution_num: int
+            Astrometric solution number
+
+        """
+
+        cat_mag1 = sources['gaiadr2_bpmag']
+        cat_mag2 = sources['gaiadr2_rpmag']
+        plate_mag = sources['mag_auto']
+        mag_corr = sources['natmag_correction']
+        num_calstars = len(sources)
+
+        # Evaluate color term in 3 iterations
+        self.log.write('Determining color term with known photometric '
+                       'calibration',
+                       level=3, event=72)
+
+        self.log.write('Determining color term: {:d} stars'
+                       ''.format(num_calstars),
+                       double_newline=False, level=4, event=72)
+
+        if num_calstars < 10:
+            self.log.write('Determininging color term: too few stars!',
+                           level=2, event=72)
+            return None
+
+        _,uind1 = np.unique(cat_mag1, return_index=True)
+        plate_mag_u,uind2 = np.unique(plate_mag[uind1], return_index=True)
+        cat_mag1_u = cat_mag1[uind1[uind2]]
+        cat_mag2_u = cat_mag2[uind1[uind2]]
+        mag_corr_u = mag_corr[uind1[uind2]]
+
+        # Discard faint sources (within 1 mag from the plate limit)
+        kde = sm.nonparametric.KDEUnivariate(plate_mag_u
+                                             .astype(np.double))
+        kde.fit()
+        ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+        plate_mag_lim = kde.support[ind_dense[-1]]
+        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 1.)[0]
+        num_nofaint = len(ind_nofaint)
+
+        self.log.write('Determining color term: {:d} stars after discarding '
+                       'faint sources'.format(num_nofaint),
+                       double_newline=False, level=4, event=72)
+
+        if num_nofaint < 10:
+            self.log.write('Determining color term: too few stars after '
+                           'discarding faint sources!',
+                           level=2, event=72)
+            return None
+
+        plate_mag_u = plate_mag_u[ind_nofaint]
+        cat_mag1_u = cat_mag1_u[ind_nofaint]
+        cat_mag2_u = cat_mag2_u[ind_nofaint]
+        mag_corr_u = mag_corr_u[ind_nofaint]
+
+        cterm_list = (np.arange(61) * 0.02 +
+                      round(cterm_value * 50.) / 50. - 0.6)
+        stdev_list = []
+
+        for cterm in cterm_list:
+            cat_mag = cat_mag2_u + cterm * (cat_mag1_u - cat_mag2_u)
+            s = self.phot_calib_curve
+            mag_diff = cat_mag - s(plate_mag_u) - mag_corr_u
+            stdev_val = mag_diff.std()
+            stdev_list.append(stdev_val)
+
+            # Store cterm data
+            self.phot_cterm.append(OrderedDict([
+                ('iteration', 4),
+                ('cterm', cterm),
+                ('stdev', stdev_val),
+                ('num_stars', len(mag_diff))
+            ]))
+
+        stdev_list = np.array(stdev_list)
+
+        cf, cov = np.polyfit(cterm_list, stdev_list, 2,
+                             w=1./stdev_list**2, cov=True)
+        cterm = -0.5 * cf[1] / cf[0]
+        cf_err = np.sqrt(np.diag(cov))
+        cterm_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 +
+                            (0.5 * cf[1] * cf_err[0] / cf[0]**2)**2)
+        p2 = np.poly1d(cf)
+        stdev_fit = p2(cterm)
+        stdev_min = np.min(stdev_list)
+        cterm_minval = np.min(cterm_list)
+        cterm_maxval = np.max(cterm_list)
+        num_stars = len(mag_diff)
+        iteration = 4
+
+        if cf[0] < 0 or cterm < -2 or cterm > 3:
+            if cf[0] < 0:
+                self.log.write('Color term fit not reliable!',
+                               level=2, event=72)
+            else:
+                self.log.write('Color term outside of allowed range '
+                               '({:.3f})!'.format(cterm),
+                               level=2, event=72)
+
+        # Store color term result
+        self.phot_color = OrderedDict([
+            ('solution_num', solution_num),
+            ('color_term', cterm),
+            ('color_term_err', cterm_err),
+            ('stdev_fit', stdev_fit),
+            ('stdev_min', stdev_min),
+            ('cterm_min', cterm_minval),
+            ('cterm_max', cterm_maxval),
+            ('iteration', iteration),
+            ('num_stars', num_stars)
+        ])
+
+        self.log.write('Plate color term (solution {:d}): {:.3f} ({:.3f})'
+                       .format(solution_num, cterm, cterm_err),
+                       level=4, event=72)
 
     def calibrate_photometry_gaia(self, solution_num=None):
         """
@@ -1445,6 +1573,9 @@ class PhotometryProcess:
 
                 # Interpolate the whole calibration curve
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
+                # Store the calibration curve
+                self.phot_calib_curve = s
 
                 # Calculate residuals
                 residuals = cat_natmag-s(plate_mag_u)

@@ -2011,6 +2011,17 @@ class Process:
             # Retrieve phot_color
             phot_color.append(photproc.phot_color)
 
+            # Second iteration
+            src = Table(photproc.sources)
+            src = src[(src['solution_num'] == i) &
+                      (src['phot_calib_flags'] == 1) &
+                      (src['annular_bin'] <= 6)]
+            ct = photproc.phot_color['color_term']
+            photproc.improve_color_term(src.as_array(), ct, solution_num=i)
+
+            # Retrieve phot_color
+            phot_color.append(photproc.phot_color)
+
         self.phot_color = phot_color
         self.phot_calib = photproc.phot_calib
 
