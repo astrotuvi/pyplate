@@ -5,7 +5,7 @@ import warnings
 from astropy.io import fits
 from astropy.table import Table, vstack
 from astropy import units as u
-from .conf import read_conf
+from ..conf import read_conf
 
 
 class AstrometryNetIndex:
