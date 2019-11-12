@@ -286,6 +286,7 @@ class Process:
         self.phot_color = None
         self.phot_calib = []
         self.phot_calibrated = False
+        self.phot_calib_curves = None
 
         self.id_tyc = None
         self.id_tyc_pad = None
@@ -2002,14 +2003,17 @@ class Process:
         # Transform source table to numpy array
         photproc.sources = self.sources.as_array()
 
-        # Carry out photometric calibration for all solutions
+        # Variables to store calibration results
         phot_color = []
+        phot_calib_curves = []
 
+        # Carry out photometric calibration for all solutions
         for i in np.arange(1, self.plate_solution.num_solutions+1):
             photproc.calibrate_photometry_gaia(solution_num=i)
 
-            # Retrieve phot_color
+            # Retrieve phot_color and calibration curve
             phot_color.append(photproc.phot_color)
+            phot_calib_curves.append(photproc.calib_curve)
 
             # Second iteration
             src = Table(photproc.sources)
@@ -2024,6 +2028,7 @@ class Process:
 
         self.phot_color = phot_color
         self.phot_calib = photproc.phot_calib
+        self.phot_calib_curves = phot_calib_curves
 
         # Retrieve source table
         self.sources = Table(photproc.sources)

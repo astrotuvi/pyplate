@@ -196,7 +196,7 @@ class PhotometryProcess:
         self.phot_calib = []
         self.phot_calibrated = False
         self.phot_sub = []
-        self.phot_calib_curve = None
+        self.calib_curve = None
 
         self.id_tyc = None
         self.id_tyc_pad = None
@@ -703,7 +703,7 @@ class PhotometryProcess:
 
         for cterm in cterm_list:
             cat_mag = cat_mag2_u + cterm * (cat_mag1_u - cat_mag2_u)
-            s = self.phot_calib_curve
+            s = self.calib_curve
             mag_diff = cat_mag - s(plate_mag_u) - mag_corr_u
             stdev_val = mag_diff.std()
             stdev_list.append(stdev_val)
@@ -1575,7 +1575,7 @@ class PhotometryProcess:
                 s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
 
                 # Store the calibration curve
-                self.phot_calib_curve = s
+                self.calib_curve = s
 
                 # Calculate residuals
                 residuals = cat_natmag-s(plate_mag_u)
