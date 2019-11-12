@@ -2016,12 +2016,6 @@ class Process:
             phot_calib_curves.append(photproc.calib_curve)
 
             # Second iteration
-            #src = Table(photproc.sources)
-            #src = src[(src['solution_num'] == i) &
-            #          (src['phot_calib_flags'] == 1) &
-            #          (src['annular_bin'] <= 6)]
-            #ct = photproc.phot_color['color_term']
-            #photproc.evaluate_color_term(src.as_array())
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=2)
 
             # Retrieve phot_color and calibration curve
