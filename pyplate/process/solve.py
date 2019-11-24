@@ -998,6 +998,7 @@ class SolveProcess:
         # Return peak distance
         return dist_peak
 
+    @staticmethod
     def _get_scale_rotation(xy1, xy2):
         """
         Find scale and rotation between two point clouds.
@@ -1104,17 +1105,18 @@ class SolveProcess:
 
             # Find scale and rotation relative to the cluster closest to
             # image center
+            class_member_mask = (labels == labels_sel[ind_nearest])
+            xy0 = xy[class_member_mask]
+
             for i,k in enumerate(labels_sel):
                 class_member_mask = (labels == k)
 
-                if i == ind_nearest:
-                    xy0 = xy[class_member_mask]
-                else:
+                if i != ind_nearest:
                     pattern_scale[i],pattern_angle[i],_ = \
                             self._get_scale_rotation(xy[class_member_mask], xy0)
 
             # Fit 2D plane
-            angle_mask = np.abs(pattern_rot) < 10
+            angle_mask = np.abs(pattern_angle) < 10
             A_angle = np.c_[xy_mean[angle_mask,0], xy_mean[angle_mask,1],
                             np.ones(angle_mask.sum())]
             C_angle,_,_,_ = lstsq(A_angle, pattern_angle[angle_mask])
