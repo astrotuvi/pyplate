@@ -1525,10 +1525,14 @@ class Process:
                            'astrometric solutions!', level=2, event=0)
             return
 
+        # Initialise star_catalog
         if self.star_catalog is None:
             self.star_catalog = StarCatalog()
+            self.star_catalog.gaia_dir = self.gaia_dir
+            self.star_catalog.scratch_dir = self.scratch_dir
             self.star_catalog.log = self.log
 
+        # Query Gaia catalog
         self.star_catalog.query_gaia(self.plate_solution, mag_range=mag_range)
 
     def get_reference_catalogs(self):
