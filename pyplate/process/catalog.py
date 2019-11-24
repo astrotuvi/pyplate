@@ -125,20 +125,27 @@ class StarCatalog(Table):
                                      psol.centroid.dec.to(u.deg).value,
                                      psol.radius.to(u.deg).value))
                 query = query_str.format(query_cols, pos_query)
-                self.log.write('Gaia query: {}'.format(query), level=4, event=0)
+
+                if self.log is not None:
+                    self.log.write('Gaia query: {}'.format(query), level=4, event=0)
+
                 fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
                 job = Gaia.launch_job_async(query, output_file=fn_tab, 
                                             output_format='fits', 
                                             dump_to_file=True)
                 gaia_files.append(fn_tab)
             else:
+                # Loop through solutions
                 for i in np.arange(psol.num_solutions):
                     solution = psol.solutions[i]
                     pos_query = (pos_query_str
                                  .format(solution['raj2000'], solution['dej2000'], 
                                          solution['half_diag'].to(u.deg).value))
                     query = query_str.format(query_cols, pos_query)
-                    self.log.write('Gaia query: {}'.format(query), level=4, event=0)
+
+                    if self.log is not None:
+                        self.log.write('Gaia query: {}'.format(query), level=4, event=0)
+
                     fn_tab = os.path.join(self.scratch_dir, 
                                           'gaiadr2-{:02d}.fits'.format(i+1))
                     job = Gaia.launch_job_async(query, output_file=fn_tab, 
