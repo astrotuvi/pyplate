@@ -517,47 +517,45 @@ class SourceTable(Table):
             x_image = self['x_source']
             self['x_source'] = (x_source - plate_solution.pattern_x(x_source))
 
-    def crossmatch_gaia(self, plate_solution=None):
+    def crossmatch_gaia(self, plate_solution=None, star_catalog=None):
         """
         Crossmatch sources with Gaia objects, considering multiple solutions.
 
-        Parameters
-        ----------
-        plate_solution: PlateSolution instance
+        Parameters:
+        -----------
+        plate_solution : :class:`solve.PlateSolution`
+            Plate solution with one or more astrometric solutions
+        star_catalog : :class:`catalog.StarCatalog`
+            External star catalog with Gaia data
 
         """
 
         from .solve import PlateSolution
+        from .catalog import StarCatalog
+
         assert isinstance(plate_solution, PlateSolution)
         assert plate_solution.num_solutions > 0
+        assert isinstance(star_catalog, StarCatalog)
 
         # Take parameters from plate_solution
         num_solutions = plate_solution.num_solutions
         solutions = plate_solution.solutions
         mean_pixscale = plate_solution.mean_pixscale
 
-        # Read Gaia sources
-        if isinstance(self.gaia_files, str):
-            try:
-                gaia_table = Table.read(self.gaia_files)
-            except Exception:
-                self.log.write('Cannot read Gaia catalog file {}'
-                               .format(self.gaia_files),
-                               level=2, event=0)
-                return
-
         # Number of Gaia stars
-        num_gaia = len(gaia_table)
+        num_gaia = len(star_catalog)
 
         self.log.write('Number of Gaia stars: {:d}'.format(num_gaia), 
                        level=4, event=0)
 
         # Calculate RA and Dec for the plate epoch
-        ra_ref = (gaia_table['ra'] + (self.plate_epoch - 2015.5) 
-                  * gaia_table['pmra']
-                  / np.cos(gaia_table['dec'] * np.pi / 180.) / 3600000.)
-        dec_ref = (gaia_table['dec'] + (self.plate_epoch - 2015.5) 
-                   * gaia_table['pmdec'] / 3600000.)
+        ra_ref = (star_catalog['ra']
+                  + (self.plate_epoch - star_catalog['ref_epoch'])
+                  * star_catalog['pmra']
+                  / np.cos(star_catalog['dec'] * np.pi / 180.) / 3600000.)
+        dec_ref = (star_catalog['dec']
+                   + (self.plate_epoch - star_catalog['ref_epoch'])
+                   * star_catalog['pmdec'] / 3600000.)
         #catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
         xy_ref = np.empty((0, 2))
         sol_ref = np.empty((0,), dtype=np.int8)
@@ -596,13 +594,13 @@ class SourceTable(Table):
         dist_arcsec = (ds * u.pixel * mean_pixscale).to(u.arcsec).value
         ind_gaia = index_ref[ind_ref]
         self['solution_num'][ind_plate] = sol_ref[ind_ref]
-        self['gaiadr2_id'][ind_plate] = gaia_table['source_id'][ind_gaia]
+        self['gaiadr2_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
         self['gaiadr2_ra'][ind_plate] = ra_ref[ind_gaia]
         self['gaiadr2_dec'][ind_plate] = dec_ref[ind_gaia]
-        self['gaiadr2_gmag'][ind_plate] = gaia_table['phot_g_mean_mag'][ind_gaia]
-        self['gaiadr2_bpmag'][ind_plate] = gaia_table['phot_bp_mean_mag'][ind_gaia]
-        self['gaiadr2_rpmag'][ind_plate] = gaia_table['phot_rp_mean_mag'][ind_gaia]
-        self['gaiadr2_bp_rp'][ind_plate] = gaia_table['bp_rp'][ind_gaia]
+        self['gaiadr2_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
+        self['gaiadr2_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
+        self['gaiadr2_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
+        self['gaiadr2_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
         self['gaiadr2_dist'][ind_plate] = dist_arcsec
 
         # Crossmatch: find all neighbours for sources
@@ -623,7 +621,7 @@ class SourceTable(Table):
         # Construct neighbors table
         nbs = Table()
         nbs['source_num'] = self['source_num'][k_plate]
-        nbs['gaia_id'] = gaia_table['source_id'][index_ref[k_ref]]
+        nbs['gaia_id'] = star_catalog['source_id'][index_ref[k_ref]]
         nbs['dist'] = dist
         nbs['solution_num'] = sol_ref[k_ref]
         nbs['gaia_x'] = xy_ref[k_ref,0]
