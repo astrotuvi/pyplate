@@ -20,6 +20,8 @@ class StarCatalog(Table):
         self.log = None
         self.gaia_dir = ''
         self.scratch_dir = ''
+        self.mag_range = None
+        self.name = None
 
     def query_gaia(self, plate_solution=None, skycoord=None, radius=None,
                    mag_range=[0,20], color_term=None, filename=None):
@@ -155,6 +157,19 @@ class StarCatalog(Table):
 
         # Append data from files to the catalog
         self.append_gaia(gaia_files)
+
+        # Add catalog name
+        self.name = 'Gaia DR2'
+
+        # Update mag_range
+        if self.mag_range is None:
+            self.mag_range = mag_range
+
+        if mag_range[0] < self.mag_range[0]:
+            self.mag_range[0] = mag_range[0]
+
+        if mag_range[1] > self.mag_range[1]:
+            self.mag_range[1] = mag_range[1]
 
     def append_gaia(self, gaia_files):
         """
