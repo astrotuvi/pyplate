@@ -1931,6 +1931,27 @@ class Process:
             phot_color.append(photproc.phot_color)
             phot_calib_curves.append(photproc.calib_curve)
 
+        iteration = 3
+        max_mag = 20
+
+        # Get fainter stars to star_catalog until star_catalog is 1 mag
+        # deeper than the plate faint limit, or catalog max_mag is reached
+        while (photproc.faint_limit > self.star_catalog.mag_range[1] - 1
+               and self.star_catalog.mag_range[1] < max_mag):
+            new_mag_range = [self.star_catalog.mag_range[1],
+                             min(self.star_catalog.mag_range[1] + 1, max_mag)]
+            self.query_star_catalog(mag_range=new_mag_range)
+            self.sources.crossmatch_gaia(self.plate_solution, self.star_catalog)
+            photproc.sources = self.sources.as_array()
+
+            for i in np.arange(1, self.plate_solution.num_solutions+1):
+                photproc.calibrate_photometry_gaia(solution_num=i,
+                                                   iteration=iteration)
+                phot_color.append(photproc.phot_color)
+                phot_calib_curves.append(photproc.calib_curve)
+
+            iteration += 1
+
         self.phot_color = phot_color
         self.phot_calib = photproc.phot_calib
         self.phot_calib_curves = phot_calib_curves

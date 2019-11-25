@@ -197,6 +197,8 @@ class PhotometryProcess:
         self.phot_calibrated = False
         self.phot_sub = []
         self.calib_curve = None
+        self.faint_limit = None
+        self.bright_limit = None
 
         self.id_tyc = None
         self.id_tyc_pad = None
@@ -399,8 +401,6 @@ class PhotometryProcess:
         num_calstars = len(sources)
 
         # Evaluate color term in 3 iterations
-        self.log.write('Determining color term using annular bins 1-3',
-                       level=3, event=72)
 
         self.log.write('Determining color term: {:d} stars'
                        ''.format(num_calstars),
@@ -1388,6 +1388,14 @@ class PhotometryProcess:
 
         if num_calib > 0:
             self.phot_calibrated = True
+            self.bright_limit = brightlim
+            self.faint_limit = faintlim
+
+            self.log.write('Photometric calibration results (solution {:d}): '
+                           'bright limit {:.3f}, faint limit {:.3f}'
+                           .format(solution_num, brightlim, faintlim),
+                           level=4, event=73)
+
             #self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
             #                       mag_range=mag_range, num_calib=num_calib, 
             #                       calibrated=1)
