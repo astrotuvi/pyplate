@@ -65,10 +65,11 @@ class StarCatalog(Table):
 
         if color_term is not None:
             if color_term < 0:
-                passband = ('phot_rp_mean_mag - {:f} * bp_rp'
-                            .format(np.abs(color_term)))
+                passband = ('phot_rp_mean_mag - {} * bp_rp'
+                            .format(round(np.abs(color_term), 5)))
             else:
-                passband = 'phot_rp_mean_mag + {:f} * bp_rp'.format(color_term)
+                passband = ('phot_rp_mean_mag + {} * bp_rp'
+                            .format(round(color_term, 5)))
         else:
             passband = 'phot_g_mean_mag'
 
@@ -82,8 +83,8 @@ class StarCatalog(Table):
                      'AND {} >= {} '
                      'AND {} < {} '
                      'AND astrometric_params_solved=31'
-                     .format(passband, str(mag_range[0]), 
-                             passband, str(mag_range[1])))
+                     .format(passband, str(round(mag_range[0], 5)), 
+                             passband, str(round(mag_range[1], 5))))
 
         gaia_files = []
 
@@ -197,6 +198,9 @@ class StarCatalog(Table):
             # If catalog is empty, copy all data from Gaia table
             if len(self) == 0:
                 self.columns = gaia_table.columns
+            elif len(gaia_table) == 0:
+                self.log.write('Gaia query result table is empty!',
+                               level=4, event=0)
             else:
                 # Find rows in the Gaia table that we do not have yet
                 d = setdiff(gaia_table, self, keys=['source_id'])

@@ -1270,7 +1270,12 @@ class PhotometryProcess:
                 ('mag_range', s(plate_mag_lim)-s(plate_mag_brightest)),
                 ('rmse_min', rmse.min()),
                 ('rmse_median', np.median(rmse)),
-                ('rmse_max', rmse.max())
+                ('rmse_max', rmse.max()),
+                ('plate_mag_brightest', plate_mag_brightest),
+                ('plate_mag_density02', kde.support[ind_dense[0]]),
+                ('plate_mag_brightcut', brightmag),
+                ('plate_mag_maxden', plate_mag_maxden),
+                ('plate_mag_lim', plate_mag_lim)
             ]))
 
             # Apply photometric calibration to sources in the annular bin

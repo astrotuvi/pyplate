@@ -1507,7 +1507,7 @@ class Process:
         platedb.close_connection()
         self.log.write('Closed database connection')
 
-    def query_star_catalog(self, mag_range=[0,15]):
+    def query_star_catalog(self, mag_range=[0,15], color_term=None):
         """
         Query external star catalog for astrometric and photometric reference
         stars.
@@ -1533,7 +1533,8 @@ class Process:
             self.star_catalog.log = self.log
 
         # Query Gaia catalog
-        self.star_catalog.query_gaia(self.plate_solution, mag_range=mag_range)
+        self.star_catalog.query_gaia(self.plate_solution, mag_range=mag_range,
+                                     color_term=color_term)
 
     def get_reference_catalogs(self):
         """
@@ -1912,9 +1913,23 @@ class Process:
         # Transform source table to numpy array
         photproc.sources = self.sources.as_array()
 
+        # Get plate limiting magnitude from the distribution of magnitudes
+        # of all clean sources (all solutions)
+        mask_clean = ((self.sources['mag_auto'] > 0)
+                      & (self.sources['mag_auto'] < 90)
+                      & (self.sources['flag_clean'] == 1))
+        mag_all = self.sources['mag_auto'][mask_clean].astype(np.double)
+        kde_all = sm.nonparametric.KDEUnivariate(mag_all)
+        kde_all.fit()
+        ind_dense = kde_all.density > 0.2 * kde_all.density.max()
+        plate_mag_lim = kde_all.support[ind_dense][-1]
+
         # Variables to store calibration results
         phot_color = []
         phot_calib_curves = []
+        prelim_color_term = []
+        cur_faint_limit = []
+        est_faint_limit = []
 
         # Carry out photometric calibration for all solutions
         for i in np.arange(1, self.plate_solution.num_solutions+1):
@@ -1931,24 +1946,94 @@ class Process:
             phot_color.append(photproc.phot_color)
             phot_calib_curves.append(photproc.calib_curve)
 
-        iteration = 3
-        max_mag = 20
+            # Collect color term and faint limit from the second iteration
+            prelim_color_term.append(photproc.phot_color['color_term'])
+            cur_faint_limit.append(photproc.phot_calib[-1]['faint_limit'])
 
-        # Get fainter stars to star_catalog until star_catalog is 1 mag
-        # deeper than the plate faint limit, or catalog max_mag is reached
-        while (photproc.faint_limit > self.star_catalog.mag_range[1] - 1
-               and self.star_catalog.mag_range[1] < max_mag):
-            new_mag_range = [self.star_catalog.mag_range[1],
-                             min(self.star_catalog.mag_range[1] + 1, max_mag)]
-            self.query_star_catalog(mag_range=new_mag_range)
+            # Estimate faint limit with the current calibration curve
+            estlim = photproc.calib_curve(plate_mag_lim).item()
+            est_faint_limit.append(estlim)
+
+        # Calculate mean color term and max faint limit over all solutions
+        mean_color_term = np.array(prelim_color_term).mean()
+        max_cur_faint_limit = np.array(cur_faint_limit).max()
+        est_faint_limit = np.array(est_faint_limit).max()
+
+        self.log.write('Current faint limit {:.3f}, '
+                       'estimated faint limit {:.3f}'
+                       .format(max_cur_faint_limit, est_faint_limit))
+
+        # Magnitude range for catalog query
+        if est_faint_limit < max_cur_faint_limit + 2.:
+            new_max_mag = est_faint_limit + 1.
+        else:
+            new_max_mag = (max_cur_faint_limit + est_faint_limit) / 2. + 1.
+
+        # Set magnitude ceiling at 15
+        new_max_mag = min([new_max_mag, 15])
+
+        # Remove current star catalog to get a fresh set of stars
+        self.star_catalog = None
+        cur_catalog_limit = 0
+        new_mag_range = [0, new_max_mag]
+
+        # Set max catalog magnitude dependent on color term
+        max_catalog_mag = 19. + mean_color_term
+
+        iteration = 3
+
+        # Get fainter stars to star_catalog until star_catalog is approximately
+        # 1 mag deeper than the plate faint limit, or max_catalog_mag is reached
+        while (cur_catalog_limit < max_cur_faint_limit + 0.7
+               and cur_catalog_limit < max_catalog_mag):
+            self.query_star_catalog(mag_range=new_mag_range,
+                                    color_term=mean_color_term)
+            cur_catalog_limit = new_mag_range[1]
             self.sources.crossmatch_gaia(self.plate_solution, self.star_catalog)
             photproc.sources = self.sources.as_array()
+
+            cur_faint_limit = []
+            est_faint_limit = []
 
             for i in np.arange(1, self.plate_solution.num_solutions+1):
                 photproc.calibrate_photometry_gaia(solution_num=i,
                                                    iteration=iteration)
                 phot_color.append(photproc.phot_color)
                 phot_calib_curves.append(photproc.calib_curve)
+
+                # Get current faint limit
+                flim = photproc.phot_calib[-1]['faint_limit']
+                cur_faint_limit.append(flim)
+
+                # Estimate faint limit with the current calibration curve
+                estlim = photproc.calib_curve(plate_mag_lim).item()
+                est_faint_limit.append(estlim)
+
+            # Calculate max values in faint-limit lists
+            max_cur_faint_limit = np.array(cur_faint_limit).max()
+            est_faint_limit = np.array(est_faint_limit).max()
+
+            self.log.write('Current faint limit {:.3f}, '
+                           'estimated faint limit {:.3f}, '
+                           'catalog limit {:.3f}'
+                           .format(max_cur_faint_limit, est_faint_limit,
+                                   cur_catalog_limit))
+
+            # New magnitude range for catalog query
+            if est_faint_limit < max_cur_faint_limit + 2.:
+                new_max_mag = est_faint_limit + 1.
+            else:
+                new_max_mag = ((max_cur_faint_limit
+                                + max([est_faint_limit, max_catalog_mag])) / 2.
+                               + 1.)
+
+            # If new max mag is brighter than current catalog limit, then
+            # stop iterations
+            if new_max_mag <= cur_catalog_limit:
+                break
+
+            new_mag_range = [self.star_catalog.mag_range[1],
+                             min(new_max_mag, max_catalog_mag)]
 
             iteration += 1
 
