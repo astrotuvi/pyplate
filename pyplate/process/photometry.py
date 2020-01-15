@@ -648,6 +648,8 @@ class PhotometryProcess:
                 (solution_num > 0 and solution_num <= num_solutions))
 
         self.log.to_db(3, 'Calibrating photometry', event=70)
+        self.log.write('Photometric calibration: solution {:d}, iteration {:d}'
+                       .format(solution_num, iteration), level=3, event=70)
 
         if 'METHOD' in self.plate_header:
             pmethod = self.plate_header['METHOD']
@@ -1258,6 +1260,7 @@ class PhotometryProcess:
             # Store calibration statistics
             self.phot_calib.append(OrderedDict([
                 ('solution_num', solution_num),
+                ('iteration', iteration),
                 ('annular_bin', b),
                 ('color_term', cterm),
                 ('color_term_err', cterm_err),
@@ -1265,9 +1268,10 @@ class PhotometryProcess:
                 ('num_calib_stars', num_valid),
                 ('num_bright_stars', nbright),
                 ('num_outliers', num_outliers),
-                ('bright_limit', s(plate_mag_brightest)),
-                ('faint_limit', s(plate_mag_lim)),
-                ('mag_range', s(plate_mag_lim)-s(plate_mag_brightest)),
+                ('bright_limit', s(plate_mag_brightest).item()),
+                ('faint_limit', s(plate_mag_lim).item()),
+                ('mag_range',
+                 s(plate_mag_lim).item() - s(plate_mag_brightest).item()),
                 ('rmse_min', rmse.min()),
                 ('rmse_median', np.median(rmse)),
                 ('rmse_max', rmse.max()),
@@ -1382,9 +1386,13 @@ class PhotometryProcess:
 
         try:
             brightlim = min([cal['bright_limit'] for cal in self.phot_calib 
-                             if cal['annular_bin'] < 9])
+                             if cal['annular_bin'] < 9
+                             and cal['solution_num'] == solution_num
+                             and cal['iteration'] == iteration])
             faintlim = max([cal['faint_limit'] for cal in self.phot_calib 
-                            if cal['annular_bin'] < 9])
+                            if cal['annular_bin'] < 9
+                            and cal['solution_num'] == solution_num
+                            and cal['iteration'] == iteration])
             mag_range = faintlim - brightlim
         except Exception:
             brightlim = None
@@ -1396,9 +1404,11 @@ class PhotometryProcess:
             self.bright_limit = brightlim
             self.faint_limit = faintlim
 
-            self.log.write('Photometric calibration results (solution {:d}): '
+            self.log.write('Photometric calibration results (solution {:d}, '
+                           'iteration {:d}): '
                            'bright limit {:.3f}, faint limit {:.3f}'
-                           .format(solution_num, brightlim, faintlim),
+                           .format(solution_num, iteration, brightlim,
+                                   faintlim),
                            level=4, event=73)
 
             #self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
