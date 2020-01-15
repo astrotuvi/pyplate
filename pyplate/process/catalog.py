@@ -1,9 +1,11 @@
 import os
 import numpy as np
+import pyvo as vo
+import warnings
 from astropy.table import Table, Column, vstack, setdiff
 from astropy.coordinates import SkyCoord
 from astropy import units as u
-from astroquery.gaia import Gaia
+#from astroquery.gaia import Gaia
 from .solve import PlateSolution
 from ..conf import read_conf
 
@@ -48,7 +50,7 @@ class StarCatalog(Table):
 
         """
 
-        use_coord_radius = (isinstance(skycoord, SkyCoord) and 
+        use_coord_radius = (isinstance(skycoord, SkyCoord) and
                             isinstance(radius, u.Quantity))
 
         assert not isinstance(mag_range, str)
@@ -73,20 +75,31 @@ class StarCatalog(Table):
         else:
             passband = 'phot_g_mean_mag'
 
+        # Initialise TAP service
+        tap_service = vo.dal.TAPService('https://gaia.aip.de/tap')
+
+        # Schema and table name in the Gaia database
+        gaia_table = 'gdr2.gaia_source'
+
+        # Suppress warnings
+        warnings.filterwarnings('ignore', module='astropy.io.votable')
+
+        # Construct query string
         pos_query_str = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
                          'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1')
         query_cols = ('source_id,ra,dec,ref_epoch,pmra,pmdec,phot_g_mean_mag,'
                       'phot_bp_mean_mag,phot_rp_mean_mag,bp_rp')
         query_str = ('SELECT {{}} '
-                     'FROM gaiadr2.gaia_source '
+                     'FROM {} '
                      'WHERE {{}} '
                      'AND {} >= {} '
                      'AND {} < {} '
                      'AND astrometric_params_solved=31'
-                     .format(passband, str(round(mag_range[0], 5)), 
+                     .format(gaia_table,
+                             passband, str(round(mag_range[0], 5)),
                              passband, str(round(mag_range[1], 5))))
 
-        gaia_files = []
+        gaia_tables = []
 
         # Use given coordinates and radius for query
         if use_coord_radius:
@@ -97,7 +110,7 @@ class StarCatalog(Table):
             query = query_str.format(query_cols, pos_query)
 
             if self.log is not None:
-                self.log.write('Gaia query: {}'.format(query), 
+                self.log.write('Gaia query: {}'.format(query),
                                level=4, event=0)
 
             if filename is None:
@@ -109,10 +122,13 @@ class StarCatalog(Table):
                 filename = os.path.basename(filename)
 
             fn_tab = os.path.join(self.gaia_dir, filename)
-            job = Gaia.launch_job_async(query, output_file=fn_tab, 
-                                        output_format='fits', 
-                                        dump_to_file=True)
-            gaia_files.append(fn_tab)
+            tap_result = tap_service.run_async(query, queue='2h')
+            tab = tap_result.to_table()
+            #tab.write(fn_tab, format='fits', overwrite=True)
+            #job = Gaia.launch_job_async(query, output_file=fn_tab,
+            #                            output_format='fits',
+            #                            dump_to_file=True)
+            gaia_tables.append(tab)
 
         # Use astrometric solutions for query
         else:
@@ -120,7 +136,7 @@ class StarCatalog(Table):
             fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
 
             # If max angular separation between solutions is less than
-            # FOV diagonal, then query Gaia once for all solutions. 
+            # FOV diagonal, then query Gaia once for all solutions.
             # Otherwise, query Gaia separately for individual solutions.
             if psol.max_sep < fov_diag:
                 pos_query = (pos_query_str
@@ -133,31 +149,37 @@ class StarCatalog(Table):
                     self.log.write('Gaia query: {}'.format(query), level=4, event=0)
 
                 fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
-                job = Gaia.launch_job_async(query, output_file=fn_tab, 
-                                            output_format='fits', 
-                                            dump_to_file=True)
-                gaia_files.append(fn_tab)
+                tap_result = tap_service.run_async(query, queue='2h')
+                tab = tap_result.to_table()
+                #tab.write(fn_tab, format='fits', overwrite=True)
+                #job = Gaia.launch_job_async(query, output_file=fn_tab,
+                #                            output_format='fits',
+                #                            dump_to_file=True)
+                gaia_tables.append(tab)
             else:
                 # Loop through solutions
                 for i in np.arange(psol.num_solutions):
                     solution = psol.solutions[i]
                     pos_query = (pos_query_str
-                                 .format(solution['raj2000'], solution['dej2000'], 
+                                 .format(solution['raj2000'], solution['dej2000'],
                                          solution['half_diag'].to(u.deg).value))
                     query = query_str.format(query_cols, pos_query)
 
                     if self.log is not None:
                         self.log.write('Gaia query: {}'.format(query), level=4, event=0)
 
-                    fn_tab = os.path.join(self.scratch_dir, 
+                    fn_tab = os.path.join(self.scratch_dir,
                                           'gaiadr2-{:02d}.fits'.format(i+1))
-                    job = Gaia.launch_job_async(query, output_file=fn_tab, 
-                                                output_format='fits', 
-                                                dump_to_file=True)
-                    gaia_files.append(fn_tab)
+                    tap_result = tap_service.run_async(query, queue='2h')
+                    tab = tap_result.to_table()
+                    #tab.write(fn_tab, format='fits', overwrite=True)
+                    #job = Gaia.launch_job_async(query, output_file=fn_tab,
+                    #                            output_format='fits',
+                    #                            dump_to_file=True)
+                    gaia_tables.append(tab)
 
         # Append data from files to the catalog
-        self.append_gaia(gaia_files)
+        self.append_gaia(gaia_tables)
 
         # Add catalog name
         self.name = 'Gaia DR2'
@@ -172,22 +194,22 @@ class StarCatalog(Table):
         if mag_range[1] > self.mag_range[1]:
             self.mag_range[1] = mag_range[1]
 
-    def append_gaia(self, gaia_files):
+    def append_gaia(self, gaia_tables):
         """
-        Append data from Gaia query result files.
+        Append data from Gaia query result tables.
 
         Parameters:
         -----------
-        gaia_files : list
-            List of FITS files with Gaia query results
+        gaia_tables : list
+            List of Astropy tables with Gaia query results
 
         """
 
-        assert isinstance(gaia_files, list)
+        assert isinstance(gaia_tables, list)
 
         # Loop through Gaia files
-        for gaia_file in gaia_files:
-            gaia_table = Table.read(gaia_file)
+        for gaia_table in gaia_tables:
+            #gaia_table = Table.read(gaia_file)
 
             # Replace column names with generic names
             gaia_table.rename_column('phot_g_mean_mag', 'mag')
