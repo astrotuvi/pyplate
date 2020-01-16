@@ -787,617 +787,591 @@ class PhotometryProcess:
         self.log.write('Photometric calibration using annular bins 1-9', 
                        level=3, event=73)
 
-        num_calib = 0  # counter for calibration stars
+        # Use stars in all annular bins
+        ind_bin = np.where(plate_bin <= 9)[0]
+        bintxt = 'Bins 1-9'
 
-        # Loop over annular bins
-        #for b in np.arange(10):
-        # Currently, use bin 0, which means all bins together
-        for b in np.arange(1):
-            if b == 0:
-                ind_bin = np.where(plate_bin <= 9)[0]
-                bintxt = 'Bins 1-9'
+        num_calstars = len(ind_bin)
+        self.log.write('{}: {:d} calibration-star candidates'
+                       ''.format(bintxt, num_calstars), 
+                       double_newline=False, level=4, event=73)
+
+        plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
+
+        self.log.write('{}: {:d} stars with unique magnitude'
+                       ''.format(bintxt, len(plate_mag_u)), 
+                       double_newline=False, level=4, event=73)
+
+        if len(plate_mag_u) < 10:
+            self.log.write('{}: too few stars with unique magnitude '
+                           '({:d})!'.format(bintxt, len(plate_mag_u)),
+                           double_newline=False, level=2, event=73)
+            #self.db_update_process(calibrated=0)
+            return
+
+        cat_bmag_u = cat_bmag[ind_bin[uind2]]
+        cat_vmag_u = cat_vmag[ind_bin[uind2]]
+        ind_calibstar_u = ind_calibstar[ind_bin[uind2]]
+        cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
+        self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
+
+        # Eliminate outliers by constructing calibration curve from
+        # the bright end and extrapolate towards faint stars
+
+        # Find initial plate magnitude limit
+        kde = sm.nonparametric.KDEUnivariate(plate_mag_u
+                                             .astype(np.double))
+        kde.fit()
+        ind_maxden = np.argmax(kde.density)
+        plate_mag_maxden = kde.support[ind_maxden]
+        ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+        brightmag = kde.support[ind_dense[0]]
+        plate_mag_lim = kde.support[ind_dense[-1]]
+        plate_mag_brt = plate_mag_u.min()
+        plate_mag_mid = (plate_mag_brt + 
+                         0.5 * (plate_mag_lim - plate_mag_brt))
+
+        if brightmag > plate_mag_mid:
+            brightmag = plate_mag_mid
+
+        # Check the number of stars in the bright end
+        nb = (plate_mag_u <= plate_mag_mid).sum()
+
+        if nb < 10:
+            plate_mag_mid = plate_mag_u[9]
+
+        # Construct magnitude cuts for outlier elimination
+        ncuts = int((plate_mag_lim - plate_mag_mid) / 0.5) + 2
+        mag_cuts = np.linspace(plate_mag_mid, plate_mag_lim, ncuts)
+        ind_cut = np.where(plate_mag_u <= plate_mag_mid)[0]
+        ind_good = np.arange(len(ind_cut))
+        mag_cut_prev = mag_cuts[0]
+        #mag_slope_prev = None
+
+        # Loop over magnitude bins
+        for mag_cut in mag_cuts[1:]:
+            gpmag = plate_mag_u[ind_cut[ind_good]]
+            gcmag = cat_natmag[ind_cut[ind_good]]
+
+            nbright = (gpmag < brightmag).sum()
+
+            if nbright < 20:
+                alt_brightmag = (plate_mag_u.min() + 
+                                 (plate_mag_maxden - plate_mag_u.min()) * 0.5)
+                nbright = (gpmag < alt_brightmag).sum()
+
+            if nbright < 10:
+                nbright = 10
+
+            # Exclude bright outliers by fitting a line and checking 
+            # if residuals are larger than 2 mag
+            ind_outliers = np.array([], dtype=int)
+            xdata = gpmag[:nbright]
+            ydata = gcmag[:nbright]
+            p1 = np.poly1d(np.polyfit(xdata, ydata, 1))
+            res = cat_natmag[ind_cut] - p1(plate_mag_u[ind_cut])
+            ind_brightout = np.where((np.absolute(res) > 2.) &
+                                     (plate_mag_u[ind_cut] <= 
+                                      xdata.max()))[0]
+
+            if len(ind_brightout) > 0:
+                ind_outliers = np.append(ind_outliers, 
+                                         ind_cut[ind_brightout])
+                ind_good = np.setdiff1d(ind_good, ind_outliers)
+                gpmag = plate_mag_u[ind_cut[ind_good]]
+                gcmag = cat_natmag[ind_cut[ind_good]]
+                nbright -= len(ind_brightout)
+
+                if nbright < 10:
+                    nbright = 10
+
+            # Construct calibration curve
+            # Set lowess fraction depending on the number of data points
+            frac = 0.2
+
+            if len(ind_good) < 500:
+                frac = 0.2 + 0.3 * (500 - len(ind_good)) / 500.
+
+            z = sm.nonparametric.lowess(gcmag, gpmag, 
+                                        frac=frac, it=3, delta=0.1, 
+                                        return_sorted=True)
+
+            # In case there are less than 20 good stars, use only 
+            # polynomial
+            if len(ind_good) < 20:
+                weights = np.zeros(len(ind_good)) + 1.
+
+                for i in np.arange(len(ind_good)):
+                    indw = np.where(np.absolute(gpmag-gpmag[i]) < 1.0)[0]
+
+                    if len(indw) > 2:
+                        weights[i] = 1. / gcmag[indw].std()**2
+
+                p2 = np.poly1d(np.polyfit(gpmag, gcmag, 2, w=weights))
+                z[:,1] = p2(z[:,0])
+
+            # Improve bright-star calibration
+            if nbright > len(ind_good):
+                nbright = len(ind_good)
+
+            xbright = gpmag[:nbright]
+            ybright = gcmag[:nbright]
+
+            if nbright < 50:
+                p2 = np.poly1d(np.polyfit(xbright, ybright, 2))
+                vals = p2(xbright)
             else:
-                ind_bin = np.where(plate_bin == b)[0]
+                z1 = sm.nonparametric.lowess(ybright, xbright, 
+                                             frac=0.4, it=3, delta=0.1, 
+                                             return_sorted=True)
+                vals = z1[:,1]
 
-            num_calstars = len(ind_bin)
-            self.log.write('{}: {:d} calibration-star candidates'
-                           ''.format(bintxt, num_calstars), 
-                           double_newline=False, level=4, event=73)
+            weight2 = np.arange(nbright, dtype=float) / nbright
+            weight1 = 1. - weight2
+            z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
 
-            if num_calstars < 20:
-                self.log.write('{}: too few calibration-star candidates!'
-                               ''.format(bintxt), double_newline=False,
-                               level=2, event=73)
-                continue
+            # Improve faint-star calibration by fitting a 2nd order
+            # polynomial
+            # Currently, disable improvement
+            improve_faint = False
+            if improve_faint:
+                ind_faint = np.where(gpmag > mag_cut_prev-6.)[0]
+                nfaint = len(ind_faint)
 
-            plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
+                if nfaint > 5:
+                    xfaint = gpmag[ind_faint]
+                    yfaint = gcmag[ind_faint]
+                    weights = np.zeros(nfaint) + 1.
 
-            self.log.write('{}: {:d} stars with unique magnitude'
-                           ''.format(bintxt, len(plate_mag_u)), 
-                           double_newline=False, level=4, event=73)
+                    for i in np.arange(nfaint):
+                        indw = np.where(np.absolute(xfaint-xfaint[i]) < 0.5)[0]
 
-            if len(plate_mag_u) < 20:
-                self.log.write('{}: too few stars with unique magnitude '
-                               '({:d})!'.format(bintxt, len(plate_mag_u)),
-                               double_newline=False, level=2, event=73)
-                continue
+                        if len(indw) > 2:
+                            weights[i] = 1. / yfaint[indw].std()**2
 
-            cat_bmag_u = cat_bmag[ind_bin[uind2]]
-            cat_vmag_u = cat_vmag[ind_bin[uind2]]
-            ind_calibstar_u = ind_calibstar[ind_bin[uind2]]
-            cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
-            self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
+                    p2 = np.poly1d(np.polyfit(xfaint, yfaint, 2, 
+                                              w=weights))
+                    vals = p2(xfaint)
 
-            # For bins 1-8, find calibration curve. For bin 9, use calibration
-            # from bin 8.
-            if b < 9:
-                # Eliminate outliers by constructing calibration curve from
-                # the bright end and extrapolate towards faint stars
-
-                # Find initial plate magnitude limit
-                kde = sm.nonparametric.KDEUnivariate(plate_mag_u
-                                                     .astype(np.double))
-                kde.fit()
-                ind_maxden = np.argmax(kde.density)
-                plate_mag_maxden = kde.support[ind_maxden]
-                ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
-                brightmag = kde.support[ind_dense[0]]
-                plate_mag_lim = kde.support[ind_dense[-1]]
-                plate_mag_brt = plate_mag_u.min()
-                plate_mag_mid = (plate_mag_brt + 
-                                 0.5 * (plate_mag_lim - plate_mag_brt))
-
-                if brightmag > plate_mag_mid:
-                    brightmag = plate_mag_mid
-
-                # Check the number of stars in the bright end
-                nb = (plate_mag_u <= plate_mag_mid).sum()
-
-                if nb < 10:
-                    plate_mag_mid = plate_mag_u[9]
-
-                # Construct magnitude cuts for outlier elimination
-                ncuts = int((plate_mag_lim - plate_mag_mid) / 0.5) + 2
-                mag_cuts = np.linspace(plate_mag_mid, plate_mag_lim, ncuts)
-                ind_cut = np.where(plate_mag_u <= plate_mag_mid)[0]
-                ind_good = np.arange(len(ind_cut))
-                mag_cut_prev = mag_cuts[0]
-                #mag_slope_prev = None
-
-                # Loop over magnitude bins
-                for mag_cut in mag_cuts[1:]:
-                    gpmag = plate_mag_u[ind_cut[ind_good]]
-                    gcmag = cat_natmag[ind_cut[ind_good]]
-
-                    nbright = (gpmag < brightmag).sum()
-
-                    if nbright < 20:
-                        alt_brightmag = (plate_mag_u.min() + 
-                                         (plate_mag_maxden - plate_mag_u.min()) * 0.5)
-                        nbright = (gpmag < alt_brightmag).sum()
-
-                    if nbright < 10:
-                        nbright = 10
-
-                    # Exclude bright outliers by fitting a line and checking 
-                    # if residuals are larger than 2 mag
-                    ind_outliers = np.array([], dtype=int)
-                    xdata = gpmag[:nbright]
-                    ydata = gcmag[:nbright]
-                    p1 = np.poly1d(np.polyfit(xdata, ydata, 1))
-                    res = cat_natmag[ind_cut] - p1(plate_mag_u[ind_cut])
-                    ind_brightout = np.where((np.absolute(res) > 2.) &
-                                             (plate_mag_u[ind_cut] <= 
-                                              xdata.max()))[0]
-
-                    if len(ind_brightout) > 0:
-                        ind_outliers = np.append(ind_outliers, 
-                                                 ind_cut[ind_brightout])
-                        ind_good = np.setdiff1d(ind_good, ind_outliers)
-                        gpmag = plate_mag_u[ind_cut[ind_good]]
-                        gcmag = cat_natmag[ind_cut[ind_good]]
-                        nbright -= len(ind_brightout)
-
-                        if nbright < 10:
-                            nbright = 10
-
-                    # Construct calibration curve
-                    # Set lowess fraction depending on the number of data points
-                    frac = 0.2
-
-                    if len(ind_good) < 500:
-                        frac = 0.2 + 0.3 * (500 - len(ind_good)) / 500.
-
-                    z = sm.nonparametric.lowess(gcmag, gpmag, 
-                                                frac=frac, it=3, delta=0.1, 
-                                                return_sorted=True)
-
-                    # In case there are less than 20 good stars, use only 
-                    # polynomial
-                    if len(ind_good) < 20:
-                        weights = np.zeros(len(ind_good)) + 1.
-
-                        for i in np.arange(len(ind_good)):
-                            indw = np.where(np.absolute(gpmag-gpmag[i]) < 1.0)[0]
-
-                            if len(indw) > 2:
-                                weights[i] = 1. / gcmag[indw].std()**2
-
-                        p2 = np.poly1d(np.polyfit(gpmag, gcmag, 2, w=weights))
-                        z[:,1] = p2(z[:,0])
-
-                    # Improve bright-star calibration
-                    if nbright > len(ind_good):
-                        nbright = len(ind_good)
-
-                    xbright = gpmag[:nbright]
-                    ybright = gcmag[:nbright]
-
-                    if nbright < 50:
-                        p2 = np.poly1d(np.polyfit(xbright, ybright, 2))
-                        vals = p2(xbright)
-                    else:
-                        z1 = sm.nonparametric.lowess(ybright, xbright, 
-                                                     frac=0.4, it=3, delta=0.1, 
-                                                     return_sorted=True)
-                        vals = z1[:,1]
-
-                    weight2 = np.arange(nbright, dtype=float) / nbright
+                    weight2 = (np.arange(nfaint, dtype=float) / nfaint)**1
                     weight1 = 1. - weight2
-                    z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
+                    z[ind_faint,1] = weight2 * vals + weight1 * z[ind_faint,1]
 
-                    # Improve faint-star calibration by fitting a 2nd order
-                    # polynomial
-                    # Currently, disable improvement
-                    improve_faint = False
-                    if improve_faint:
-                        ind_faint = np.where(gpmag > mag_cut_prev-6.)[0]
-                        nfaint = len(ind_faint)
+            # Interpolate smoothed calibration curve
+            s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
 
-                        if nfaint > 5:
-                            xfaint = gpmag[ind_faint]
-                            yfaint = gcmag[ind_faint]
-                            weights = np.zeros(nfaint) + 1.
+            ind_cut = np.where(plate_mag_u <= mag_cut)[0]
+            fit_mag = s(plate_mag_u[ind_cut])
 
-                            for i in np.arange(nfaint):
-                                indw = np.where(np.absolute(xfaint-xfaint[i]) < 0.5)[0]
+            residuals = cat_natmag[ind_cut] - fit_mag
+            mag_cut_prev = mag_cut
 
-                                if len(indw) > 2:
-                                    weights[i] = 1. / yfaint[indw].std()**2
+            #if b == 0 and self.write_phot_dir:
+            #    np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
+            #                                          cat_natmag[ind_cut], 
+            #                                          fit_mag, residuals)))
+            #    fcutdata.write('\n\n')
+            #    np.savetxt(fcutdata, np.column_stack((gpmag, gcmag, 
+            #                                          fit_mag[ind_good], residuals[ind_good])))
+            #    fcutdata.write('\n\n')
+            #    np.savetxt(fcutcurve, z)
+            #    fcutcurve.write('\n\n')
 
-                            p2 = np.poly1d(np.polyfit(xfaint, yfaint, 2, 
-                                                      w=weights))
-                            vals = p2(xfaint)
+            ind_outliers = np.array([], dtype=int)
 
-                            weight2 = (np.arange(nfaint, dtype=float) / nfaint)**1
-                            weight1 = 1. - weight2
-                            z[ind_faint,1] = weight2 * vals + weight1 * z[ind_faint,1]
+            # Mark as outliers those stars that deviate more than 1 mag
+            ind_out = np.where(np.absolute(residuals) > 1.0)
 
-                    # Interpolate smoothed calibration curve
-                    s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+            if len(ind_out) > 0:
+                ind_outliers = np.append(ind_outliers, ind_cut[ind_out])
+                ind_outliers = np.unique(ind_outliers)
 
-                    ind_cut = np.where(plate_mag_u <= mag_cut)[0]
-                    fit_mag = s(plate_mag_u[ind_cut])
+            # Additionally clip outliers in small bins
+            for mag_loc in np.linspace(plate_mag_brt, mag_cut, 100):
+                mag_low = mag_loc - 0.5
+                mag_high = mag_loc + 0.5
+                ind_loc = np.where((plate_mag_u[ind_cut] > mag_low) &
+                                   (plate_mag_u[ind_cut] < mag_high))[0]
+                ind_loc = np.setdiff1d(ind_loc, ind_outliers)
 
-                    residuals = cat_natmag[ind_cut] - fit_mag
-                    mag_cut_prev = mag_cut
+                if len(ind_loc) >= 5:
+                    rms_res = np.sqrt((residuals[ind_loc]**2).sum())
+                    ind_locout = np.where(np.absolute(residuals[ind_loc]) > 
+                                          3.*rms_res)[0]
 
-                    #if b == 0 and self.write_phot_dir:
-                    #    np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
-                    #                                          cat_natmag[ind_cut], 
-                    #                                          fit_mag, residuals)))
-                    #    fcutdata.write('\n\n')
-                    #    np.savetxt(fcutdata, np.column_stack((gpmag, gcmag, 
-                    #                                          fit_mag[ind_good], residuals[ind_good])))
-                    #    fcutdata.write('\n\n')
-                    #    np.savetxt(fcutcurve, z)
-                    #    fcutcurve.write('\n\n')
+                    if len(ind_locout) > 0:
+                        ind_outliers = np.append(ind_outliers, 
+                                                 ind_cut[ind_loc[ind_locout]])
 
-                    ind_outliers = np.array([], dtype=int)
+                    ind_outliers = np.unique(ind_outliers)
 
-                    # Mark as outliers those stars that deviate more than 1 mag
-                    ind_out = np.where(np.absolute(residuals) > 1.0)
+            ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
+                                    ind_outliers)
 
-                    if len(ind_out) > 0:
-                        ind_outliers = np.append(ind_outliers, ind_cut[ind_out])
-                        ind_outliers = np.unique(ind_outliers)
+            #flt = sigma_clip(residuals, maxiters=None)
+            #ind_good = ~flt.mask
+            #ind_good = np.where(np.absolute(residuals) < 3*residuals.std())[0]
 
-                    # Additionally clip outliers in small bins
-                    for mag_loc in np.linspace(plate_mag_brt, mag_cut, 100):
-                        mag_low = mag_loc - 0.5
-                        mag_high = mag_loc + 0.5
-                        ind_loc = np.where((plate_mag_u[ind_cut] > mag_low) &
-                                           (plate_mag_u[ind_cut] < mag_high))[0]
-                        ind_loc = np.setdiff1d(ind_loc, ind_outliers)
+            # Stop outlier elimination if there is a gap in magnitudes
+            if mag_cut - plate_mag_u[ind_cut[ind_good]].max() > 1.5:
+                ind_faintout = np.where(plate_mag_u > mag_cut)[0]
 
-                        if len(ind_loc) >= 5:
-                            rms_res = np.sqrt((residuals[ind_loc]**2).sum())
-                            ind_locout = np.where(np.absolute(residuals[ind_loc]) > 
-                                                  3.*rms_res)[0]
-
-                            if len(ind_locout) > 0:
-                                ind_outliers = np.append(ind_outliers, 
-                                                         ind_cut[ind_loc[ind_locout]])
-
-                            ind_outliers = np.unique(ind_outliers)
-
-                    ind_good = np.setdiff1d(np.arange(len(ind_cut)), 
+                if len(ind_faintout) > 0:
+                    ind_outliers = np.append(ind_outliers, ind_faintout)
+                    ind_outliers = np.unique(ind_outliers)
+                    ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
                                             ind_outliers)
+                    self.log.write('{}: {:d} faint stars '
+                                   'eliminated as outliers'
+                                   ''.format(bintxt, len(ind_faintout)),
+                                   double_newline=False,
+                                   level=4, event=73)
 
-                    #flt = sigma_clip(residuals, maxiters=None)
-                    #ind_good = ~flt.mask
-                    #ind_good = np.where(np.absolute(residuals) < 3*residuals.std())[0]
+                self.log.write('{}: outlier elimination '
+                               'stopped due to a long gap in '
+                               'magnitudes!'.format(bintxt), 
+                                double_newline=False,
+                               level=2, event=73)
+                break
 
-                    # Stop outlier elimination if there is a gap in magnitudes
-                    if mag_cut - plate_mag_u[ind_cut[ind_good]].max() > 1.5:
-                        ind_faintout = np.where(plate_mag_u > mag_cut)[0]
+            if len(ind_good) < 10:
+                self.log.write('{}: outlier elimination stopped '
+                               'due to insufficient stars left!'
+                               ''.format(bintxt), 
+                                double_newline=False, level=2, event=73)
+                break
 
-                        if len(ind_faintout) > 0:
-                            ind_outliers = np.append(ind_outliers, ind_faintout)
-                            ind_outliers = np.unique(ind_outliers)
-                            ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
-                                                    ind_outliers)
-                            self.log.write('{}: {:d} faint stars '
-                                           'eliminated as outliers'
-                                           ''.format(bintxt, len(ind_faintout)),
-                                           double_newline=False,
-                                           level=4, event=73)
+        num_outliers = len(ind_outliers)
+        self.log.write('{}: {:d} outliers eliminated'
+                       ''.format(bintxt, num_outliers), 
+                       double_newline=False, level=4, event=73)
+        ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
+                                ind_outliers)
+        self.log.write('{}: {:d} stars after outlier '
+                       'elimination'.format(bintxt, len(ind_good)), 
+                       double_newline=False, level=4, event=73)
 
-                        self.log.write('{}: outlier elimination '
-                                       'stopped due to a long gap in '
-                                       'magnitudes!'.format(bintxt), 
-                                        double_newline=False,
-                                       level=2, event=73)
-                        break
+        if len(ind_good) < 10:
+            self.log.write('{}: too few calibration '
+                           'stars ({:d}) after outlier elimination!'
+                           ''.format(bintxt, len(ind_good)), 
+                           double_newline=False, level=2, event=73)
+            #self.db_update_process(calibrated=0)
+            return
 
-                    if len(ind_good) < 10:
-                        self.log.write('{}: outlier elimination stopped '
-                                       'due to insufficient stars left!'
-                                       ''.format(bintxt), 
-                                        double_newline=False, level=2, event=73)
-                        break
+        # Continue with photometric calibration without outliers
 
-                num_outliers = len(ind_outliers)
-                self.log.write('{}: {:d} outliers eliminated'
-                               ''.format(bintxt, num_outliers), 
-                               double_newline=False, level=4, event=73)
-                ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
-                                        ind_outliers)
-                self.log.write('{}: {:d} stars after outlier '
-                               'elimination'.format(bintxt, len(ind_good)), 
-                               double_newline=False, level=4, event=73)
+        # Study the distribution of magnitudes
+        kde = sm.nonparametric.KDEUnivariate(plate_mag_u[ind_good]
+                                             .astype(np.double))
+        kde.fit()
+        ind_maxden = np.argmax(kde.density)
+        plate_mag_maxden = kde.support[ind_maxden]
+        ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
+        plate_mag_lim = kde.support[ind_dense[-1]]
+        ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
+        num_valid = len(ind_valid)
 
-                if len(ind_good) < 20:
-                    self.log.write('{}: too few calibration '
-                                   'stars ({:d}) after outlier elimination!'
-                                   ''.format(bintxt, len(ind_good)), 
-                                   double_newline=False, level=2, event=73)
-                    continue
+        self.log.write('{}: {:d} calibration stars '
+                       'brighter than limiting magnitude'
+                       ''.format(bintxt, num_valid), 
+                       double_newline=False, level=4, event=73)
 
-                # Continue with photometric calibration without outliers
+        ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
+        self.sources['phot_calib_flags'][ind_calibstar_valid] = 1
 
-                # Study the distribution of magnitudes
-                kde = sm.nonparametric.KDEUnivariate(plate_mag_u[ind_good]
-                                                     .astype(np.double))
-                kde.fit()
-                ind_maxden = np.argmax(kde.density)
-                plate_mag_maxden = kde.support[ind_maxden]
-                ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
-                plate_mag_lim = kde.support[ind_dense[-1]]
-                ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
-                num_valid = len(ind_valid)
-                num_calib += num_valid
+        if num_outliers > 0:
+            ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
+            self.sources['phot_calib_flags'][ind_calibstar_outlier] = 2
 
-                self.log.write('{}: {:d} calibration stars '
-                               'brighter than limiting magnitude'
-                               ''.format(bintxt, num_valid), 
-                               double_newline=False, level=4, event=73)
+        cat_natmag = cat_natmag[ind_good[ind_valid]]
+        plate_mag_u = plate_mag_u[ind_good[ind_valid]]
+        plate_mag_brightest = plate_mag_u.min()
+        frac = 0.2
 
-                ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
-                self.sources['phot_calib_flags'][ind_calibstar_valid] = 1
+        if num_valid < 500:
+            frac = 0.2 + 0.3 * (500 - num_valid) / 500.
 
-                if num_outliers > 0:
-                    ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
-                    self.sources['phot_calib_flags'][ind_calibstar_outlier] = 2
+        z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
+                                    frac=frac, it=3, delta=0.1, 
+                                    return_sorted=True)
 
-                cat_natmag = cat_natmag[ind_good[ind_valid]]
-                plate_mag_u = plate_mag_u[ind_good[ind_valid]]
-                plate_mag_brightest = plate_mag_u.min()
-                frac = 0.2
+        # Improve bright-star calibration
 
-                if num_valid < 500:
-                    frac = 0.2 + 0.3 * (500 - num_valid) / 500.
+        # Find magnitude at which the frequency of stars becomes
+        # larger than 500 mag^(-1)
+        #ind_500 = np.where((kde.density*len(ind_good) > 500))[0][0]
+        #brightmag = kde.support[ind_500]
 
-                z = sm.nonparametric.lowess(cat_natmag, plate_mag_u, 
-                                            frac=frac, it=3, delta=0.1, 
-                                            return_sorted=True)
+        # Find magnitude at which density becomes larger than 0.05 of
+        # the max density
+        #ind_dense_005 = np.where(kde.density > 0.05*kde.density.max())[0]
+        # Index of kde.support at which density becomes 0.05 of max
+        #ind0 = ind_dense_005[0]
+        #brightmag = kde.support[ind0]
+        #nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
-                # Improve bright-star calibration
+        # Find magnitude at which density becomes larger than 0.2 of
+        # the max density
+        #brightmag = kde.support[ind_dense[0]]
+        #nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
-                # Find magnitude at which the frequency of stars becomes
-                # larger than 500 mag^(-1)
-                #ind_500 = np.where((kde.density*len(ind_good) > 500))[0][0]
-                #brightmag = kde.support[ind_500]
+        # Find the second percentile of magnitudes
+        nbright = round(num_valid * 0.02)
 
-                # Find magnitude at which density becomes larger than 0.05 of
-                # the max density
-                #ind_dense_005 = np.where(kde.density > 0.05*kde.density.max())[0]
-                # Index of kde.support at which density becomes 0.05 of max
-                #ind0 = ind_dense_005[0]
-                #brightmag = kde.support[ind0]
-                #nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+        # Limit bright stars with 2000
+        nbright = min([nbright, 2000])
 
-                # Find magnitude at which density becomes larger than 0.2 of
-                # the max density
-                #brightmag = kde.support[ind_dense[0]]
-                #nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+        if nbright < 20:
+            brightmag = (plate_mag_brightest + 
+                         (plate_mag_maxden - plate_mag_brightest) * 0.5)
+            nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
 
-                # Find the second percentile of magnitudes
-                nbright = round(num_valid * 0.02)
+        if nbright < 5:
+            nbright = 5
 
-                # Limit bright stars with 2000
-                nbright = min([nbright, 2000])
+        if nbright < 50:
+            p2 = np.poly1d(np.polyfit(plate_mag_u[:nbright], 
+                                      cat_natmag[:nbright], 2))
+            vals = p2(plate_mag_u[:nbright])
+        else:
+            z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
+                                         plate_mag_u[:nbright], 
+                                         frac=0.4, it=3, delta=0.1, 
+                                         return_sorted=True)
+            vals = z1[:,1]
 
-                if nbright < 20:
-                    brightmag = (plate_mag_brightest + 
-                                 (plate_mag_maxden - plate_mag_brightest) * 0.5)
-                    nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+        t = Table()
+        t['plate_mag'] = plate_mag_u[:nbright]
+        t['cat_natmag'] = cat_natmag[:nbright]
+        t['fit_mag'] = vals
+        basefn_solution = '{}-{:02d}'.format(self.basefn, solution_num)
+        fn_tab = os.path.join(self.scratch_dir, 
+                              '{}_bright.fits'.format(basefn_solution))
+        t.write(fn_tab, format='fits', overwrite=True)
 
-                if nbright < 5:
-                    nbright = 5
+        # Normalise density to max density of the bright range
+        #d_bright = kde.density[:ind0] / kde.density[:ind0].max()
+        # Find a smooth density curve and use values as weights
+        #s_bright = InterpolatedUnivariateSpline(kde.support[:ind0],
+        #                                        d_bright, k=1)
+        #weight2 = s_bright(plate_mag_u[:nbright])
 
-                if nbright < 50:
-                    p2 = np.poly1d(np.polyfit(plate_mag_u[:nbright], 
-                                              cat_natmag[:nbright], 2))
-                    vals = p2(plate_mag_u[:nbright])
+        # Linearly increasing weight
+        weight2 = np.arange(nbright, dtype=float) / nbright
+
+        weight1 = 1. - weight2
+
+        # Merge two calibration curves with different weights
+        z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
+
+        # Interpolate the whole calibration curve
+        s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+
+        # Store the calibration curve
+        self.calib_curve = s
+
+        # Calculate residuals
+        residuals = cat_natmag-s(plate_mag_u)
+
+        # Smooth residuals with spline
+        X = self.sources['x_source'][ind_calibstar_valid]
+        Y = self.sources['y_source'][ind_calibstar_valid]
+
+        if num_valid > 100:
+            s_corr = SmoothBivariateSpline(X, Y, residuals, kx=5, ky=5)
+        elif num_valid > 50:
+            s_corr = SmoothBivariateSpline(X, Y, residuals, kx=3, ky=3)
+        else:
+            s_corr = None
+
+        # Calculate new residuals and correct for dependence on
+        # x, y, mag_auto. Do it only if the number of valid
+        # calibration stars is larger than 500.
+        s_magcorr = None
+
+        if num_valid > 500:
+            residuals2 = np.zeros(num_valid)
+
+            for i in np.arange(num_valid):
+                residuals2[i] = residuals[i] - s_corr(X[i], Y[i])
+
+            # Create magnitude bins
+            plate_mag_srt = np.sort(plate_mag_u)
+            bin_mag = [(plate_mag_srt[99] + plate_mag_srt[0]) / 2.]
+            bin_hw = [(plate_mag_srt[99] - plate_mag_srt[0]) / 2.]
+            ind_lastmag = 99
+
+            while True:
+                if plate_mag_srt[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1] > 0.5:
+                    bin_edge = bin_mag[-1] + bin_hw[-1]
+                    bin_mag.append((plate_mag_srt[ind_lastmag+100] + bin_edge) / 2.)
+                    bin_hw.append((plate_mag_srt[ind_lastmag+100] - bin_edge) / 2.)
+                    ind_lastmag += 100
                 else:
-                    z1 = sm.nonparametric.lowess(cat_natmag[:nbright], 
-                                                 plate_mag_u[:nbright], 
-                                                 frac=0.4, it=3, delta=0.1, 
-                                                 return_sorted=True)
-                    vals = z1[:,1]
+                    bin_mag.append(bin_mag[-1] + bin_hw[-1] + 0.25)
+                    bin_hw.append(0.25)
+                    ind_lastmag = (plate_mag_srt < bin_mag[-1] + 0.25).sum() - 1
 
-                t = Table()
-                t['plate_mag'] = plate_mag_u[:nbright]
-                t['cat_natmag'] = cat_natmag[:nbright]
-                t['fit_mag'] = vals
-                basefn_solution = '{}-{:02d}'.format(self.basefn, solution_num)
-                fn_tab = os.path.join(self.scratch_dir, 
-                                      '{}_bright.fits'.format(basefn_solution))
-                t.write(fn_tab, format='fits', overwrite=True)
+                # If less than 100 sources remain
+                if ind_lastmag > num_valid - 101:
+                    add_width = plate_mag_srt[-1] - bin_mag[-1] - bin_hw[-1]
+                    bin_mag[-1] += add_width / 2.
+                    bin_hw[-1] += add_width / 2.
+                    break
 
-                # Normalise density to max density of the bright range
-                #d_bright = kde.density[:ind0] / kde.density[:ind0].max()
-                # Find a smooth density curve and use values as weights
-                #s_bright = InterpolatedUnivariateSpline(kde.support[:ind0],
-                #                                        d_bright, k=1)
-                #weight2 = s_bright(plate_mag_u[:nbright])
+            # Evaluate natmag correction in magnitude bins
+            s_magcorr = []
 
-                # Linearly increasing weight
-                weight2 = np.arange(nbright, dtype=float) / nbright
+            for i, (m, hw) in enumerate(zip(bin_mag, bin_hw)):
+                binmask = (plate_mag_u > m-hw) & (plate_mag_u <= m+hw)
+                #print(m, m-hw, m+hw, binmask.sum())
+                smag = SmoothBivariateSpline(X[binmask], Y[binmask],
+                                             residuals2[binmask],
+                                             kx=3, ky=3)
+                s_magcorr.append(smag)
 
-                weight1 = 1. - weight2
+        # Evaluate RMS errors from the calibration residuals
+        rmse_list = generic_filter(residuals, _rmse, size=10)
+        rmse_lowess = sm.nonparametric.lowess(rmse_list, plate_mag_u, 
+                                              frac=0.5, it=3, delta=0.1)
+        s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
+                                              rmse_lowess[:,1], k=1)
+        rmse = s_rmse(plate_mag_u)
 
-                # Merge two calibration curves with different weights
-                z[:nbright,1] = weight1 * vals + weight2 * z[:nbright,1]
+        if self.write_phot_dir:
+            np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
+                                                  s(plate_mag_u), 
+                                                  cat_natmag-s(plate_mag_u))))
+            fcaldata.write('\n\n')
+            #np.savetxt(fcalcurve, z)
+            #fcalcurve.write('\n\n')
 
-                # Interpolate the whole calibration curve
-                s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
+        # Store calibration statistics
+        bright_limit = s(plate_mag_brightest).item()
+        faint_limit = s(plate_mag_lim).item()
 
-                # Store the calibration curve
-                self.calib_curve = s
+        self.phot_calib.append(OrderedDict([
+            ('solution_num', solution_num),
+            ('iteration', iteration),
+            ('color_term', cterm),
+            ('color_term_err', cterm_err),
+            ('num_candidate_stars', num_calstars),
+            ('num_calib_stars', num_valid),
+            ('num_bright_stars', nbright),
+            ('num_outliers', num_outliers),
+            ('bright_limit', bright_limit),
+            ('faint_limit', faint_limit),
+            ('mag_range', faint_limit - bright_limit),
+            ('rmse_min', rmse.min()),
+            ('rmse_median', np.median(rmse)),
+            ('rmse_max', rmse.max()),
+            ('plate_mag_brightest', plate_mag_brightest),
+            ('plate_mag_density02', kde.support[ind_dense[0]]),
+            ('plate_mag_brightcut', brightmag),
+            ('plate_mag_maxden', plate_mag_maxden),
+            ('plate_mag_lim', plate_mag_lim)
+        ]))
 
-                # Calculate residuals
-                residuals = cat_natmag-s(plate_mag_u)
+        # Apply photometric calibration to sources
+        ind_bin = np.where((self.sources['solution_num'] == solution_num) &
+                           (self.sources['annular_bin'] <= 9) &
+                           (self.sources['mag_auto'] < 90.))[0]
+        self.log.write('Applying photometric calibration to sources '
+                       'in annular bins 1-9',
+                       level=3, event=74)
+        src_bin = self.sources[ind_bin]
 
-                # Smooth residuals with spline
-                X = self.sources['x_source'][ind_calibstar_valid]
-                Y = self.sources['y_source'][ind_calibstar_valid]
+        # Correct magnitudes for positional effects
+        if s_corr is not None:
+            natmag_corr = src_bin['natmag_correction']
+            xsrc = src_bin['x_source']
+            ysrc = src_bin['y_source']
+            mag_auto = src_bin['mag_auto']
 
-                if num_valid > 100:
-                    s_corr = SmoothBivariateSpline(X, Y, residuals, kx=5, ky=5)
-                elif num_valid > 50:
-                    s_corr = SmoothBivariateSpline(X, Y, residuals, kx=3, ky=3)
-                else:
-                    s_corr = None
+            # Do a for-cycle, because SmoothBivariateSpline may crash with
+            # large input arrays
+            for i in np.arange(len(ind_bin)):
+                # Apply first correction (dependent only on coordinates)
+                natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
 
-                # Calculate new residuals and correct for dependence on
-                # x, y, mag_auto. Do it only if the number of valid
-                # calibration stars is larger than 500.
-                s_magcorr = None
+                # Apply second correction (dependent on mag_auto)
+                if s_magcorr is not None:
+                    corr_list = []
 
-                if num_valid > 500:
-                    residuals2 = np.zeros(num_valid)
+                    for smag in s_magcorr:
+                        corr_list.append(smag(xsrc[i],ysrc[i])[0,0])
 
-                    for i in np.arange(num_valid):
-                        residuals2[i] = residuals[i] - s_corr(X[i], Y[i])
+                    smc = InterpolatedUnivariateSpline(bin_mag, corr_list, k=1)
+                    natmag_corr[i] += smc(mag_auto[i])
 
-                    # Create magnitude bins
-                    plate_mag_srt = np.sort(plate_mag_u)
-                    bin_mag = [(plate_mag_srt[99] + plate_mag_srt[0]) / 2.]
-                    bin_hw = [(plate_mag_srt[99] - plate_mag_srt[0]) / 2.]
-                    ind_lastmag = 99
+        # Assign magnitudes and errors
+        self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
+        self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
+        self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
+        self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
 
-                    while True:
-                        if plate_mag_srt[ind_lastmag+100] - bin_mag[-1] - bin_hw[-1] > 0.5:
-                            bin_edge = bin_mag[-1] + bin_hw[-1]
-                            bin_mag.append((plate_mag_srt[ind_lastmag+100] + bin_edge) / 2.)
-                            bin_hw.append((plate_mag_srt[ind_lastmag+100] - bin_edge) / 2.)
-                            ind_lastmag += 100
-                        else:
-                            bin_mag.append(bin_mag[-1] + bin_hw[-1] + 0.25)
-                            bin_hw.append(0.25)
-                            ind_lastmag = (plate_mag_srt < bin_mag[-1] + 0.25).sum() - 1
+        if s_corr is not None:
+            self.sources['natmag_correction'][ind_bin] = natmag_corr
+            self.sources['natmag'][ind_bin] += natmag_corr
 
-                        # If less than 100 sources remain
-                        if ind_lastmag > num_valid - 101:
-                            add_width = plate_mag_srt[-1] - bin_mag[-1] - bin_hw[-1]
-                            bin_mag[-1] += add_width / 2.
-                            bin_hw[-1] += add_width / 2.
-                            break
+        self.sources['color_term'][ind_bin] = cterm
+        self.sources['natmag_residual'][ind_calibstar_u] = \
+                (self.sources['cat_natmag'][ind_calibstar_u] - 
+                 self.sources['natmag'][ind_calibstar_u])
 
-                    # Evaluate natmag correction in magnitude bins
-                    s_magcorr = []
+        # Apply flags and errors to sources outside the magnitude range 
+        # of calibration stars
+        brange = (self.sources['mag_auto'][ind_bin] < plate_mag_brightest)
 
-                    for i, (m, hw) in enumerate(zip(bin_mag, bin_hw)):
-                        binmask = (plate_mag_u > m-hw) & (plate_mag_u <= m+hw)
-                        #print(m, m-hw, m+hw, binmask.sum())
-                        smag = SmoothBivariateSpline(X[binmask], Y[binmask],
-                                                     residuals2[binmask],
-                                                     kx=3, ky=3)
-                        s_magcorr.append(smag)
+        if brange.sum() > 0:
+            ind_range = ind_bin[np.where(brange)]
+            self.sources['phot_plate_flags'][ind_range] = 1
+            self.sources['natmagerr'][ind_range] = s_rmse(plate_mag_brightest)
+            self.sources['natmagerr_plate'][ind_range] = s_rmse(plate_mag_brightest)
 
-                # Evaluate RMS errors from the calibration residuals
-                rmse_list = generic_filter(residuals, _rmse, size=10)
-                rmse_lowess = sm.nonparametric.lowess(rmse_list, plate_mag_u, 
-                                                      frac=0.5, it=3, delta=0.1)
-                s_rmse = InterpolatedUnivariateSpline(rmse_lowess[:,0],
-                                                      rmse_lowess[:,1], k=1)
-                rmse = s_rmse(plate_mag_u)
+        brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
 
-            if self.write_phot_dir:
-                np.savetxt(fcaldata, np.column_stack((plate_mag_u, cat_natmag, 
-                                                      s(plate_mag_u), 
-                                                      cat_natmag-s(plate_mag_u))))
-                fcaldata.write('\n\n')
-                #np.savetxt(fcalcurve, z)
-                #fcalcurve.write('\n\n')
+        if brange.sum() > 0:
+            ind_range = ind_bin[np.where(brange)]
+            self.sources['phot_plate_flags'][ind_range] = 2
 
-            # Store calibration statistics
-            self.phot_calib.append(OrderedDict([
-                ('solution_num', solution_num),
-                ('iteration', iteration),
-                ('annular_bin', b),
-                ('color_term', cterm),
-                ('color_term_err', cterm_err),
-                ('num_bin_stars', num_calstars),
-                ('num_calib_stars', num_valid),
-                ('num_bright_stars', nbright),
-                ('num_outliers', num_outliers),
-                ('bright_limit', s(plate_mag_brightest).item()),
-                ('faint_limit', s(plate_mag_lim).item()),
-                ('mag_range',
-                 s(plate_mag_lim).item() - s(plate_mag_brightest).item()),
-                ('rmse_min', rmse.min()),
-                ('rmse_median', np.median(rmse)),
-                ('rmse_max', rmse.max()),
-                ('plate_mag_brightest', plate_mag_brightest),
-                ('plate_mag_density02', kde.support[ind_dense[0]]),
-                ('plate_mag_brightcut', brightmag),
-                ('plate_mag_maxden', plate_mag_maxden),
-                ('plate_mag_lim', plate_mag_lim)
-            ]))
+        # Select stars with known external photometry
+        ind_ucacmag = np.where((src_bin['gaiadr2_bpmag'] > 0) &
+                               (src_bin['gaiadr2_rpmag'] > 0))[0]
+        ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
 
-            # Apply photometric calibration to sources in the annular bin
-            if b == 0:
-                ind_bin = np.where((self.sources['solution_num'] == solution_num) &
-                                   (self.sources['annular_bin'] <= 9) &
-                                   (self.sources['mag_auto'] < 90.))[0]
-                self.log.write('Applying photometric calibration to sources '
-                               'in annular bins 1-9', 
-                               level=3, event=74)
-            else:
-                ind_bin = np.where((self.sources['solution_num'] == solution_num) &
-                                   (self.sources['annular_bin'] == b) &
-                                   (self.sources['mag_auto'] < 90.))[0]
-                self.log.write('Applying photometric calibration to sources '
-                               'in annular bin {:d}'.format(b), 
-                               level=3, event=74)
+        if len(ind_noucacmag) > 0:
+            src_nomag = src_bin[ind_noucacmag]
 
-            src_bin = self.sources[ind_bin]
+        if len(ind_ucacmag) > 0:
+            ind = ind_bin[ind_ucacmag]
 
-            # Correct magnitudes for positional effects
-            if s_corr is not None:
-                natmag_corr = src_bin['natmag_correction']
-                xsrc = src_bin['x_source']
-                ysrc = src_bin['y_source']
-                mag_auto = src_bin['mag_auto']
+            b_v = self.sources[ind]['gaiadr2_bp_rp']
+            #b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
+            #                  self.sources[ind]['apass_vmagerr']**2)
 
-                # Do a for-cycle, because SmoothBivariateSpline may crash with
-                # large input arrays
-                for i in np.arange(len(ind_bin)):
-                    # Apply first correction (dependent only on coordinates)
-                    natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
-
-                    # Apply second correction (dependent on mag_auto)
-                    if s_magcorr is not None:
-                        corr_list = []
-
-                        for smag in s_magcorr:
-                            corr_list.append(smag(xsrc[i],ysrc[i])[0,0])
-
-                        smc = InterpolatedUnivariateSpline(bin_mag, corr_list, k=1)
-                        natmag_corr[i] += smc(mag_auto[i])
-
-            # Assign magnitudes and errors
-            self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
-            self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
-            self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
-            self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
-
-            if s_corr is not None:
-                self.sources['natmag_correction'][ind_bin] = natmag_corr
-                self.sources['natmag'][ind_bin] += natmag_corr
-
-            self.sources['color_term'][ind_bin] = cterm
-            self.sources['natmag_residual'][ind_calibstar_u] = \
-                    (self.sources['cat_natmag'][ind_calibstar_u] - 
-                     self.sources['natmag'][ind_calibstar_u])
-
-            # Apply flags and errors to sources outside the magnitude range 
-            # of calibration stars
-            brange = (self.sources['mag_auto'][ind_bin] < plate_mag_brightest)
-
-            if brange.sum() > 0:
-                ind_range = ind_bin[np.where(brange)]
-                self.sources['phot_plate_flags'][ind_range] = 1
-                self.sources['natmagerr'][ind_range] = s_rmse(plate_mag_brightest)
-                self.sources['natmagerr_plate'][ind_range] = s_rmse(plate_mag_brightest)
-
-            brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
-
-            if brange.sum() > 0:
-                ind_range = ind_bin[np.where(brange)]
-                self.sources['phot_plate_flags'][ind_range] = 2
-
-            # Select stars with known external photometry
-            ind_ucacmag = np.where((src_bin['gaiadr2_bpmag'] > 0) &
-                                   (src_bin['gaiadr2_rpmag'] > 0))[0]
-            ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
-
-            if len(ind_noucacmag) > 0:
-                src_nomag = src_bin[ind_noucacmag]
-
-            if len(ind_ucacmag) > 0:
-                ind = ind_bin[ind_ucacmag]
-
-                b_v = self.sources[ind]['gaiadr2_bp_rp']
-                #b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
-                #                  self.sources[ind]['apass_vmagerr']**2)
-
-                self.sources['color_bv'][ind] = b_v
-                #self.sources['color_bv_err'][ind] = b_v_err
-                self.sources['vmag'][ind] = (self.sources['natmag'][ind]
-                                             - cterm * b_v)
-                self.sources['bmag'][ind] = (self.sources['natmag'][ind]
-                                             - (cterm - 1.) * b_v)
-                #vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-                #                  (cterm_err * b_v)**2 +
-                #                  (cterm * b_v_err)**2)
-                #bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-                #                  (cterm_err * b_v)**2 + 
-                #                  ((cterm - 1.) * b_v_err)**2)
-                #self.sources['vmagerr'][ind] = vmagerr
-                #self.sources['bmagerr'][ind] = bmagerr
+            self.sources['color_bv'][ind] = b_v
+            #self.sources['color_bv_err'][ind] = b_v_err
+            self.sources['vmag'][ind] = (self.sources['natmag'][ind]
+                                         - cterm * b_v)
+            self.sources['bmag'][ind] = (self.sources['natmag'][ind]
+                                         - (cterm - 1.) * b_v)
+            #vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
+            #                  (cterm_err * b_v)**2 +
+            #                  (cterm * b_v_err)**2)
+            #bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
+            #                  (cterm_err * b_v)**2 + 
+            #                  ((cterm - 1.) * b_v_err)**2)
+            #self.sources['vmagerr'][ind] = vmagerr
+            #self.sources['bmagerr'][ind] = bmagerr
 
         try:
             brightlim = min([cal['bright_limit'] for cal in self.phot_calib 
-                             if cal['annular_bin'] < 9
-                             and cal['solution_num'] == solution_num
+                             if cal['solution_num'] == solution_num
                              and cal['iteration'] == iteration])
             faintlim = max([cal['faint_limit'] for cal in self.phot_calib 
-                            if cal['annular_bin'] < 9
-                            and cal['solution_num'] == solution_num
+                            if cal['solution_num'] == solution_num
                             and cal['iteration'] == iteration])
             mag_range = faintlim - brightlim
         except Exception:
@@ -1405,7 +1379,7 @@ class PhotometryProcess:
             faintlim = None
             mag_range = None
 
-        if num_calib > 0:
+        if num_valid > 0:
             self.phot_calibrated = True
             self.bright_limit = brightlim
             self.faint_limit = faintlim
