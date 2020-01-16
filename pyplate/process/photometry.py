@@ -1129,8 +1129,14 @@ class PhotometryProcess:
 
                 # Find magnitude at which density becomes larger than 0.2 of
                 # the max density
-                brightmag = kde.support[ind_dense[0]]
-                nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+                #brightmag = kde.support[ind_dense[0]]
+                #nbright = len(plate_mag_u[np.where(plate_mag_u < brightmag)])
+
+                # Find the second percentile of magnitudes
+                nbright = round(num_valid * 0.02)
+
+                # Limit bright stars with 2000
+                nbright = min([nbright, 2000])
 
                 if nbright < 20:
                     brightmag = (plate_mag_brightest + 
