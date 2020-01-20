@@ -172,6 +172,7 @@ class StarCatalog(Table):
                                           'gaiadr2-{:02d}.fits'.format(i+1))
                     tap_result = tap_service.run_async(query, queue='2h')
                     tab = tap_result.to_table()
+                    tab['solution_num'] = i + 1
                     #tab.write(fn_tab, format='fits', overwrite=True)
                     #job = Gaia.launch_job_async(query, output_file=fn_tab,
                     #                            output_format='fits',

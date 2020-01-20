@@ -565,15 +565,23 @@ class SourceTable(Table):
         for i in np.arange(plate_solution.num_solutions):
             solution = solutions[i]
 
+            # If there is a column named 'solution_num', then take only
+            # reference stars with the current solution number
+            if 'solution_num' in star_catalog.columns:
+                mask_sol = star_catalog['solution_num'] == i + 1
+            else:
+                mask_sol = np.full(num_gaia, True)
+
             w = wcs.WCS(solution['header_wcs'])
-            xr,yr = w.all_world2pix(ra_ref, dec_ref, 1)
+            xr,yr = w.all_world2pix(ra_ref[mask_sol], dec_ref[mask_sol], 1)
             mask_inside = ((xr > 0) & (xr < plate_solution.imwidth) & 
                            (yr > 0) & (yr < plate_solution.imheight))
             num_inside = mask_inside.sum()
             xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
             xy_ref = np.vstack((xy_ref, xyr))
-            sol_ref = np.hstack((sol_ref, np.full(num_inside, i+1)))
-            index_ref = np.hstack((index_ref, np.arange(num_gaia)[mask_inside]))
+            sol_ref = np.hstack((sol_ref, np.full(num_inside, i + 1)))
+            index_ref = np.hstack((index_ref,
+                                   np.arange(num_gaia)[mask_sol][mask_inside]))
 
         # Calculate mean astrometric error
         sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in solutions])
