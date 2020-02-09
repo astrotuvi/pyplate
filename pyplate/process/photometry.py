@@ -392,10 +392,10 @@ class PhotometryProcess:
 
         """
 
-        cat_mag1 = sources['gaiadr2_bpmag']
-        cat_mag2 = sources['gaiadr2_rpmag']
-        plate_mag = sources['mag_auto']
-        mag_corr = sources['natmag_correction']
+        cat_mag1 = sources['gaiadr2_bpmag'].data
+        cat_mag2 = sources['gaiadr2_rpmag'].data
+        plate_mag = sources['mag_auto'].data
+        mag_corr = sources['natmag_correction'].data
         # Replace nans with zeros
         mag_corr[np.isnan(mag_corr)] = 0.
         num_calstars = len(sources)
@@ -703,65 +703,33 @@ class PhotometryProcess:
         else:
             bflags = self.sources['sextractor_flags'] <= 3
 
-        ind_cal = np.where((self.sources['solution_num'] == solution_num) &
-                           (self.sources['mag_auto'] > 0) & 
-                           (self.sources['mag_auto'] < 90) &
-                           bflags &
-                           (self.sources['flag_clean'] == 1))[0]
+        # Create calibration-star mask
+        # Discard very red stars (BP-RP > 2)
+        cal_mask = ((self.sources['solution_num'] == solution_num) &
+                    (self.sources['mag_auto'] > 0) &
+                    (self.sources['mag_auto'] < 90) &
+                    bflags &
+                    (self.sources['flag_clean'] == 1) &
+                    ~self.sources['gaiadr2_bpmag'].mask &
+                    ~self.sources['gaiadr2_rpmag'].mask &
+                    (self.sources['gaiadr2_bp_rp'].filled(99.) <= 2) &
+                    (self.sources['gaiadr2_neighbors'] == 1))
 
-        if len(ind_cal) == 0:
+        num_calstars = cal_mask.sum()
+
+        if num_calstars == 0:
             self.log.write('No stars for photometric calibration',
                            level=2, event=71)
             #self.db_update_process(calibrated=0)
             return
 
-        src_cal = self.sources[ind_cal]
-        ind_calibstar = ind_cal
-
-        ind_ucacmag = np.where((src_cal['gaiadr2_bpmag'] > 0) &
-                               (src_cal['gaiadr2_rpmag'] > 0) &
-                               (src_cal['gaiadr2_neighbors'] == 1))[0]
-        ind_noucacmag = np.setdiff1d(np.arange(len(src_cal)), ind_ucacmag)
-        self.log.write('Found {:d} usable Gaia stars'
-                       ''.format(len(ind_ucacmag)), level=4, event=71)
-
-        if len(ind_ucacmag) > 0:
-            cat_bmag = src_cal[ind_ucacmag]['gaiadr2_bpmag']
-            cat_vmag = src_cal[ind_ucacmag]['gaiadr2_rpmag']
-            #cat_berr = src_cal[ind_ucacmag]['apass_bmagerr']
-            #cat_verr = src_cal[ind_ucacmag]['apass_vmagerr']
-            plate_mag = src_cal[ind_ucacmag]['mag_auto']
-            plate_bin = src_cal[ind_ucacmag]['annular_bin']
-            ind_calibstar = ind_cal[ind_ucacmag]
-        else:
-            cat_bmag = np.array([])
-            cat_vmag = np.array([])
-            plate_mag = np.array([])
-            plate_bin = np.array([])
-            ind_calibstar = np.array([], dtype=int)
-
-        # Discard very red stars (BP-RP > 2)
-        if len(plate_mag) > 0:
-            ind_nored = np.where(cat_bmag-cat_vmag <= 2)[0]
-
-            if len(ind_nored) > 0:
-                num_red = len(plate_mag) - len(ind_nored)
-                self.log.write('Discarded {:d} red stars (BP-RP > 2)'
-                               ''.format(num_red), level=4, event=71)
-                cat_bmag = cat_bmag[ind_nored]
-                cat_vmag = cat_vmag[ind_nored]
-                plate_mag = plate_mag[ind_nored]
-                plate_bin = plate_bin[ind_nored]
-                ind_calibstar = ind_calibstar[ind_nored]
-
-        num_calstars = len(plate_mag)
-        
-        self.log.write('Found {:d} calibration stars on the plate'
-                       ''.format(num_calstars), level=4, event=71)
+        self.log.write('Found {:d} calibration-star candidates with '
+                       'Gaia magnitudes on the plate'
+                       .format(num_calstars), level=4, event=71)
 
         if num_calstars < 10:
-            self.log.write('Too few calibration stars on the plate!'
-                           ''.format(num_calstars), level=2, event=71)
+            self.log.write('Too few calibration stars on the plate!',
+                           level=2, event=71)
             #self.db_update_process(calibrated=0)
             return
 
@@ -770,13 +738,13 @@ class PhotometryProcess:
         if iteration == 1:
             self.log.write('Determining color term using annular bins 1-3', 
                            level=3, event=72)
-            ind_bin = np.where(plate_bin <= 3)[0]
+            cterm_mask = cal_mask & (self.sources['annular_bin'] <= 3)
         else:
             self.log.write('Determining color term using annular bins 1-8', 
                            level=3, event=72)
-            ind_bin = np.where(plate_bin <= 8)[0]
+            cterm_mask = cal_mask & (self.sources['annular_bin'] <= 8)
 
-        self.evaluate_color_term(self.sources[ind_calibstar[ind_bin]],
+        self.evaluate_color_term(self.sources[cterm_mask],
                                  solution_num=solution_num)
 
         cterm = self.phot_color['color_term']
@@ -784,34 +752,31 @@ class PhotometryProcess:
 
         #self.db_update_process(color_term=cterm)
 
+        # Use stars in all annular bins
         self.log.write('Photometric calibration using annular bins 1-9', 
                        level=3, event=73)
 
-        # Use stars in all annular bins
-        ind_bin = np.where(plate_bin <= 9)[0]
-        bintxt = 'Bins 1-9'
+        # Select stars with unique plate mag values
+        plate_mag = self.sources['mag_auto'][cal_mask].data
+        plate_mag_u,uind = np.unique(plate_mag, return_index=True)
+        ind_calibstar_u = np.where(cal_mask)[0][uind]
+        #cal_u_mask = np.zeros_like(cal_mask)
+        #cal_u_mask[np.where(cal_mask)[0][uind]] = True
+        num_cal_u = len(plate_mag_u)
 
-        num_calstars = len(ind_bin)
-        self.log.write('{}: {:d} calibration-star candidates'
-                       ''.format(bintxt, num_calstars), 
+        self.log.write('{:d} stars with unique magnitude'
+                       .format(num_cal_u), 
                        double_newline=False, level=4, event=73)
 
-        plate_mag_u,uind2 = np.unique(plate_mag[ind_bin], return_index=True)
-
-        self.log.write('{}: {:d} stars with unique magnitude'
-                       ''.format(bintxt, len(plate_mag_u)), 
-                       double_newline=False, level=4, event=73)
-
-        if len(plate_mag_u) < 10:
-            self.log.write('{}: too few stars with unique magnitude '
-                           '({:d})!'.format(bintxt, len(plate_mag_u)),
+        if num_cal_u < 10:
+            self.log.write('Too few stars with unique magnitude!',
                            double_newline=False, level=2, event=73)
             #self.db_update_process(calibrated=0)
             return
 
-        cat_bmag_u = cat_bmag[ind_bin[uind2]]
-        cat_vmag_u = cat_vmag[ind_bin[uind2]]
-        ind_calibstar_u = ind_calibstar[ind_bin[uind2]]
+        plate_mag_u = self.sources['mag_auto'][ind_calibstar_u].data
+        cat_bmag_u = self.sources['gaiadr2_bpmag'][ind_calibstar_u].data
+        cat_vmag_u = self.sources['gaiadr2_rpmag'][ind_calibstar_u].data
         cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
         self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
@@ -1021,40 +986,39 @@ class PhotometryProcess:
                     ind_outliers = np.unique(ind_outliers)
                     ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
                                             ind_outliers)
-                    self.log.write('{}: {:d} faint stars '
+                    self.log.write('{:d} faint stars '
                                    'eliminated as outliers'
-                                   ''.format(bintxt, len(ind_faintout)),
+                                   .format(len(ind_faintout)),
                                    double_newline=False,
                                    level=4, event=73)
 
-                self.log.write('{}: outlier elimination '
+                self.log.write('Outlier elimination '
                                'stopped due to a long gap in '
-                               'magnitudes!'.format(bintxt), 
+                               'magnitudes!',
                                 double_newline=False,
                                level=2, event=73)
                 break
 
             if len(ind_good) < 10:
-                self.log.write('{}: outlier elimination stopped '
-                               'due to insufficient stars left!'
-                               ''.format(bintxt), 
+                self.log.write('Outlier elimination stopped '
+                               'due to insufficient number of stars left!',
                                 double_newline=False, level=2, event=73)
                 break
 
         num_outliers = len(ind_outliers)
-        self.log.write('{}: {:d} outliers eliminated'
-                       ''.format(bintxt, num_outliers), 
+        self.log.write('{:d} outliers eliminated'
+                       ''.format(num_outliers), 
                        double_newline=False, level=4, event=73)
         ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
                                 ind_outliers)
-        self.log.write('{}: {:d} stars after outlier '
-                       'elimination'.format(bintxt, len(ind_good)), 
+        self.log.write('{:d} stars after outlier '
+                       'elimination'.format(len(ind_good)), 
                        double_newline=False, level=4, event=73)
 
         if len(ind_good) < 10:
-            self.log.write('{}: too few calibration '
+            self.log.write('Too few calibration '
                            'stars ({:d}) after outlier elimination!'
-                           ''.format(bintxt, len(ind_good)), 
+                           .format(len(ind_good)), 
                            double_newline=False, level=2, event=73)
             #self.db_update_process(calibrated=0)
             return
@@ -1072,15 +1036,19 @@ class PhotometryProcess:
         ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
         num_valid = len(ind_valid)
 
-        self.log.write('{}: {:d} calibration stars '
+        self.log.write('{:d} calibration stars '
                        'brighter than limiting magnitude'
-                       ''.format(bintxt, num_valid), 
+                       .format(num_valid), 
                        double_newline=False, level=4, event=73)
 
+        #valid_cal_mask = np.zeros_like(cal_u_mask)
+        #valid_cal_mask[np.where(cal_u_mask)[0][ind_good[ind_valid]]] = True
         ind_calibstar_valid = ind_calibstar_u[ind_good[ind_valid]]
         self.sources['phot_calib_flags'][ind_calibstar_valid] = 1
 
         if num_outliers > 0:
+            #outlier_mask = np.zeros_like(cal_u_mask)
+            #outlier_mask[np.where(cal_u_mask)[0][ind_outliers]]
             ind_calibstar_outlier = ind_calibstar_u[ind_outliers]
             self.sources['phot_calib_flags'][ind_calibstar_outlier] = 2
 
@@ -1172,11 +1140,11 @@ class PhotometryProcess:
         self.calib_curve = s
 
         # Calculate residuals
-        residuals = cat_natmag-s(plate_mag_u)
+        residuals = cat_natmag - s(plate_mag_u)
 
         # Smooth residuals with spline
-        X = self.sources['x_source'][ind_calibstar_valid]
-        Y = self.sources['y_source'][ind_calibstar_valid]
+        X = self.sources['x_source'][ind_calibstar_valid].data
+        Y = self.sources['y_source'][ind_calibstar_valid].data
 
         if num_valid > 100:
             s_corr = SmoothBivariateSpline(X, Y, residuals, kx=5, ky=5)
@@ -1274,24 +1242,24 @@ class PhotometryProcess:
         ]))
 
         # Apply photometric calibration to sources
-        ind_bin = np.where((self.sources['solution_num'] == solution_num) &
-                           (self.sources['annular_bin'] <= 9) &
-                           (self.sources['mag_auto'] < 90.))[0]
+        sol_mask = ((self.sources['solution_num'] == solution_num) &
+                    (self.sources['mag_auto'] < 90.))
+        num_solstars = sol_mask.sum()
+        mag_auto_sol = self.sources['mag_auto'][sol_mask]
+
         self.log.write('Applying photometric calibration to sources '
                        'in annular bins 1-9',
                        level=3, event=74)
-        src_bin = self.sources[ind_bin]
 
         # Correct magnitudes for positional effects
         if s_corr is not None:
-            natmag_corr = src_bin['natmag_correction']
-            xsrc = src_bin['x_source']
-            ysrc = src_bin['y_source']
-            mag_auto = src_bin['mag_auto']
+            natmag_corr = self.sources['natmag_correction'][sol_mask]
+            xsrc = self.sources['x_source'][sol_mask]
+            ysrc = self.sources['y_source'][sol_mask]
 
             # Do a for-cycle, because SmoothBivariateSpline may crash with
             # large input arrays
-            for i in np.arange(len(ind_bin)):
+            for i in np.arange(num_solstars):
                 # Apply first correction (dependent only on coordinates)
                 natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
 
@@ -1300,63 +1268,58 @@ class PhotometryProcess:
                     corr_list = []
 
                     for smag in s_magcorr:
-                        corr_list.append(smag(xsrc[i],ysrc[i])[0,0])
+                        corr_list.append(smag(xsrc[i], ysrc[i])[0,0])
 
                     smc = InterpolatedUnivariateSpline(bin_mag, corr_list, k=1)
-                    natmag_corr[i] += smc(mag_auto[i])
+                    natmag_corr[i] += smc(mag_auto_sol[i])
 
         # Assign magnitudes and errors
-        self.sources['natmag_plate'][ind_bin] = s(src_bin['mag_auto'])
-        self.sources['natmagerr_plate'][ind_bin] = s_rmse(src_bin['mag_auto'])
-        self.sources['natmag'][ind_bin] = s(src_bin['mag_auto'])
-        self.sources['natmagerr'][ind_bin] = s_rmse(src_bin['mag_auto'])
+        self.sources['natmag_plate'][sol_mask] = s(mag_auto_sol)
+        self.sources['natmagerr_plate'][sol_mask] = s_rmse(mag_auto_sol)
+        self.sources['natmag'][sol_mask] = s(mag_auto_sol)
+        self.sources['natmagerr'][sol_mask] = s_rmse(mag_auto_sol)
 
         if s_corr is not None:
-            self.sources['natmag_correction'][ind_bin] = natmag_corr
-            self.sources['natmag'][ind_bin] += natmag_corr
+            self.sources['natmag_correction'][sol_mask] = natmag_corr
+            self.sources['natmag'][sol_mask] += natmag_corr
 
-        self.sources['color_term'][ind_bin] = cterm
+        self.sources['color_term'][sol_mask] = cterm
         self.sources['natmag_residual'][ind_calibstar_u] = \
                 (self.sources['cat_natmag'][ind_calibstar_u] - 
                  self.sources['natmag'][ind_calibstar_u])
 
         # Apply flags and errors to sources outside the magnitude range 
         # of calibration stars
-        brange = (self.sources['mag_auto'][ind_bin] < plate_mag_brightest)
+        brange = (mag_auto_sol < plate_mag_brightest)
+        ind = np.where(sol_mask)[0][brange]
 
         if brange.sum() > 0:
-            ind_range = ind_bin[np.where(brange)]
-            self.sources['phot_plate_flags'][ind_range] = 1
-            self.sources['natmagerr'][ind_range] = s_rmse(plate_mag_brightest)
-            self.sources['natmagerr_plate'][ind_range] = s_rmse(plate_mag_brightest)
+            self.sources['phot_plate_flags'][ind] = 1
+            self.sources['natmagerr'][ind] = s_rmse(plate_mag_brightest)
+            self.sources['natmagerr_plate'][ind] = s_rmse(plate_mag_brightest)
 
-        brange = (self.sources['mag_auto'][ind_bin] > plate_mag_lim)
+        brange = (mag_auto_sol > plate_mag_lim)
+        ind = np.where(sol_mask)[0][brange]
 
         if brange.sum() > 0:
-            ind_range = ind_bin[np.where(brange)]
-            self.sources['phot_plate_flags'][ind_range] = 2
+            self.sources['phot_plate_flags'][ind] = 2
 
         # Select stars with known external photometry
-        ind_ucacmag = np.where((src_bin['gaiadr2_bpmag'] > 0) &
-                               (src_bin['gaiadr2_rpmag'] > 0))[0]
-        ind_noucacmag = np.setdiff1d(np.arange(len(src_bin)), ind_ucacmag)
+        bgaia = (sol_mask &
+                 ~self.sources['gaiadr2_bpmag'].mask &
+                 ~self.sources['gaiadr2_rpmag'].mask)
 
-        if len(ind_noucacmag) > 0:
-            src_nomag = src_bin[ind_noucacmag]
-
-        if len(ind_ucacmag) > 0:
-            ind = ind_bin[ind_ucacmag]
-
-            b_v = self.sources[ind]['gaiadr2_bp_rp']
+        if bgaia.sum() > 0:
+            b_v = self.sources['gaiadr2_bp_rp'][bgaia]
             #b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
             #                  self.sources[ind]['apass_vmagerr']**2)
 
-            self.sources['color_bv'][ind] = b_v
+            self.sources['color_bv'][bgaia] = b_v
             #self.sources['color_bv_err'][ind] = b_v_err
-            self.sources['vmag'][ind] = (self.sources['natmag'][ind]
-                                         - cterm * b_v)
-            self.sources['bmag'][ind] = (self.sources['natmag'][ind]
-                                         - (cterm - 1.) * b_v)
+            self.sources['vmag'][bgaia] = (self.sources['natmag'][bgaia]
+                                           - cterm * b_v)
+            self.sources['bmag'][bgaia] = (self.sources['natmag'][bgaia]
+                                           - (cterm - 1.) * b_v)
             #vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
             #                  (cterm_err * b_v)**2 +
             #                  (cterm * b_v_err)**2)

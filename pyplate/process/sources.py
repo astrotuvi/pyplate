@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
-from astropy.table import Table, Column, vstack
+from astropy.table import Table, Column, MaskedColumn, vstack
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
 from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
@@ -610,6 +610,16 @@ class SourceTable(Table):
         self['gaiadr2_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
         self['gaiadr2_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
         self['gaiadr2_dist'][ind_plate] = dist_arcsec
+
+        # Mask nan values in listed columns
+        for col in ['gaiadr2_ra', 'gaiadr2_dec', 'gaiadr2_gmag',
+                    'gaiadr2_bpmag', 'gaiadr2_rpmag', 'gaiadr2_bp_rp',
+                    'gaiadr2_dist']:
+            self[col] = MaskedColumn(self[col], mask=np.isnan(self[col]))
+
+        # Mask zeros in the ID column
+        col = 'gaiadr2_id'
+        self[col] = MaskedColumn(self[col], mask=(self[col] == 0))
 
         # Crossmatch: find all neighbours for sources
         kdt_ref = KDT(xy_ref)

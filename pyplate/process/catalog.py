@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pyvo as vo
 import warnings
-from astropy.table import Table, Column, vstack, setdiff
+from astropy.table import Table, Column, MaskedColumn, vstack, setdiff
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 #from astroquery.gaia import Gaia
@@ -217,6 +217,11 @@ class StarCatalog(Table):
             gaia_table.rename_column('phot_bp_mean_mag', 'mag1')
             gaia_table.rename_column('phot_rp_mean_mag', 'mag2')
             gaia_table.rename_column('bp_rp', 'color_index')
+
+            # Mask nan values in listed columns
+            for col in ['mag1', 'mag2', 'color_index']:
+                gaia_table[col] = MaskedColumn(gaia_table[col],
+                                               mask=np.isnan(gaia_table[col]))
 
             # If catalog is empty, copy all data from Gaia table
             if len(self) == 0:

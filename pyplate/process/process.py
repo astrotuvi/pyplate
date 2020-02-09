@@ -1910,8 +1910,8 @@ class Process:
         # Assign process attributes
         photproc.__dict__.update(self.__dict__)
 
-        # Transform source table to numpy array
-        photproc.sources = self.sources.as_array()
+        # Pass source table to the photometry process
+        photproc.sources = self.sources
 
         # Get plate limiting magnitude from the distribution of magnitudes
         # of all clean sources (all solutions)
@@ -1982,6 +1982,10 @@ class Process:
 
         iteration = 3
 
+        # Erase natmag and corrections of the preliminary calibration
+        self.sources['natmag'] = np.nan
+        self.sources['natmag_correction'] = np.nan
+
         # Get fainter stars to star_catalog until star_catalog is approximately
         # 1 mag deeper than the plate faint limit, or max_catalog_mag is reached
         while (cur_catalog_limit < max_cur_faint_limit + 0.7
@@ -1990,7 +1994,6 @@ class Process:
                                     color_term=mean_color_term)
             cur_catalog_limit = new_mag_range[1]
             self.sources.crossmatch_gaia(self.plate_solution, self.star_catalog)
-            photproc.sources = self.sources.as_array()
 
             cur_faint_limit = []
             est_faint_limit = []
@@ -2040,7 +2043,4 @@ class Process:
         self.phot_color = phot_color
         self.phot_calib = photproc.phot_calib
         self.phot_calib_curves = phot_calib_curves
-
-        # Retrieve source table
-        self.sources = Table(photproc.sources)
 
