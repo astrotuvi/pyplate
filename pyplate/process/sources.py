@@ -104,6 +104,7 @@ _source_meta = OrderedDict([
     ('flag_negradius',      ('i1', '%1d', '')),
     ('flag_rim',            ('i1', '%1d', '')),
     ('flag_clean',          ('i1', '%1d', '')),
+    ('model_prediction',    ('f4', '%7.5f', '')),
     ('solution_num',        ('i2', '%1d', '')),
     ('raj2000',             ('f8', '%11.7f', '')),
     ('dej2000',             ('f8', '%11.7f', '')),
