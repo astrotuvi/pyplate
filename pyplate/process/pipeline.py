@@ -2,10 +2,10 @@ import os
 import multiprocessing as mp
 import time
 from deprecated import deprecated
-from .metadata import Archive, PlateHeader, read_conf
+from ..metadata import Archive, PlateHeader, read_conf
+from ..database import PlateDB
+from ..image import PlateConverter
 from .solve import SolveProcess
-from .database import PlateDB
-from .image import PlateConverter
 
 try:
     import configparser

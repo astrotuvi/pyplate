@@ -3458,7 +3458,7 @@ class PlateHeader(fits.Header):
             wcs_ind = list(self.values()).index(wcs_sep) + 1
             
             for c in wcshead.cards:
-                if c[0] == 'HISTORY':
+                if c[0] == 'HISTORY' or c[0] == '':
                     #self.insert(wcs_ind, ('COMMENT', c[1]))
                     self.insert(wcs_ind, c)
                     wcs_ind += 1

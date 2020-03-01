@@ -26,7 +26,7 @@ setup(
                         'Pillow',
                         'Deprecated'
                        ],
-    extras_require = {'solve': ['scipy', 'statsmodels', 'healpy'],
+    extras_require = {'solve': ['scipy', 'statsmodels', 'healpy', 'astroquery'],
                       'mysql': ['MySQL-python']}
 )
 
