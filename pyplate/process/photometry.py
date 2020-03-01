@@ -396,8 +396,10 @@ class PhotometryProcess:
         cat_mag2 = sources['gaiadr2_rpmag'].data
         plate_mag = sources['mag_auto'].data
         mag_corr = sources['natmag_correction'].data
-        # Replace nans with zeros
+        mag_err = sources['natmagerr'].data
+        # Replace nans with numerical values
         mag_corr[np.isnan(mag_corr)] = 0.
+        mag_err[np.isnan(mag_err)] = 1.
         num_calstars = len(sources)
 
         # Evaluate color term in 3 iterations
@@ -416,6 +418,7 @@ class PhotometryProcess:
         cat_mag1_u = cat_mag1[uind1[uind2]]
         cat_mag2_u = cat_mag2[uind1[uind2]]
         mag_corr_u = mag_corr[uind1[uind2]]
+        mag_err_u = mag_err[uind1[uind2]]
 
         # Discard faint sources (within 1 mag from the plate limit)
         kde = sm.nonparametric.KDEUnivariate(plate_mag_u
@@ -445,6 +448,7 @@ class PhotometryProcess:
         cat_mag1_u = cat_mag1_u[ind_nofaint]
         cat_mag2_u = cat_mag2_u[ind_nofaint]
         mag_corr_u = mag_corr_u[ind_nofaint]
+        mag_err_u = mag_err_u[ind_nofaint]
 
         # Iteration 1
         cterm_list = np.arange(29) * 0.25 - 3.
@@ -457,7 +461,8 @@ class PhotometryProcess:
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag - s(plate_mag_u) - mag_corr_u
-            stdev_val = mag_diff.std()
+            #stdev_val = mag_diff.std()
+            stdev_val = np.sqrt(np.sum((mag_diff / mag_err_u)**2) / len(mag_diff))
             stdev_list.append(stdev_val)
 
             # Store cterm data
@@ -516,7 +521,8 @@ class PhotometryProcess:
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = (cat_mag[ind_good] - s(plate_mag_u[ind_good])
                         - mag_corr_u[ind_good])
-            stdev_val = mag_diff.std()
+            #stdev_val = mag_diff.std()
+            stdev_val = np.sqrt(np.sum((mag_diff / mag_err_u[ind_good])**2) / len(mag_diff))
             stdev_list.append(stdev_val)
 
             # Store cterm data
@@ -564,7 +570,8 @@ class PhotometryProcess:
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = (cat_mag[ind_good] - s(plate_mag_u[ind_good])
                         - mag_corr_u[ind_good])
-            stdev_val = mag_diff.std()
+            #stdev_val = mag_diff.std()
+            stdev_val = np.sqrt(np.sum((mag_diff / mag_err_u[ind_good])**2) / len(mag_diff))
             stdev_list.append(stdev_val)
 
             # Store cterm data
