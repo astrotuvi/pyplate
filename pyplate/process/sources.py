@@ -93,6 +93,7 @@ _source_meta = OrderedDict([
     ('fluxerr_iso',         ('f4', '%12.5e', 'FLUXERR_ISO')),
     ('flux_max',            ('f4', '%12.5e', 'FLUX_MAX')),
     ('flux_radius',         ('f4', '%12.5e', 'FLUX_RADIUS')),
+    ('fwhm_image',          ('f4', '%12.5e', 'FWHM_IMAGE')),
     ('isoarea',             ('i4', '%6d', 'ISOAREA_IMAGE')),
     ('sqrt_isoarea',        ('f4', '%12.5e', '')),
     ('background',          ('f4', '%12.5e', 'BACKGROUND')),

@@ -896,6 +896,7 @@ class Process:
             fconf.write('FLUXERR_ISO\n')
             fconf.write('FLUX_MAX\n')
             fconf.write('FLUX_RADIUS\n')
+            fconf.write('FWHM_IMAGE\n')
             fconf.write('ISOAREA_IMAGE\n')
             fconf.write('BACKGROUND\n')
             fconf.write('FLAGS')
@@ -916,7 +917,7 @@ class Process:
                 cnf += 'FILTER           N\n'
 
             cnf += 'DEBLEND_NTHRESH  64\n'
-            cnf += 'DEBLEND_MINCONT  0.0005\n'
+            cnf += 'DEBLEND_MINCONT  0.0001\n'
             cnf += 'SATUR_LEVEL      65000.0\n'
             cnf += 'BACKPHOTO_TYPE   LOCAL\n'
             cnf += 'CLEAN            N\n'
