@@ -46,6 +46,12 @@ except ImportError:
     have_sklearn = False
 
 try:
+    from keras.models import load_model
+    have_keras = True
+except ImportError:
+    have_keras = False
+
+try:
     import MySQLdb
 except ImportError:
     pass
@@ -1435,6 +1441,64 @@ class Process:
                                'file {} does not exist!'.format(fn_psfcat), 
                                level=2, event=28)
                 self.db_update_process(num_psf_sources=0)
+
+    def classify_artifacts(self):
+        """
+        Classify extracted sources as celestial or artifacts.
+
+        Algorithm and model by Gal Matijevic
+
+        """
+
+        if not have_keras:
+            self.log.write('Missing dependency (keras) for artifact '
+                           'classification!', level=2, event=0)
+            return
+
+        # Read model
+        fn_model = os.path.join(os.path.dirname(__file__), 'artifact_model.h5')
+        model = load_model(fn_model)
+
+        # Read inverted FITS file
+        fn_image = os.path.join(self.scratch_dir,
+                                self.basefn + '_inverted.fits')
+        plate_fits = fits.open(fn_image)
+        plate_data = plate_fits[0].data
+        plate_fits.close()
+
+        # 1/2 of the size of the thumbnail
+        thumb_size = 10
+
+        # number of thumbnails
+        noft = len(self.sources)
+
+        # initialize thumbnails array
+        thumbs = np.zeros((noft, 1, thumb_size * 2, thumb_size * 2))
+
+        for i, (x, y) in enumerate(zip(self.sources['x_image'],
+                                       self.sources['y_image'])):
+            # get the centers
+            xx = min(max(int(np.floor(x)), thumb_size),
+                     plate_data.shape[1] - thumb_size)
+            yy = min(max(int(np.floor(y)), thumb_size),
+                     plate_data.shape[0] - thumb_size)
+            z = plate_data[yy - thumb_size:yy + thumb_size,
+                           xx - thumb_size:xx + thumb_size]
+
+            za, zs = np.mean(z), np.std(z)
+
+            # if there is no variance, every pixel in the thumb is 0 after mean subtraction
+            # so no need to divide
+            if zs < 1e-12:
+                z = z - za
+            else:
+                # Invert to get negative from positive image
+                z = 1. - (z - za) / zs
+
+            thumbs[i][0] = z
+
+        prediction = model.predict(thumbs).flatten()
+        self.sources['model_prediction'] = prediction
 
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
