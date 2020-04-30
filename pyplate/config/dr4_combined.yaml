@@ -220,11 +220,11 @@
     - name: pgsql_pk
       val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id)"
     - name: index_1
-      val: "CREATE INDEX archive_ind ON  plate (archive_id)"
+      val: "CREATE INDEX archive_ind ON plate (archive_id)"
     - name: index_2
-      val: "CREATE INDEX wfpdb_ind ON  plate (wfpdb_id)"
+      val: "CREATE INDEX wfpdb_ind ON plate (wfpdb_id)"
     - name: index_3
-      val: "CREATE INDEX method_ind ON  plate (method)"
+      val: "CREATE INDEX method_ind ON plate (method)"
 
   - name: exposure
     order: 3
@@ -389,13 +389,13 @@
     - name: pgsql_pk
       val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id)"
     - name: index_1
-      val: "CREATE INDEX plate_ind ON  exposure (plate_id)"
+      val: "CREATE INDEX plate_ind ON exposure (plate_id)"
     - name: index_2
-      val: "CREATE INDEX archive_ind ON  exposure (archive_id)"
+      val: "CREATE INDEX archive_ind ON exposure (archive_id)"
     - name: index_3
-      val: "CREATE INDEX raj2000_ind ON  exposure (raj2000)"
+      val: "CREATE INDEX raj2000_ind ON exposure (raj2000)"
     - name: index_4
-      val: "CREATE INDEX dej2000_ind ON  exposure (dej2000)"
+      val: "CREATE INDEX dej2000_ind ON exposure (dej2000)"
 
   - name: exposure_sub
     order: 4
@@ -477,9 +477,9 @@
     - name: pgsql_pk
       val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id)"
     - name: index_1
-      val: "CREATE INDEX exposure_ind ON  exposure_sub (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON exposure_sub (exposure_id)"
     - name: index_2
-      val: "CREATE INDEX plate_ind ON  exposure_sub (plate_id)"
+      val: "CREATE INDEX plate_ind ON exposure_sub (plate_id)"
 
   - name: scan
     order: 5
@@ -605,9 +605,9 @@
     - name: pgsql_pk
       val:  "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id)"
     - name: index_1
-      val: "CREATE INDEX plate_ind ON  scan (plate_id)"
+      val: "CREATE INDEX plate_ind ON scan (plate_id)"
     - name: index_2
-      val: "CREATE INDEX archive_ind ON  scan (archive_id)"
+      val: "CREATE INDEX archive_ind ON scan (archive_id)"
 
   - name: preview
     order: 6
@@ -673,7 +673,7 @@
     - name: pgsql_pk
       val:  "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id)"
     - name: index_1
-      val: "CREATE INDEX archive_ind ON  preview (archive_id)"
+      val: "CREATE INDEX archive_ind ON preview (archive_id)"
 
   - name: logbook
     order: 7
@@ -719,7 +719,7 @@
     - name: pgsql_pk
       val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id)"
     - name: index_1
-      val: "CREATE INDEX archive_ind ON  logbook (archive_id)"
+      val: "CREATE INDEX archive_ind ON logbook (archive_id)"
 
   - name: logpage
     order: 8
@@ -793,7 +793,7 @@
     - name: pgsql_pk
       val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id)"
     - name: index_1
-      val: "CREATE INDEX archive_ind ON  logpage (archive_id)"
+      val: "CREATE INDEX archive_ind ON logpage (archive_id)"
 
   - name: plate_logpage
     order: 9
@@ -823,9 +823,9 @@
     indexes:
 
     - name: index_1
-      val: "CREATE INDEX plate_ind ON  plate_logpage (plate_id)"
+      val: "CREATE INDEX plate_ind ON plate_logpage (plate_id)"
     - name: index_2
-      val: "CREATE INDEX logpage_ind ON  plate_logpage (logpage_id)"
+      val: "CREATE INDEX logpage_ind ON plate_logpage (logpage_id)"
 
   - name: source
     order: 10
@@ -1042,17 +1042,17 @@
     - name: pgsql_pk
       val: "ALTER TABLE source ADD CONSTRAINT source_pky PRIMARY KEY (source_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  source (process_id)"
+      val: "CREATE INDEX process_ind ON source (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  source (scan_id)"
+      val: "CREATE INDEX scan_ind ON source (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  source (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON source (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  source (plate_id)"
+      val: "CREATE INDEX plate_ind ON source (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  source (archive_id)"
+      val: "CREATE INDEX archive_ind ON source (archive_id)"
     - name: index_6
-      val: "CREATE INDEX annularbin_ind ON  source (annular_bin)"
+      val: "CREATE INDEX annularbin_ind ON source (annular_bin)"
 
   - name: source_calib
     order: 11
@@ -1390,45 +1390,45 @@
     - name: pgsql_pk
       val: "ALTER TABLE source_calib ADD CONSTRAINT source_calib_pky PRIMARY KEY (source_id)"
     - name: index_1
-      val: "CREATE INDEX source_ind ON  source_calib (source_id)"
+      val: "CREATE INDEX source_ind ON source_calib (source_id)"
     - name: index_2
-      val: "CREATE INDEX process_ind ON  source_calib (process_id)"
+      val: "CREATE INDEX process_ind ON source_calib (process_id)"
     - name: index_3
-      val: "CREATE INDEX scan_ind ON  source_calib (scan_id)"
+      val: "CREATE INDEX scan_ind ON source_calib (scan_id)"
     - name: index_4
-      val: "CREATE INDEX exposure_ind ON  source_calib (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON source_calib (exposure_id)"
     - name: index_5
-      val: "CREATE INDEX plate_ind ON  source_calib (plate_id)"
+      val: "CREATE INDEX plate_ind ON source_calib (plate_id)"
     - name: index_6
-      val: "CREATE INDEX archive_ind ON  source_calib (archive_id)"
+      val: "CREATE INDEX archive_ind ON source_calib (archive_id)"
     - name: index_7
-      val: "CREATE INDEX annularbin_ind ON  source_calib (annular_bin)"
+      val: "CREATE INDEX annularbin_ind ON source_calib (annular_bin)"
     - name: index_8
-      val: "CREATE INDEX raj2000_ind ON  source_calib (raj2000)"
+      val: "CREATE INDEX raj2000_ind ON source_calib (raj2000)"
     - name: index_9
-      val: "CREATE INDEX dej2000_ind ON  source_calib (dej2000)"
+      val: "CREATE INDEX dej2000_ind ON source_calib (dej2000)"
     - name: index_10
-      val: "CREATE INDEX x_ind ON  source_calib (x_sphere)"
+      val: "CREATE INDEX x_ind ON source_calib (x_sphere)"
     - name: index_11
-      val: "CREATE INDEX y_ind ON  source_calib (y_sphere)"
+      val: "CREATE INDEX y_ind ON source_calib (y_sphere)"
     - name: index_12
-      val: "CREATE INDEX z_ind ON  source_calib (z_sphere)"
+      val: "CREATE INDEX z_ind ON source_calib (z_sphere)"
     - name: index_13
-      val: "CREATE INDEX healpix256_ind ON  source_calib (healpix256)"
+      val: "CREATE INDEX healpix256_ind ON source_calib (healpix256)"
     - name: index_14
-      val: "CREATE INDEX nndist_ind ON  source_calib (nn_dist)"
+      val: "CREATE INDEX nndist_ind ON source_calib (nn_dist)"
     - name: index_15
-      val: "CREATE INDEX natmag_ind ON  source_calib (natmag)"
+      val: "CREATE INDEX natmag_ind ON source_calib (natmag)"
     - name: index_16
-      val: "CREATE INDEX bmag_ind ON  source_calib (bmag)"
+      val: "CREATE INDEX bmag_ind ON source_calib (bmag)"
     - name: index_17
-      val: "CREATE INDEX vmag_ind ON  source_calib (vmag)"
+      val: "CREATE INDEX vmag_ind ON source_calib (vmag)"
     - name: index_18
-      val: "CREATE INDEX tycho2_ind ON  source_calib (tycho2_id)"
+      val: "CREATE INDEX tycho2_ind ON source_calib (tycho2_id)"
     - name: index_19
-      val: "CREATE INDEX hip_ind ON  source_calib (tycho2_hip)"
+      val: "CREATE INDEX hip_ind ON source_calib (tycho2_hip)"
     - name: index_20
-      val: "CREATE INDEX ucac4_ind ON  source_calib (ucac4_id)"
+      val: "CREATE INDEX ucac4_ind ON source_calib (ucac4_id)"
 
   - name: solution
     order: 12
@@ -1549,19 +1549,19 @@
     - name: pgsql_pk
       val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  solution (process_id)"
+      val: "CREATE INDEX process_ind ON solution (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  solution (scan_id)"
+      val: "CREATE INDEX scan_ind ON solution (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  solution (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON solution (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  solution (plate_id)"
+      val: "CREATE INDEX plate_ind ON solution (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  solution (archive_id)"
+      val: "CREATE INDEX archive_ind ON solution (archive_id)"
     - name: index_6
-      val: "CREATE INDEX raj2000_ind ON  solution (raj2000)"
+      val: "CREATE INDEX raj2000_ind ON solution (raj2000)"
     - name: index_7
-      val: "CREATE INDEX dej2000_ind ON  solution (dej2000)"
+      val: "CREATE INDEX dej2000_ind ON solution (dej2000)"
 
   - name: astrom_sub
     order: 13
@@ -1707,21 +1707,21 @@
 
     indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT sub_pky PRIMARY KEY (sub_id)"
+      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id)"
     - name: pgsql_pk
-      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT sub_pky PRIMARY KEY (sub_id)"
+      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  source (process_id)"
+      val: "CREATE INDEX process_ind ON source (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  source (scan_id)"
+      val: "CREATE INDEX scan_ind ON source (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  source (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON source (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  source (plate_id)"
+      val: "CREATE INDEX plate_ind ON source (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  source (archive_id)"
+      val: "CREATE INDEX archive_ind ON source (archive_id)"
     - name: index_6
-      val: "CREATE INDEX annularbin_ind ON  source (annular_bin)"
+      val: "CREATE INDEX annularbin_ind ON source (annular_bin)"
 
   - name: phot_calib
     order: 14
@@ -1819,17 +1819,17 @@
     - name: pgsql_pk
       val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  phot_calib (process_id)"
+      val: "CREATE INDEX process_ind ON phot_calib (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  phot_calib (scan_id)"
+      val: "CREATE INDEX scan_ind ON phot_calib (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  phot_calib (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON phot_calib (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  phot_calib (plate_id)"
+      val: "CREATE INDEX plate_ind ON phot_calib (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  phot_calib (archive_id)"
+      val: "CREATE INDEX archive_ind ON phot_calib (archive_id)"
     - name: index_6
-      val: "CREATE INDEX annularbin_ind ON  phot_calib (annular_bin)"
+      val: "CREATE INDEX annularbin_ind ON phot_calib (annular_bin)"
 
   - name: phot_sub
     order: 15
@@ -1934,21 +1934,21 @@
 
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_sub ADD CONSTRAINT sub_pky PRIMARY KEY (sub_id)"
+      val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id)"
     - name: pgsql_pk
-      val: "ALTER TABLE phot_sub ADD CONSTRAINT sub_pky PRIMARY KEY (sub_id)"
+      val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  phot_sub (process_id)"
+      val: "CREATE INDEX process_ind ON phot_sub (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  phot_sub (scan_id)"
+      val: "CREATE INDEX scan_ind ON phot_sub (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  phot_sub (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON phot_sub (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  phot_sub (plate_id)"
+      val: "CREATE INDEX plate_ind ON phot_sub (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  phot_sub (archive_id)"
+      val: "CREATE INDEX archive_ind ON phot_sub (archive_id)"
     - name: index_6
-      val: "CREATE INDEX photsubid_ind ON  phot_sub (phot_sub_id)"
+      val: "CREATE INDEX photsubid_ind ON phot_sub (phot_sub_id)"
 
   - name: phot_color
     order: 16
@@ -2022,19 +2022,19 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_color ADD CONSTRAINT color_pky PRIMARY KEY (color_id)"
+      val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id)"
     - name: pgsql_pk
-      val: "ALTER TABLE phot_color ADD CONSTRAINT color_pky PRIMARY KEY (color_id)"
+      val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  phot_color (process_id)"
+      val: "CREATE INDEX process_ind ON phot_color (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  phot_color (scan_id)"
+      val: "CREATE INDEX scan_ind ON phot_color (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  phot_color (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON phot_color (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  phot_color (plate_id)"
+      val: "CREATE INDEX plate_ind ON phot_color (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  phot_color (archive_id)"
+      val: "CREATE INDEX archive_ind ON phot_color (archive_id)"
 
   - name: phot_cterm
     order: 17
@@ -2096,15 +2096,15 @@
     - name: pgsql_pk
       val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  phot_cterm (process_id)"
+      val: "CREATE INDEX process_ind ON phot_cterm (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON  phot_cterm (scan_id)"
+      val: "CREATE INDEX scan_ind ON phot_cterm (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON  phot_cterm (exposure_id)"
+      val: "CREATE INDEX exposure_ind ON phot_cterm (exposure_id)"
     - name: index_4
-      val: "CREATE INDEX plate_ind ON  phot_cterm (plate_id)"
+      val: "CREATE INDEX plate_ind ON phot_cterm (plate_id)"
     - name: index_5
-      val: "CREATE INDEX archive_ind ON  phot_cterm (archive_id)"
+      val: "CREATE INDEX archive_ind ON phot_cterm (archive_id)"
 
   - name: process
     order: 18
@@ -2241,13 +2241,13 @@
     - name: pgsql_pk
       val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id)"
     - name: index_1
-      val: "CREATE INDEX scan_ind ON  process (scan_id)"
+      val: "CREATE INDEX scan_ind ON process (scan_id)"
     - name: index_2
-      val: "CREATE INDEX plate_ind ON  process (plate_id)"
+      val: "CREATE INDEX plate_ind ON process (plate_id)"
     - name: index_3
-      val: "CREATE INDEX archive_ind ON  process (archive_id)"
+      val: "CREATE INDEX archive_ind ON process (archive_id)"
     - name: index_4
-      val: "CREATE INDEX filename_ind ON  process (filename)"
+      val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
     order: 19
@@ -2288,13 +2288,13 @@
     - name: pgsql_pk
       val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON  process_log (process_id)"
+      val: "CREATE INDEX process_ind ON process_log (process_id)"
     - name:  index_2
-      val: "CREATE INDEX scan_ind ON  process_log (scan_id)"
+      val: "CREATE INDEX scan_ind ON process_log (scan_id)"
     - name:  index_3
-      val: "CREATE INDEX plate_ind ON  process_log (plate_id)"
+      val: "CREATE INDEX plate_ind ON process_log (plate_id)"
     - name:  index_4
-      val: "CREATE INDEX archive_ind ON  process_log (archive_id)"
+      val: "CREATE INDEX archive_ind ON process_log (archive_id)"
     - name:  index_5
-      val: "CREATE INDEX event_ind ON  process_log (event)"
+      val: "CREATE INDEX event_ind ON process_log (event)"
 
