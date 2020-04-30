@@ -23,14 +23,21 @@ except ImportError:
 # CSV files for later ingestion into the database
 # http://stackoverflow.com/questions/11379300/csv-reader-behavior-with-none-and-empty-string
 class csvWriter(object):
-    def __init__(self, csvfile, *args, **kwrags):
-        self.writer = csv.writer(csvfile, *args, **kwrags)
+    def __init__(self, csvfile, *args, **kwargs):
+        self.writer = csv.writer(csvfile, *args, **kwargs)
 
     def writerow(self, row):
         self.writer.writerow(['\\N' if val is None else val for val in row])
 
     def writerows(self, rows):
         map(self.writerow, rows)
+
+
+
+def _get_schema_old():
+    return _schema 
+
+
 
 
 _schema = OrderedDict()
