@@ -13,96 +13,32 @@ from pyplate.db_pgsql import _exprt_scm
 from pyplate.db_pgsql import PlateDB 
 
 
-def pgconnect(PGU,PGH,PGPA,PGDB):
-
-    try:
-        connection = psycopg2.connect(user = PGU,
-                                      password = PGPA,
-                                      host = PGH,
-                                      port = "5432",
-                                      database = PGDB)
-          
-
-        cursor = connection.cursor()
-        # Print PostgreSQL Connection properties
-            # Print PostgreSQL version
-        cursor.execute("SELECT version();")
-        record = cursor.fetchone()
-        print("You are connected to - ", record,"\n")
-#        cursor.close()
-
-        return connection
-
-    except (Exception, psycopg2.Error) as e:
-        print(e)
-
-def create_simplequery(action,table,col_list,val_list, where):
-
-    col_str = ','.join(col_list)
-    if(action == 'S'):
-        frm = "FROM %s %s" % (table,where)
-        sql = ('SELECT {} '.format(col_str))
-        sql = sql + frm
-        return sql
-    elif(action == 'I'): 
-        stm = ('INSERT INTO %s ' % table )
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('{} ({}) VALUES({})'.format(col_str,val_str))
-        sql = stm + sql
-        return sql
-    elif(action == 'U'): 
-        stm = ('UPDATE %s SET {} WHERE %s' % (table,where) )
-        val_str = ','.join(['%s'] * len(col_list))
-#        sql = ('{} ({}) VALUES({})'.format(col_str,val_str))
-        sql = stm.format(col_str) 
-        return sql
-
-
-def pgfin(connection):
-
-    if(connection):
-        connection.close()
-        print ("PGconn  closed")
-
-
-def pgselect(pcursor,qry):
-    try:
-        pcursor.execute(qry)
-        record = pcursor.fetchall()
-        return record 
-    except (Exception, psycopg2.Error) as e:
-        print("SQL problem: %s" % qry)
-        return []
-            
-
-def pginsert(pcursor,qry):
-    try:
-        pcursor.execute(qry)
-        count = pcursor.rowcount
-        return count
-    except (Exception, psycopg2.Error) as e:
-        return e
-        
-def _precord(rec):
-    for r in rec:
-        print("\n")
-        for v in r:
-            print("%s," % v)
-
-        print("\n")
-
-        
 ## main ## 
-
-
-
 pdb = PlateDB()
 pdb.open_connection(host=PGHOST,port=PGPORT,user=PGUSER,password=PGPASSWD,database=PGDATABASE)
-print(pdb)
+#print(dir(pdb))
+print(pdb.dbversion)
 
 tbl='applause_dr4.archive'
 sx = '*'
-qry = ("SELECT %s FROM %s" % (sx, tbl)) 
+qry = ("SELECT %s FROM %s;" % (sx, tbl)) 
 nrow =  pdb.execute_query(qry) 
+print(nrow)
 
-exit()
+
+
+# now try insert (only works once, may be not null for timestam,p is too restritctive?
+cols="archive_id,archive_name,institute,timestamp_insert,timestamp_update"
+#vals= "1003,'test_dr4','aip_test',make_timestamp(2020,5,1,1,2,23.0),make_timestamp(2020,5,1,1,2,23.1)"
+vals= "1002,'test_2dr4','aip_test',make_timestamp(2020,5,1,1,2,23.0),make_timestamp(2020,5,1,1,2,23.1)"
+qry2 = ("INSERT INTO %s (%s) VALUES(%s);" % (tbl,cols,vals)) 
+nrow =  pdb.execute_query(qry2) 
+
+print(nrow)
+
+qry3 = ("SELECT %s FROM %s where archive_id = 1003;" % (sx, tbl)) 
+nrow =  pdb.execute_query(qry3)
+print(nrow)
+
+pdb.close_connection()
+
