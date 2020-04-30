@@ -53,3 +53,10 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# vim 
+*.sw[op]
+
+# local config
+*.loc
+*.local 
