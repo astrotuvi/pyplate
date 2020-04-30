@@ -7,7 +7,7 @@ root_dir = os.path.abspath(os.path.join(tests_dir, '..'))
 sys.path.insert(0, root_dir)
 
 
-from pyplate.db_yaml import fetch_ordered_tables, fetch_ordered_indexes, print_schema_mysql, print_schema_pgsql, print_schema_index
+from pyplate.db_yaml import fetch_ordered_tables, fetch_ordered_indexes, creat_schema_mysql, creat_schema_pgsql, creat_schema_index
 from pyplate.config.local import SCHEMAFILE, RDBMS, FQTN
 from pyplate.database import _get_schema_old 
 
@@ -16,25 +16,32 @@ very basic tests, enable with changing conditional
 """
 yamlf = SCHEMAFILE
 fqtn = FQTN 
+#print('fqtn = {}'.format(fqtn))
 if(1!=2):
-# postgres
     rdbms= RDBMS
     tbldict = OrderedDict()
-    tbldict = fetch_ordered_tables(yamlf,rdbms,FQTN)
-    print_schema_pgsql(tbldict,True)
-    inxdict = OrderedDict()
-    inxdict = fetch_ordered_indexes(yamlf,rdbms,FQTN)
-    print_schema_index(inxdict,True)
+    creat_dict = OrderedDict()
+    tbldict = fetch_ordered_tables(yamlf,rdbms,fqtn)
+    scm = tbldict['schema']
+    if(RDBMS == 'mysql'):
+        creat_schema_mysql(tbldict,creat_dict)
+    else:
+        creat_schema_pgsql(tbldict,creat_dict)
 
-if(1==2):
-# mysql
-    rdbms='mysql'
-    tbldict = OrderedDict()
-    tbldict = fetch_ordered_tables(yamlf,rdbms,True)
-    print_schema_mysql(tbldict,True)
     inxdict = OrderedDict()
-    inxdict = fetch_ordered_indexes(yamlf,rdbms, True)
-    print_schema_index(inxdict,False)
+    inxdict = fetch_ordered_indexes(yamlf,rdbms,fqtn)
+    creat_schema_index(inxdict,creat_dict)
+    filname = '%s_creat_schema_%s.sql' % (scm,rdbms)
+    fo = open(filname,'w')
+    fo.write(creat_dict['create_schema'])
+    fo.write(creat_dict['create_indexes'])
+    fo.close()
+    filname = '%s_drop_schema_%s.sql' % (scm,rdbms)
+    fo = open(filname,'w')
+    fo.write(creat_dict['drop_schema'])
+    fo.write(creat_dict['drop_indexes'])
+    fo.close()
+
 
 
 
