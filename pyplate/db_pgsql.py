@@ -67,6 +67,7 @@ class PlateDB:
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
 
+### do we need this? 
     def assign_conf(self, conf):
         """
         Assign and parse configuration.
