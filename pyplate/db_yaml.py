@@ -2,7 +2,7 @@ import yaml
 import re
 from collections import OrderedDict
 
-def fetch_ordered_tables(scmfile,rdbms,sig=False):
+def fetch_ordered_tables(scmfile,rdbms,sig):
     """
     Fetch Tables into ordered Dict
 
@@ -16,10 +16,10 @@ def fetch_ordered_tables(scmfile,rdbms,sig=False):
     """
 
     yscm = __get_yamlschema(scmfile)
-    odict = __get_tablesdict(yscm,rdbms,sig =False)
+    odict = __get_tablesdict(yscm,rdbms,sig)
     return odict
 
-def fetch_ordered_indexes(scmfile,rdbms, sig):
+def fetch_ordered_indexes(scmfile,rdbms,sig):
     """
     Fetch Index Creation Stmts into Ordered Dict
 
@@ -55,7 +55,7 @@ def __get_yamlschema(filename):
     lsc = local_schema[0]
     return lsc
 
-def __subs_tbklnam(scm,tbs,tv, t_prefix=False):
+def __subs_tbklnam(scm,tbs,tv, t_prefix):
     """
     Insert Schema name (Helper function)
 
@@ -69,21 +69,25 @@ def __subs_tbklnam(scm,tbs,tv, t_prefix=False):
         Index Statement
     """
 
-    tvn= ''
-    tvar = re.split(r' ',tv)
-    for wx in tvar:
-        if(tbs == wx):
-            tvn = tvn + ' ' + scm + '.' + wx
-        else:
-            tvn = tvn + ' ' + wx
+    tvn = tv
 
     if(t_prefix):
-        sx = 'INDEX %s_' % tbs
-        tvn = tv.replace('INDEX ', sx)
+        if(re.match(r'CREATE INDEX', tv)):
+            sx = 'CREATE INDEX %s_' % tbs
+            tvn = tv.replace('CREATE INDEX ', sx)
+            sx = 'ON %s.' % scm
+            tvn = tvn.replace('ON ', sx)
 
+        if(re.match(r'ALTER TABLE', tv)):
+            sx = 'ALTER TABLE %s.' % scm
+            tvn = tv.replace('ALTER TABLE ', sx)
+
+        if(re.match(r'CREATE TABLE', tv)):
+            sx = 'TABLE %s.' % scm
+            tvn = tv.replace('TABLE ', sx)
     return tvn
 
-def __get_indexdict(lsc, rdbms, t_prefix=False):
+def __get_indexdict(lsc, rdbms, t_prefix):
     """
     Convert YAML to Index Dict (Helper function)
 
@@ -98,7 +102,6 @@ def __get_indexdict(lsc, rdbms, t_prefix=False):
     """
 
     dindx = rdbms + '_pk'
-
     odic= OrderedDict()
     lsx = lsc['tables']
     scnam = lsc['name']
@@ -128,7 +131,7 @@ def __get_indexdict(lsc, rdbms, t_prefix=False):
             odic[tbn] = xdict
     return(odic)
 
-def __get_tablesdict(lsc,rdbms,sig = False):
+def __get_tablesdict(lsc,rdbms,sig):
     """
     Convert YAML to TablesDict (Helper function)
 
@@ -141,7 +144,6 @@ def __get_tablesdict(lsc,rdbms,sig = False):
     sig: boolean    
         
     """
-
     dtyp = rdbms + '_datatype'
     odic= OrderedDict()
     lsx = lsc['tables']
@@ -184,13 +186,14 @@ def _get_columns_sql(tdict,table):
 
     return sql
 
-def print_schema_mysql(tdict, use_drop=False, engine='Aria'):
+def creat_schema_mysql(tdict, pdict, engine='Aria'):
     """
     Print table creation SQL queries to standard output.
 
     """
-
-    sql_schema = ('CREATE schema %s' % tdict.pop('schema'))
+    scm_name = tdict.pop('schema')
+    sql_schema = ('--- CREATE DATABASE %s;' % scm_name)
+    sql_drop_schema = ('--- DROP DATABASE %s CASCADE;' % scm_name)
 
     sql_drop = '\n'.join(['DROP TABLE IF EXISTS {};'.format(k) 
                           for k in tdict.keys()])
@@ -201,18 +204,18 @@ def print_schema_mysql(tdict, use_drop=False, engine='Aria'):
                 for k in tdict.keys()]
     sql = '\n'.join(sql_list)
 
-    if use_drop:
-        sql = sql_drop + '\n\n' + sql
 
-    print(sql)
-
+    pdict['create_schema'] = sql_schema + '\n\n' + sql  
+    pdict['drop_schema'] = sql_drop +'\n\n' + sql_drop_schema
 
 
-def print_schema_pgsql(tdict, use_drop=False):
+
+def creat_schema_pgsql(tdict, pdict):
     """
     Print table creation SQL queries to standard output.
 
     """
+
     scm_name = tdict.pop('schema')
     sql_schema = ('CREATE schema %s' % scm_name)
 
@@ -225,15 +228,11 @@ def print_schema_pgsql(tdict, use_drop=False):
                 for k in tdict.keys()]
     sql = '\n'.join(sql_list)
 
-    sql =  sql_schema + ';\n\n' + sql  
+    pdict['create_schema'] =  sql_schema + ';\n\n' + sql  
+    pdict['drop_schema'] = sql_drop + '\n\n' + sql_drop_schema + '\n\n'
+    tdict['schema'] = scm_name  
 
-    if use_drop:
-        sql =  sql_drop + '\n\n' + sql_drop_schema + '\n\n' + sql
-
-
-    print(sql)
-
-def print_schema_index(tdict, use_drop=False):
+def creat_schema_index(tdict, pdict):
     """
     Print index creation SQL statements to standard output.
 
@@ -241,21 +240,23 @@ def print_schema_index(tdict, use_drop=False):
 
     sql = None
     sql_drop = ''
+    sql_create = ''
         
 
     for table in tdict:
-        sql_list = ['    {};'.format(v) 
+        sql_list = ['{};'.format(v) 
                     for k,v in tdict[table].items()]
         sql = '\n'.join(sql_list)
-            
-        sql_drop = ''
+
+        sql_create = sql_create + '\n\n' + sql 
+
         for k,v in tdict[table].items():
             if(re.match('CREATE INDEX',v)):
                 vxa =  v.split(' ')
                 sql_ind = 'DROP INDEX IF EXISTS %s;\n' % vxa[2]  
                 sql_drop = sql_drop + sql_ind        
 
-        if use_drop:
-            sql = sql_drop + '\n' + sql
+        sql_drop = sql_drop + '\n'
 
-        print(sql + '\n')
+    pdict['create_indexes'] =  sql_create 
+    pdict['drop_indexes'] = sql_drop 
