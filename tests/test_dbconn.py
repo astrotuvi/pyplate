@@ -25,7 +25,7 @@ def _precord(rec):
 pdb = PlateDB()
 pdb.open_connection(host=PGHOST,port=PGPORT,user=PGUSER,password=PGPASSWD,database=PGDATABASE)
 #print(dir(pdb))
-print(pdb.dbversion,'\n')
+print(pdb.database,'\n')
 
 tbl='applause_dr4.archive'
 sx = '*'
@@ -42,7 +42,6 @@ for  v in vals:
     qry2 = ("INSERT INTO %s (%s) VALUES(%s);" % (tbl,cols,v)) 
 #    nrow =  pdb.execute_query(qry2) 
 
-#print(nrow)
 #
 qry3 = ("SELECT %s FROM %s where archive_id > 1000;" % (sx, tbl)) 
 nrow =  pdb.execute_query(qry3)
@@ -52,5 +51,6 @@ if(rec):
     _precord(rec) 
 
 
+print(pdb.dbversion,'\n')
 pdb.close_connection()
 
