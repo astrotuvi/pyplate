@@ -8,7 +8,7 @@ sys.path.insert(0, root_dir)
 
 
 from pyplate.db_yaml import fetch_ordered_tables, fetch_ordered_indexes, creat_schema_mysql, creat_schema_pgsql, creat_schema_index
-from pyplate.config.local import SCHEMAFILE, RDBMS, FQTN
+from pyplate.config.local import SCHEMAFILE, RDBMS, FQTN, PGUSER
 from pyplate.database import _get_schema_old 
 
 """
@@ -16,8 +16,14 @@ very basic tests, enable with changing conditional
 """
 yamlf = SCHEMAFILE
 fqtn = FQTN 
-#print('fqtn = {}'.format(fqtn))
+
+
+""" 
+    this uses the dr4_combined.yaml 
+    to create a complete set of sql creation/deletion statements 
+"""
 if(1!=2):
+
     rdbms= RDBMS
     tbldict = OrderedDict()
     creat_dict = OrderedDict()
@@ -31,18 +37,22 @@ if(1!=2):
     inxdict = OrderedDict()
     inxdict = fetch_ordered_indexes(yamlf,rdbms,fqtn)
     creat_schema_index(inxdict,creat_dict)
-    filname = '%s_creat_schema_%s.sql' % (scm,rdbms)
-    fo = open(filname,'w')
+    filname1 = '%s_creat_schema_%s.sql' % (scm,rdbms)
+    fo = open(filname1,'w')
     fo.write(creat_dict['create_schema'])
     fo.write(creat_dict['create_indexes'])
     fo.close()
-    filname = '%s_drop_schema_%s.sql' % (scm,rdbms)
-    fo = open(filname,'w')
+
+    filname2 = '%s_drop_schema_%s.sql' % (scm,rdbms)
+    fo = open(filname2,'w')
     fo.write(creat_dict['drop_schema'])
     fo.write(creat_dict['drop_indexes'])
     fo.close()
 
-
+    pstm ='If you use the sql files (%s,%s) for creating, dont forget\nto issue after creation:\n'  % (filname1,filname2) 
+    pstm = pstm + '  GRANT ALL ON SCHEMA %s TO %s;\n ' % (scm,PGUSER) 
+    pstm = pstm + '  GRANT ALL ON ALL TABLES IN SCHEMA %s TO %s; \n' % (scm,PGUSER)
+    print(pstm)
 
 
 """
