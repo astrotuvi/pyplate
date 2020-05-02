@@ -136,8 +136,6 @@ class PlateDB:
             try:
                 self.db = pymysql.connect(host=host, port=port, user=user, password=password, 
                                           database=database)
-#                self.db = psycopg2.connect(user = user, password=password,
-#                                           host = host, port = port,  db = database)
                 self.host = host
                 self.port = port
                 self.user = user
