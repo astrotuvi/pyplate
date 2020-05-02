@@ -18,7 +18,7 @@ except ImportError:
     import ConfigParser as configparser
 
 try:
-    import MySQLdb
+    import PyMySQL
 except ImportError:
     pass
 
