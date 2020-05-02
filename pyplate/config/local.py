@@ -8,20 +8,26 @@ sys.path.insert(0, root_dir)
 ROOTDIR = root_dir
 
 PGHOST = 
-PGPORT = 
+PGPORT = '5432'
 PGUSER = 
 PGDATABASE = 
 PGPASSWD = 
 
 
-RDBMS = 'pgsql'
-FQTN = True
+#RDBMS = 'pgsql'
+#FQTN = True
 
-#RDBMS = 'mysql'
-#FQTN = False
+MYHOST = 
+MYPORT = '3306'
+MYUSER = 
+MYDATABASE = 
+MYPASSWD = 
+RDBMS = 'mysql'
+FQTN = True
 
 
 SCHEMAFILE = cfg_dir +'/dr4_combined.yaml'
+#SCHEMAFILE = cfg_dir +'/dr4_combined_tz.yaml'
 
 
 BASE_URL = 'https://www.plate-archive.org'
