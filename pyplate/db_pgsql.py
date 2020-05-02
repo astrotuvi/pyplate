@@ -8,7 +8,6 @@ from astropy.time import Time
 
 
 from .config.local import ROOTDIR, SCHEMAFILE, RDBMS, FQTN
-#PGHOST, PGPORT, PGUSER, PGDATABASE, PGPASSPWD,
 from .config.conf import read_conf
 #from .config._version import __version__
 from .db_yaml import fetch_ordered_tables, fetch_ordered_indexes
@@ -44,7 +43,10 @@ _schema = OrderedDict()
 
 _schema = fetch_ordered_tables(yamlfile,RDBMS,FQTN) 
 
-def _exprt_scm():
+def _export_scm():
+    """
+    return the OrderedDict
+    """
     return _schema
 
 
