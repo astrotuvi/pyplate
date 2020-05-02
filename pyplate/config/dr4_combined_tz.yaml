@@ -39,8 +39,8 @@
 
     - name: plate_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: archive_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -216,7 +216,7 @@
 
     indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id)"
+      val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id); ALTER TABLE plate MODIFY plate_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id)"
     - name: index_1
@@ -232,8 +232,8 @@
 
     - name: exposure_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: plate_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -385,7 +385,7 @@
 
     indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id)"
+      val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id);ALTER TABLE exposure MODIFY exposure_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id)"
     - name: index_1
@@ -403,8 +403,8 @@
 
     - name: subexposure_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: exposure_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -473,7 +473,7 @@
     indexes:
 
     - name: mysql_pk
-      val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id)"
+      val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id);ALTER TABLE exposure_sub MODIFY subexposure_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id)"
     - name: index_1
@@ -487,8 +487,8 @@
 
     - name: scan_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: plate_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -601,7 +601,7 @@
     indexes:
 
     - name: mysql_pk
-      val:  "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id)"
+      val: "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id);ALTER TABLE scan MODIFY scan_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id)"
     - name: index_1
@@ -615,8 +615,8 @@
 
     - name: preview_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: plate_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -669,7 +669,7 @@
     indexes:
 
     - name: mysql_pk
-      val:  "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id)"
+      val: "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id);ALTER TABLE preview MODIFY preview_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id)"
     - name: index_1
@@ -681,8 +681,8 @@
 
     - name: logbook_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: archive_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -727,8 +727,8 @@
 
     - name: logpage_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: logbook_id
       order: 2
       mysql_datatype: "INT UNSIGNED"
@@ -1436,8 +1436,8 @@
 
     - name: solution_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1545,7 +1545,7 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id)"
+      val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id);ALTER TABLE solution MODIFY solution_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id)"
     - name: index_1
@@ -1569,8 +1569,8 @@
 
     - name: sub_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1707,7 +1707,7 @@
 
     indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id)"
+      val: "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id);ALTER TABLE astrom_sub MODIFY sub_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id)"
     - name: index_1
@@ -1729,8 +1729,8 @@
 
     - name: calib_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1837,8 +1837,8 @@
 
     - name: sub_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1934,7 +1934,7 @@
 
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id)"
+      val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id);ALTER TABLE phot_sub MODIFY sub_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id)"
     - name: index_1
@@ -1956,8 +1956,8 @@
 
     - name: color_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -2022,7 +2022,7 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id)"
+      val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id);ALTER TABLE phot_color MODIFY color_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id)"
     - name: index_1
@@ -2042,8 +2042,8 @@
 
     - name: cterm_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -2092,7 +2092,7 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id)"
+      val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id);ALTER TABLE phot_cterm MODIFY cterm_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id)"
     - name: index_1
@@ -2112,8 +2112,8 @@
 
     - name: process_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: scan_id
       order: 2
       mysql_datatype: "INT UNSIGNED"
@@ -2140,7 +2140,7 @@
       pgsql_datatype: "timestamp without time zone"
     - name: timestamp_end
       order: 8
-      mysql_datatype: "TIMESTAMP DEFAULT NULL"
+      mysql_datatype: "TIMESTAMP DEFAULT  CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp without time zone"
     - name: duration
       order: 9
@@ -2237,7 +2237,7 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id)"
+      val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id);ALTER TABLE process MODIFY process_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id)"
     - name: index_1
@@ -2254,8 +2254,8 @@
     columns:
 
     - name: processlog_id
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT "
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "serial"
     - name: process_id
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer NOT NULL"
@@ -2284,7 +2284,7 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id)"
+      val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id);ALTER TABLE process_log MODIFY processlog_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id)"
     - name: index_1
