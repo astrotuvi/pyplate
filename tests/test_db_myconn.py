@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-import MySQLdb
+#import MySQLdb
 from collections import OrderedDict
 
 tests_dir = os.path.dirname(__file__)
@@ -23,7 +23,6 @@ def _precord(rec):
 ## main ## 
 pdb = PlateDB()
 pdb.open_connection(host=MYHOST,port=MYPORT,user=MYUSER,password=MYPASSWD,database=MYDATABASE)
-#print(dir(pdb))
 print(pdb.database,'\n')
 
 tbl='applause_dr4.archive'
@@ -32,11 +31,11 @@ sx = '*'
 # try insert (only works once, may be 'not null' for timestamp is too restritctive?
 cols="archive_id,archive_name,institute,timestamp_insert,timestamp_update"
 vals= [None] * 5
-vals[0]= "1000,'test_2dr4','aip_test',make_timestamp(2020,5,1,1,2,23.0),make_timestamp(2020,5,1,1,2,23.1)"
-vals[1]= "1001,'test_1dr4','aip_test',make_timestamp(2020,5,2,1,2,23.0),make_timestamp(2020,5,1,2,2,23.1)"
-vals[2]= "1002,'test_1dr4','aip_test',make_timestamp(2020,5,2,1,2,23.0),make_timestamp(2020,5,1,2,2,23.1)"
-vals[3]= "1003,'test_dr4','aip_test',make_timestamp(2020,5,1,1,2,23.0),make_timestamp(2020,5,1,1,2,23.1)"
-vals[4]= "1004,'test_dr4','aip_test',make_timestamp(2020,5,4,1,2,23.0),Null"
+vals[0]= "1000,'test_2dr4','aip_test','2020-05-01 01:22:23.0','2020-05-01 01:22:20.0'"
+vals[1]= "1001,'test_1dr4','aip_test','2020-05-02 01:22:23.0','2020-05-01 01:02:21.0'"
+vals[2]= "1002,'test_1dr4','aip_test','2020-05-04 01:22:23.0','2020-05-01 01:02:22.0'"
+vals[3]= "1003,'test_dr4','aip_test','2020-05-01 01:24:23.0','2020-05-01 01:02:23.0'"
+vals[4]= "1004,'test_dr4','aip_test','2020-05-01 01:02:23.0',Null"
 for  v in vals:
     qry2 = ("INSERT INTO %s (%s) VALUES(%s);" % (tbl,cols,v)) 
     nrow =  pdb.execute_query(qry2) 
@@ -50,6 +49,6 @@ if(rec):
     _precord(rec) 
 
 
-print(pdb.dbversion,'\n')
+print(pdb.dbversion)
 pdb.close_connection()
 

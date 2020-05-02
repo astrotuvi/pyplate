@@ -18,7 +18,7 @@ except ImportError:
     import ConfigParser as configparser
 
 try:
-    import PyMySQL
+    import pymysql
 except ImportError:
     pass
 
@@ -134,8 +134,8 @@ class PlateDB:
 
         while True:
             try:
-                self.db = MySQLdb.connect(host=host, port=port, user=user, passwd=passwd, 
-                                          db=dbname)
+                self.db = pymysql.connect(host=host, port=port, user=user, password=password, 
+                                          database=database)
 #                self.db = psycopg2.connect(user = user, password=password,
 #                                           host = host, port = port,  db = database)
                 self.host = host
@@ -145,7 +145,7 @@ class PlateDB:
                 self.database = database
 
                 break
-            except MySQLdb.OperationalError as e:
+            except pymysql.OperationalError as e:
                 if (e.args[0] == 1040):
                     print('MySQL server reports too many connections, trying again')
                     print(e.args)
@@ -175,7 +175,7 @@ class PlateDB:
             numrows = self.cursor.execute(*args)
         except AttributeError:
             numrows = None
-        except MySQLdb.OperationalError as e:
+        except pymysql.OperationalError as e:
             if e.args[0] == 2006:
                 print('MySQL server has gone away, trying to reconnect')
 
@@ -200,7 +200,7 @@ class PlateDB:
             numrows = self.cursor.executemany(*args)
         except AttributeError:
             numrows = None
-        except MySQLdb.OperationalError as e:
+        except pymysql.OperationalError as e:
             if e.args[0] == 2006:
                 print('MySQL server has gone away, trying to reconnect')
 
