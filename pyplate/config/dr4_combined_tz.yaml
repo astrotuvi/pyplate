@@ -715,7 +715,7 @@
     indexes:
 
     - name: mysql_pk
-      val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id)"
+      val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id);ALTER TABLE logbook MODIFY logbook_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id)"
     - name: index_1
@@ -789,7 +789,7 @@
     indexes:
  
     - name: mysql_pk
-      val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id)"
+      val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id);ALTER TABLE logpage MODIFY logpage_id INT UNSIGNED NOT NULL AUTO_INCREMENT""
     - name: pgsql_pk
       val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id)"
     - name: index_1
@@ -1815,7 +1815,7 @@
       
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id)"
+      val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id);ALTER TABLE phot_calib MODIFY calib_id INT UNSIGNED NOT NULL AUTO_INCREMENT""
     - name: pgsql_pk
       val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id)"
     - name: index_1
