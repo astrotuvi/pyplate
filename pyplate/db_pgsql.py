@@ -105,7 +105,7 @@ class PlateDB:
 
         host : str
             pgsql database host name
-        port : str
+        port : int
             pgsql database port number
         user : str
             pgsql database user name
