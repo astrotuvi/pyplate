@@ -29,6 +29,7 @@ tbl='applause_dr4.archive'
 sx = '*'
 
 # try insert (only works once, may be 'not null' for timestamp is too restritctive?
+## throws an error if run twice
 cols="archive_id,archive_name,institute,timestamp_insert,timestamp_update"
 vals= [None] * 5
 vals[0]= "1000,'test_2dr4','aip_test','2020-05-01 01:22:23.0','2020-05-01 01:22:20.0'"
@@ -40,7 +41,7 @@ for  v in vals:
     qry2 = ("INSERT INTO %s (%s) VALUES(%s);" % (tbl,cols,v)) 
     nrow =  pdb.execute_query(qry2) 
 
-#
+# try select
 qry3 = ("SELECT %s FROM %s where archive_id > 1000;" % (sx, tbl)) 
 nrow =  pdb.execute_query(qry3)
 print(nrow)
