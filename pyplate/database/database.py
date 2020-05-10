@@ -5,8 +5,8 @@ import os
 import csv
 from collections import OrderedDict
 from astropy.time import Time
-from .conf import read_conf
-from ._version import __version__
+from ..conf import read_conf
+from .._version import __version__
 
 try:
     import configparser

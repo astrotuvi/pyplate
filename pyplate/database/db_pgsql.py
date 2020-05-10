@@ -6,10 +6,9 @@ import csv
 from collections import OrderedDict
 from astropy.time import Time
 
-
-from .config.local import ROOTDIR, SCHEMAFILE, RDBMS, FQTN
-from .config.conf import read_conf
-#from .config._version import __version__
+from ..config.local import ROOTDIR, SCHEMAFILE, RDBMS, FQTN
+from ..config.conf import read_conf
+#from ..config._version import __version__
 from .db_yaml import fetch_ordered_tables, fetch_ordered_indexes
 
 try:
