@@ -5,6 +5,7 @@ import os
 import csv
 from collections import OrderedDict
 from astropy.time import Time
+from .db_pgsql import DB_pgsql
 from ..conf import read_conf
 from .._version import __version__
 
@@ -736,14 +737,36 @@ class PlateDB:
 
     """
 
-    def __init__(self):
-        self.host = 'localhost'
-        self.user = ''
-        self.dbname = ''
-        self.passwd = ''
+    def __init__(self, **kwargs):
+        """Initialise PlateDB class
+
+        Parameters
+        ----------
+        rdbms : str
+            Database management system ('pgsql', 'mysql')
+        host : str
+            Database host name
+        port : int
+            Port number for database connection
+        user : str
+            Database user name
+        password : str
+            Database password
+        database : str
+            Database name
+        schema : str
+            Database schema
+        """
+
+        self.rdbms = kwargs.pop('rdbms', 'pgsql')
+        self.host = kwargs.pop('host', 'localhost')
+        self.port = kwargs.pop('port', None)
+        self.user = kwargs.pop('user', '')
+        self.database = kwargs.pop('database', '')
+        self.password = kwargs.pop('password', '')
+        self.schema = kwargs.pop('schema', '')
 
         self.db = None
-        self.cursor = None
 
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
@@ -774,56 +797,56 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-    def open_connection(self, host=None, user=None, passwd=None, dbname=None):
+    def open_connection(self, rdbms='pgsql', host=None, port=None, user=None,
+                        password=None, database=None, schema=None):
         """
-        Open MySQL database connection.
+        Open database connection.
 
         Parameters
         ----------
+        rdbms : str
+            Database management system ('pgsql', 'mysql')
         host : str
-            MySQL database host name
+            Database host name
+        port : int
+            Port number for database connection
         user : str
-            MySQL database user name
-        passwd : str
-            MySQL database password
-        dbname : str
-            MySQL database name
+            Database user name
+        password : str
+            Database password
+        database : str
+            Database name
+        schema : str
+            Database schema
 
         """
 
         if host is None:
             host = self.host
 
+        if port is None:
+            port = self.port
+
         if user is None:
             user = self.user
 
-        if passwd is None:
-            passwd = self.passwd
+        if password is None:
+            password = self.password
 
-        if dbname is None:
-            dbname = self.dbname
+        if database is None:
+            database = self.database
 
-        while True:
-            try:
-                self.db = MySQLdb.connect(host=host, user=user, passwd=passwd, 
-                                          db=dbname)
-                self.host = host
-                self.user = user
-                self.passwd = passwd
-                self.dbname = dbname
-                break
-            except MySQLdb.OperationalError as e:
-                if e.args[0] == 1040:
-                    print('MySQL server reports too many connections, trying again')
-                    time.sleep(10)
-                elif e.args[0] == 1045:
-                    print('MySQL error {:d}: {}'.format(e.args[0], e.args[1]))
-                    break
-                else:
-                    raise
+        if schema is not None:
+            self.schema = schema
 
-        if self.db is not None:
-            self.cursor = self.db.cursor()
+        if rdbms == 'pgsql':
+            self.db = DB_pgsql()
+            self.db.open_connection(host=host, port=port,
+                                    user=user, password=password,
+                                    database=database)
+        elif rdbms == 'mysql':
+            # Implement MySQL/MariaDB connection here
+            pass
 
     def execute_query(self, *args):
         """
@@ -902,13 +925,13 @@ class PlateDB:
         """
 
         # The plate table
-        col_list = ['plate_id']
+        col_list = []
+        val_tuple = ()
 
         if (isinstance(platemeta['db_plate_id'], int) and 
             (platemeta['db_plate_id'] > 0)):
-            val_tuple = (platemeta['db_plate_id'],)
-        else:
-            val_tuple = (None,)
+            col_list.append('plate_id')
+            val_tuple = val_tuple + (platemeta['db_plate_id'],)
 
         for k,v in _schema['plate'].items():
             if v[1]:
@@ -932,39 +955,45 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
 
-        sql = ('INSERT INTO plate ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-        plate_id = self.cursor.lastrowid
+        if self.schema:
+            table_name = '{}.plate'.format(self.schema)
+
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING plate_id'
+               .format(table_name, col_str, val_str))
+        plate_id = self.db.execute_query(sql, val_tuple)
+        #plate_id = self.db.cursor.lastrowid
         platemeta['db_plate_id'] = plate_id
 
         # The exposure table
-        for exp in np.arange(platemeta['numexp']):
+        for exp in range(platemeta['numexp']):
             exp_num = exp + 1
-            col_list = ['exposure_id', 'exposure_num']
-            val_tuple = (None, exp_num)
+            col_list = ['exposure_num']
+            val_tuple = (exp_num,)
 
             for k,v in _schema['exposure'].items():
                 if v[1]:
                     col_list.append(k)
-                    val_tuple = val_tuple \
-                            + (platemeta.get_value(v[1], exp=exp), )
+                    val = platemeta.get_value(v[1], exp=exp)
+                    val_tuple = val_tuple + (val,)
 
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
 
-            sql = ('INSERT INTO exposure ({}) VALUES ({})'
-                   .format(col_str, val_str))
-            self.execute_query(sql, val_tuple)
-            exposure_id = self.cursor.lastrowid
+            if self.schema:
+                table_name = '{}.exposure'.format(self.schema)
+
+            sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING exposure_id'
+                   .format(table_name, col_str, val_str))
+            exposure_id = self.db.execute_query(sql, val_tuple)
+            #exposure_id = self.db.cursor.lastrowid
 
             # The exposure_sub table
             if len(platemeta['numsub']) > exp and platemeta['numsub'][exp] > 1:
                 for subexp in np.arange(platemeta['numsub'][exp]):
                     subexp_num = subexp + 1
-                    col_list = ['subexposure_id' ,'exposure_id', 'plate_id',
+                    col_list = ['exposure_id', 'plate_id',
                                 'exposure_num', 'subexposure_num']
-                    val_tuple = (None, exposure_id, plate_id, exp_num, 
+                    val_tuple = (exposure_id, plate_id, exp_num,
                                  subexp_num)
 
                     expmeta = platemeta.exposures[exp]
@@ -978,11 +1007,12 @@ class PlateDB:
                     col_str = ','.join(col_list)
                     val_str = ','.join(['%s'] * len(col_list))
 
-                    sql = ('INSERT INTO exposure_sub ({}) VALUES ({})'
-                           .format(col_str, val_str))
-                    self.execute_query(sql, val_tuple)
+                    if self.schema:
+                        table_name = '{}.plate'.format(self.schema)
 
-        return plate_id
+                    sql = ('INSERT INTO {} ({}) VALUES ({})'
+                           .format(table_name, col_str, val_str))
+                    self.db.execute_query(sql, val_tuple)
 
     def write_plate_logpage(self, platemeta):
         """

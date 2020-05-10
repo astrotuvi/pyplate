@@ -49,9 +49,9 @@ def _export_scm():
     return _schema
 
 
-class PlateDB:
+class DB_pgsql:
     """
-    Plate database class.
+    PostgreSQL database class.
 
     """
 
@@ -61,6 +61,7 @@ class PlateDB:
         self.user = ''
         self.password = ''
         self.database = ''
+        self.schema = ''
 
         self.db = None
         self.cursor = None
@@ -132,8 +133,9 @@ class PlateDB:
 
         while True:
             try:
-                self.db = psycopg2.connect(user = user, password=password,
-                                           host = host, port = port,  database = database)
+                self.db = psycopg2.connect(user=user, password=password,
+                                           host=host, port=port,
+                                           database=database)
                 self.host = host
                 self.port = port
                 self.user = user
@@ -168,11 +170,21 @@ class PlateDB:
 
         """
 
+        # Default return value
+        val = None
+
         try:
-            numrows = self.cursor.execute(*args)
+            self.cursor.execute(*args)
+
+            if 'RETURNING' in args[0]:
+                val = self.cursor.fetchone()[0]
+
+            self.db.commit()
         except AttributeError:
-            numrows = None
+            pass
         except (Exception, psycopg2.OperationalError) as e:
+            raise
+
             if (e.args):
 #            if (e.args[0] == 08006):
                 print('pgsql server has xception, trying to reconnect')
@@ -190,7 +202,7 @@ class PlateDB:
         Not yet really tested, whether these errors are those we want to check 
         """
 
-        return numrows
+        return val
 
     def executemany_query(self, *args):
         """
