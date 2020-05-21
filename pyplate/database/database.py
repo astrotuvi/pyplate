@@ -1616,15 +1616,14 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT plate_id FROM plate '
-               'WHERE archive_id=%s AND plate_num=%s')
-        numrows = self.execute_query(sql, (archive_id,plate_num))
-
-        if numrows == 1:
-            result = self.cursor.fetchone()
-            plate_id = result[0]
+        if self.schema:
+            table_name = '{}.plate'.format(self.schema)
         else:
-            return None
+            table_name = 'plate'
+
+        sql = ('SELECT plate_id FROM {} WHERE archive_id=%s AND plate_num=%s'
+               .format(table_name))
+        plate_id = self.db.execute_query(sql, (archive_id, plate_num))
 
         return plate_id
 
@@ -1644,14 +1643,13 @@ class PlateDB:
 
         """
 
-        sql = 'SELECT plate_id FROM plate WHERE wfpdb_id=%s'
-        numrows = self.execute_query(sql, (wfpdb_id,))
-
-        if numrows == 1:
-            result = self.cursor.fetchone()
-            plate_id = result[0]
+        if self.schema:
+            table_name = '{}.plate'.format(self.schema)
         else:
-            return None
+            table_name = 'plate'
+
+        sql = 'SELECT plate_id FROM {} WHERE wfpdb_id=%s'.format(table_name)
+        plate_id = self.db.execute_query(sql, (wfpdb_id,))
 
         return plate_id
 

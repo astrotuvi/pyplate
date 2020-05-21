@@ -176,8 +176,11 @@ class DB_pgsql:
         try:
             self.cursor.execute(*args)
 
-            if 'RETURNING' in args[0]:
-                val = self.cursor.fetchone()[0]
+            if 'RETURNING' in args[0] or args[0].startswith('SELECT'):
+                val = self.cursor.fetchone()
+
+                if val is not None:
+                    val = val[0]
 
             self.db.commit()
         except AttributeError:
