@@ -1054,9 +1054,10 @@ class PlateDB:
                     val_tuple = (plate_id, logpage_id, order)
                     col_str = ','.join(col_list)
                     val_str = ','.join(['%s'] * len(col_list))
-                    sql = ('INSERT INTO plate_logpage ({}) VALUES ({})'
-                           .format(col_str, val_str))
-                    self.execute_query(sql, val_tuple)
+                    sql = ('INSERT INTO {} ({}) VALUES ({})'
+                           .format(self.table_name('plate_logpage'), col_str,
+                                   val_str))
+                    self.db.execute_query(sql, val_tuple)
 
     def write_scan(self, platemeta):
         """
@@ -1101,10 +1102,9 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
 
-        sql = ('INSERT INTO scan ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-        scan_id = self.cursor.lastrowid
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING scan_id'
+               .format(self.table_name('scan'), col_str, val_str))
+        scan_id = self.db.execute_query(sql, val_tuple)
 
         return scan_id
 
@@ -1154,8 +1154,9 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_tuple = val_tuple + (scan_id, )
 
-        sql = 'UPDATE scan SET {} WHERE scan_id=%s'.format(col_str)
-        self.execute_query(sql, val_tuple)
+        sql = ('UPDATE {} SET {} WHERE scan_id=%s'
+               .format(self.table_name('scan'), col_str))
+        self.db.execute_query(sql, val_tuple)
 
     def write_preview(self, previewmeta):
         """
@@ -1199,11 +1200,9 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
 
-        sql = ('INSERT INTO preview ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-        preview_id = self.cursor.lastrowid
-
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING preview_id'
+               .format(self.table_name('preview'), col_str, val_str))
+        preview_id = self.db.execute_query(sql, val_tuple)
         return preview_id
 
     def write_logbook(self, logbookmeta):
@@ -1222,10 +1221,9 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO logbook ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-        logbook_id = self.cursor.lastrowid
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING logbook_id'
+               .format(self.table_name('logbook'), col_str, val_str))
+        logbook_id = self.db.execute_query(sql, val_tuple)
         return logbook_id
 
     def write_logpage(self, logpagemeta):
@@ -1249,10 +1247,9 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO logpage ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
-        logpage_id = self.cursor.lastrowid
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING logpage_id'
+               .format(self.table_name('logpage'), col_str, val_str))
+        logpage_id = self.db.execute_query(sql, val_tuple)
         return logpage_id
 
     def write_solution(self, solution, process_id=None, scan_id=None, 
@@ -1273,9 +1270,10 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO solution ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING solution_id'
+               .format(self.table_name('solution'), col_str, val_str))
+        solution_id = self.db.execute_query(sql, val_tuple)
+        return solution_id
 
     def write_astrom_sub(self, astrom_sub, process_id=None, scan_id=None, 
                        plate_id=None, archive_id=None):
@@ -1317,9 +1315,9 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO phot_cterm ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('phot_cterm'), col_str, val_str))
+        self.db.execute_query(sql, val_tuple)
 
     def write_phot_color(self, phot_color, process_id=None, scan_id=None, 
                          plate_id=None, archive_id=None):
@@ -1339,9 +1337,9 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO phot_color ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('phot_color'), col_str, val_str))
+        self.db.execute_query(sql, val_tuple)
 
     def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
                          plate_id=None, archive_id=None):
@@ -1361,9 +1359,9 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO phot_calib ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('phot_calib'), col_str, val_str))
+        self.db.execute_query(sql, val_tuple)
 
     def write_phot_sub(self, phot_sub, process_id=None, scan_id=None, 
                        plate_id=None, archive_id=None):
@@ -1538,15 +1536,9 @@ class PlateDB:
                      None, use_psf, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO process ({}) VALUES ({})'
-               .format(col_str, val_str))
-        numrows = self.execute_query(sql, val_tuple)
-
-        if numrows is not None:
-            process_id = self.cursor.lastrowid
-        else:
-            process_id = None
-
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING process_id'
+               .format(self.table_name('process'), col_str, val_str))
+        process_id = self.db.execute_query(sql, val_tuple)
         return process_id
 
     def update_process(self, process_id, **kwargs):
@@ -1570,9 +1562,10 @@ class PlateDB:
             return
 
         col_str = ','.join(col_list)
-        sql = ('UPDATE process SET {} WHERE process_id=%s'.format(col_str))
+        sql = ('UPDATE {} SET {} WHERE process_id=%s'
+               .format(self.table_name('process'), col_str))
         val_tuple = val_tuple + (process_id, )
-        self.execute_query(sql, val_tuple)
+        self.db.execute_query(sql, val_tuple)
 
     def write_process_end(self, process_id, completed=None, duration=None):
         """
@@ -1580,11 +1573,10 @@ class PlateDB:
 
         """
 
-        sql = ('UPDATE process '
-               'SET timestamp_end=NOW(),duration=%s,completed=%s '
-               'WHERE process_id=%s')
+        sql = ('UPDATE {} SET timestamp_end=NOW(),duration=%s,completed=%s '
+               'WHERE process_id=%s'.format(self.table_name('process')))
         val_tuple = (duration, completed, process_id)
-        self.execute_query(sql, val_tuple)
+        self.db.execute_query(sql, val_tuple)
 
     def write_processlog(self, level, message, event=None, process_id=None,
                          scan_id=None, plate_id=None, archive_id=None):
@@ -1600,9 +1592,9 @@ class PlateDB:
                      level, event, message)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO process_log ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('process_log'), col_str, val_str))
+        self.db.execute_query(sql, val_tuple)
 
     def get_plate_id(self, plate_num, archive_id):
         """
@@ -1625,7 +1617,6 @@ class PlateDB:
         sql = ('SELECT plate_id FROM {} WHERE archive_id=%s AND plate_num=%s'
                .format(self.table_name('plate')))
         plate_id = self.db.execute_query(sql, (archive_id, plate_num))
-
         return plate_id
 
     def get_plate_id_wfpdb(self, wfpdb_id):
@@ -1647,7 +1638,6 @@ class PlateDB:
         sql = ('SELECT plate_id FROM {} WHERE wfpdb_id=%s'
                .format(self.table_name('plate')))
         plate_id = self.db.execute_query(sql, (wfpdb_id,))
-
         return plate_id
 
     def get_scan_id(self, filename, archive_id):
@@ -1668,13 +1658,12 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT scan_id, plate_id FROM scan '
-               'WHERE filename_scan=%s AND archive_id=%s')
-        numrows = self.execute_query(sql, (filename,archive_id))
+        sql = ('SELECT scan_id, plate_id FROM {} '
+               'WHERE filename_scan=%s AND archive_id=%s'
+               .format(self.table_name('scan')))
+        result = self.db.execute_query(sql, (filename, archive_id))
 
-        if numrows == 1:
-            result = self.cursor.fetchone()
-        else:
+        if result is None:
             result = (None, None)
 
         return result
@@ -1697,16 +1686,10 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT logbook_id FROM logbook '
-               'WHERE archive_id=%s AND logbook_num=%s')
-        numrows = self.execute_query(sql, (archive_id,logbook_num))
-
-        if numrows == 1:
-            result = self.cursor.fetchone()
-            logbook_id = result[0]
-        else:
-            logbook_id = None
-
+        sql = ('SELECT logbook_id FROM {} '
+               'WHERE archive_id=%s AND logbook_num=%s'
+               .format(self.table_name('logbook')))
+        logbook_id = self.db.execute_query(sql, (archive_id, logbook_num))
         return logbook_id
 
     def get_logpage_id(self, filename, archive_id):
@@ -1727,16 +1710,11 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT logpage_id FROM logpage '
-               'WHERE filename=%s AND archive_id=%s')
-        numrows = self.execute_query(sql, (filename, archive_id))
-
-        if numrows == 1:
-            result = self.cursor.fetchone()[0]
-        else:
-            result = None
-
-        return result
+        sql = ('SELECT logpage_id FROM {} '
+               'WHERE filename=%s AND archive_id=%s'
+               .format(self.table_name('logpage')))
+        logpage_id = self.db.execute_query(sql, (filename, archive_id))
+        return logpage_id
 
     def get_plate_epoch(self, plate_id):
         """
@@ -1754,14 +1732,8 @@ class PlateDB:
 
         """
 
-        sql = ('SELECT year_start FROM exposure WHERE plate_id=%s '
-               'AND year_start IS NOT NULL ORDER BY year_start')
-        numrows = self.execute_query(sql, (plate_id,))
-
-        if numrows > 0:
-            result = self.cursor.fetchone()[0]
-        else:
-            result = None
-
+        sql = ('SELECT year_start FROM {} WHERE plate_id=%s '
+               'AND year_start IS NOT NULL ORDER BY year_start'
+               .format(self.table_name('exposure')))
+        result = self.db.execute_query(sql, (plate_id,))
         return result
-
