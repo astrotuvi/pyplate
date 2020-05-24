@@ -919,9 +919,10 @@ class PlateDB:
         """
 
         if self.db is not None:
-            self.cursor.close()
-            self.db.commit()
-            self.db.close()
+            self.db.close_connection()
+            #self.cursor.close()
+            #self.db.commit()
+            #self.db.close()
         
     def write_plate(self, platemeta):
         """
@@ -1259,7 +1260,7 @@ class PlateDB:
 
         """
 
-        col_list = ['solution_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['solution_id', 'process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
         val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
@@ -1282,7 +1283,7 @@ class PlateDB:
 
         """
 
-        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
         val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
@@ -1326,7 +1327,7 @@ class PlateDB:
 
         """
 
-        col_list = ['color_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['color_id', 'process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
         val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
@@ -1348,7 +1349,7 @@ class PlateDB:
 
         """
 
-        col_list = ['calib_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['calib_id', 'process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
         val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
 
@@ -1520,8 +1521,8 @@ class PlateDB:
 
         """
 
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id', 
-                    'filename', 'hostname', 'timestamp_start', 'use_psf', 
+        col_list = ['scan_id', 'plate_id', 'archive_id',
+                    'filename', 'hostname', 'timestamp_start', 'use_psf',
                     'pyplate_version']
 
         if use_psf:
@@ -1532,7 +1533,7 @@ class PlateDB:
         #hostname = platform.node()
         hostname = socket.gethostname()
             
-        val_tuple = (None, scan_id, plate_id, archive_id, filename, hostname, 
+        val_tuple = (scan_id, plate_id, archive_id, filename, hostname,
                      None, use_psf, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
@@ -1585,10 +1586,10 @@ class PlateDB:
 
         """
 
-        col_list = ['processlog_id', 'process_id', 'timestamp_log', 
-                    'scan_id', 'plate_id', 'archive_id', 
+        col_list = ['process_id', 'timestamp_log',
+                    'scan_id', 'plate_id', 'archive_id',
                     'level', 'event', 'message']
-        val_tuple = (None, process_id, None, scan_id, plate_id, archive_id, 
+        val_tuple = (process_id, None, scan_id, plate_id, archive_id,
                      level, event, message)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))

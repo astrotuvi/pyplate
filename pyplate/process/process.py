@@ -224,9 +224,11 @@ class Process:
         self.apass_db_table = 'apass'
 
         self.output_db_host = 'localhost'
+        self.output_db_port = None
         self.output_db_user = ''
         self.output_db_name = ''
         self.output_db_passwd = ''
+        self.output_db_schema = None
         self.write_sources_csv = False
 
         self.sextractor_path = 'sex'
@@ -409,11 +411,18 @@ class Process:
                      'apass_db_host', 'apass_db_user', 'apass_db_name', 
                      'apass_db_passwd', 'apass_db_table',
                      'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
+                     'output_db_name', 'output_db_passwd',
+                     'output_db_schema']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except configparser.Error:
                 pass
+
+        try:
+            setattr(self, 'output_db_port',
+                    conf.getint('Database', 'output_db_port'))
+        except configparser.Error:
+            pass
 
         for attr in ['use_filter', 'use_psf', 'circular_film']:
             try:
@@ -523,11 +532,12 @@ class Process:
 
         # Open database connection for logs
         if self.enable_db_log:
-            platedb = PlateDB()
+            platedb = PlateDB(schema=self.output_db_schema)
             platedb.open_connection(host=self.output_db_host,
+                                    port=self.output_db_port,
                                     user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
+                                    database=self.output_db_name,
+                                    password=self.output_db_passwd)
             self.log.platedb = platedb
             self.log.archive_id = self.archive_id
             self.log.plate_id = self.plate_id
@@ -631,11 +641,12 @@ class Process:
 
         """
 
-        platedb = PlateDB()
+        platedb = PlateDB(schema=self.output_db_schema)
         platedb.open_connection(host=self.output_db_host,
+                                port=self.output_db_port,
                                 user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
+                                database=self.output_db_name,
+                                password=self.output_db_passwd)
         self.scan_id, self.plate_id = platedb.get_scan_id(self.filename, 
                                                           self.archive_id)
         pid = platedb.write_process_start(scan_id=self.scan_id,
@@ -668,11 +679,12 @@ class Process:
         """
 
         if self.process_id is not None:
-            platedb = PlateDB()
+            platedb = PlateDB(schema=self.output_db_schema)
             platedb.open_connection(host=self.output_db_host,
+                                    port=self.output_db_port,
                                     user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
+                                    database=self.output_db_name,
+                                    password=self.output_db_passwd)
             platedb.update_process(self.process_id, **kwargs)
             platedb.close_connection()
 
@@ -688,11 +700,12 @@ class Process:
         """
 
         if self.process_id is not None:
-            platedb = PlateDB()
+            platedb = PlateDB(schema=self.output_db_schema)
             platedb.open_connection(host=self.output_db_host,
+                                    port=self.output_db_port,
                                     user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
+                                    database=self.output_db_name,
+                                    password=self.output_db_passwd)
             duration = (dt.datetime.now()-self.timestamp).seconds
             platedb.write_process_end(self.process_id, 
                                       completed=completed, 
@@ -1555,11 +1568,12 @@ class Process:
 
         self.log.write('Open database connection for writing to the '
                        'solution table')
-        platedb = PlateDB()
+        platedb = PlateDB(schema=self.output_db_schema)
         platedb.open_connection(host=self.output_db_host,
+                                port=self.output_db_port,
                                 user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
+                                database=self.output_db_name,
+                                password=self.output_db_passwd)
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
