@@ -187,7 +187,8 @@ class DB_pgsql:
                 val = self.cursor.fetchone()
 
                 if val is not None:
-                    val = val[0]
+                    if len(val) == 1:
+                        val = val[0]
 
             self.db.commit()
         except AttributeError:

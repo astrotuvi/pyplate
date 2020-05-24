@@ -1233,9 +1233,9 @@ class PlateDB:
 
         """
 
-        col_list = ['cterm_id', 'process_id', 'scan_id', 'exposure_id', 
+        col_list = ['process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
         for k,v in _schema['phot_cterm'].items():
             if v[1]:
@@ -1255,9 +1255,9 @@ class PlateDB:
 
         """
 
-        col_list = ['color_id', 'process_id', 'scan_id', 'exposure_id',
+        col_list = ['process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
         for k,v in _schema['phot_color'].items():
             if v[1]:
@@ -1277,9 +1277,9 @@ class PlateDB:
 
         """
 
-        col_list = ['calib_id', 'process_id', 'scan_id', 'exposure_id',
+        col_list = ['process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
         for k,v in _schema['phot_calib'].items():
             if v[1]:
