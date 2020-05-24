@@ -863,66 +863,14 @@ class PlateDB:
             # Implement MySQL/MariaDB connection here
             pass
 
-    def execute_query(self, *args):
-        """
-        Execute SQL query and reopen connection if connection has been lost.
-
-        """
-
-        try:
-            numrows = self.cursor.execute(*args)
-        except AttributeError:
-            numrows = None
-        except MySQLdb.OperationalError as e:
-            if e.args[0] == 2006:
-                print('MySQL server has gone away, trying to reconnect')
-
-                # Wait for 20 seconds, then open new connection and execute 
-                # query again
-                time.sleep(20)
-                self.open_connection()
-                numrows = self.cursor.execute(*args)
-            else:
-                raise
-
-        return numrows
-
-    def executemany_query(self, *args):
-        """
-        Execute SQL query with mutliple data rows and reopen connection if 
-        connection has been lost.
-
-        """
-
-        try:
-            numrows = self.cursor.executemany(*args)
-        except AttributeError:
-            numrows = None
-        except MySQLdb.OperationalError as e:
-            if e.args[0] == 2006:
-                print('MySQL server has gone away, trying to reconnect')
-
-                # Wait for 20 seconds, then open new connection and execute 
-                # query again
-                time.sleep(20)
-                self.open_connection()
-                numrows = self.cursor.executemany(*args)
-            else:
-                raise
-
-        return numrows
-
     def close_connection(self):
         """
-        Close MySQL database connection.
+        Close database connection.
 
         """
 
         if self.db is not None:
             self.db.close_connection()
-            #self.cursor.close()
-            #self.db.commit()
-            #self.db.close()
         
     def write_plate(self, platemeta):
         """
@@ -1086,13 +1034,14 @@ class PlateDB:
             if plate_id is None:
                 plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
 
-        col_list = ['scan_id', 'plate_id']
+        col_list = ['plate_id']
+        val_tuple = (plate_id,)
 
-        if (isinstance(platemeta['scan_id'], int) and 
+        # Add scan_id only if it is given in platemeta
+        if (isinstance(platemeta['scan_id'], int) and
             (platemeta['scan_id'] > 0)):
-            val_tuple = (platemeta['scan_id'], plate_id)
-        else:
-            val_tuple = (None, plate_id)
+            col_list.append('scan_id')
+            val_tuple += (platemeta['scan_id'],)
 
         for k,v in _schema['scan'].items():
             if v[1]:
@@ -1185,13 +1134,14 @@ class PlateDB:
             if plate_id is None:
                 plate_id = self.get_plate_id_wfpdb(previewmeta['wfpdb_id'])
 
-        col_list = ['preview_id', 'plate_id']
+        col_list = ['plate_id']
+        val_tuple = (plate_id,)
 
+        # Add preview_id only if it is given in previewmeta
         if (isinstance(previewmeta['preview_id'], int) and 
             (previewmeta['preview_id'] > 0)):
-            val_tuple = (previewmeta['preview_id'], plate_id)
-        else:
-            val_tuple = (None, plate_id)
+            col_list.append('preview_id')
+            val_tuple += (previewmeta['preview_id'],)
 
         for k,v in _schema['preview'].items():
             if v[1]:
@@ -1260,9 +1210,9 @@ class PlateDB:
 
         """
 
-        col_list = ['solution_id', 'process_id', 'scan_id', 'exposure_id',
+        col_list = ['process_id', 'scan_id', 'exposure_id',
                     'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
+        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
         for k,v in _schema['solution'].items():
             if v[1]:
@@ -1275,28 +1225,6 @@ class PlateDB:
                .format(self.table_name('solution'), col_str, val_str))
         solution_id = self.db.execute_query(sql, val_tuple)
         return solution_id
-
-    def write_astrom_sub(self, astrom_sub, process_id=None, scan_id=None, 
-                       plate_id=None, archive_id=None):
-        """
-        Write astrometric sub-field calibration to the database.
-
-        """
-
-        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id',
-                    'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
-
-        for k,v in _schema['astrom_sub'].items():
-            if v[1]:
-                col_list.append(k)
-                val_tuple = val_tuple + (astrom_sub[k], )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO astrom_sub ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
 
     def write_phot_cterm(self, phot_cterm, process_id=None, scan_id=None, 
                          plate_id=None, archive_id=None):
@@ -1363,28 +1291,6 @@ class PlateDB:
         sql = ('INSERT INTO {} ({}) VALUES ({})'
                .format(self.table_name('phot_calib'), col_str, val_str))
         self.db.execute_query(sql, val_tuple)
-
-    def write_phot_sub(self, phot_sub, process_id=None, scan_id=None, 
-                       plate_id=None, archive_id=None):
-        """
-        Write photometric sub-field calibration to the database.
-
-        """
-
-        col_list = ['sub_id', 'process_id', 'scan_id', 'exposure_id', 
-                    'plate_id', 'archive_id']
-        val_tuple = (None, process_id, scan_id, None, plate_id, archive_id)
-
-        for k,v in _schema['phot_sub'].items():
-            if v[1]:
-                col_list.append(k)
-                val_tuple = val_tuple + (phot_sub[k], )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO phot_sub ({}) VALUES ({})'
-               .format(col_str, val_str))
-        self.execute_query(sql, val_tuple)
 
     def write_sources(self, sources, process_id=None, scan_id=None, 
                       plate_id=None, archive_id=None, write_csv=None):

@@ -160,7 +160,7 @@ _keyword_meta = OrderedDict([
     ('pix_size1', (float, False, None, 'PIXSIZE1', None)),
     ('pix_size2', (float, False, None, 'PIXSIZE2', None)),
     ('scan_software', (str, False, None, 'SCANSOFT', None)),
-    ('scan_gamma', (str, False, None, 'SCANGAM', None)),
+    ('scan_gamma', (float, False, None, 'SCANGAM', None)),
     ('scan_focus', (str, False, None, 'SCANFOC', None)),
     ('wedge', (str, False, None, 'WEDGE', None)),
     ('datescan', (str, False, None, 'DATESCAN', None)),
