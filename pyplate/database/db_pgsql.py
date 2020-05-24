@@ -18,6 +18,7 @@ except ImportError:
 
 try:
     import psycopg2
+    from psycopg2.extensions import register_adapter, AsIs
 except ImportError:
     pass
 
@@ -68,6 +69,12 @@ class DB_pgsql:
 
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
+
+        # Register AsIs adapter for numpy data types
+        # Credit: https://github.com/musically-ut/psycopg2_numpy_ext
+        for t in [np.int8, np.int16, np.int32, np.int64,
+                  np.float32, np.float64]:
+            register_adapter(t, AsIs)
 
 ### do we need this? 
     def assign_conf(self, conf):
@@ -197,7 +204,7 @@ class DB_pgsql:
                 # query again
                 time.sleep(20)
                 self.open_connection()
-                numrows = self.cursor.execute(*args)
+                self.cursor.execute(*args)
             else:
                 raise
 
@@ -215,10 +222,13 @@ class DB_pgsql:
         """
 
         try:
-            numrows = self.cursor.executemany(*args)
+            self.cursor.executemany(*args)
+            self.db.commit()
         except AttributeError:
-            numrows = None
+            pass
         except (Exception, psycopg2.Error) as e:
+            raise
+
             if (e.args[0] == 2006):
                 print('pgsql server has gone away, trying to reconnect')
 
@@ -226,14 +236,14 @@ class DB_pgsql:
                 # query again
                 time.sleep(20)
                 self.open_connection()
-                numrows = self.cursor.executemany(*args)
+                self.cursor.executemany(*args)
             else:
                 raise
 
         """
         Not yet really tested, whether these errors are those we want to check 
         """
-        return numrows
+        return None
 
     def close_connection(self):
         """

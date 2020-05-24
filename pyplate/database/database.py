@@ -797,6 +797,21 @@ class PlateDB:
             except configparser.Error:
                 pass
 
+    def table_name(self, table):
+        """
+        Combine schema and table names
+
+        Paramaters
+        ----------
+        table : str
+            Table name
+        """
+
+        if self.schema:
+            return '{}.{}'.format(self.schema, table)
+        else:
+            return table
+
     def open_connection(self, rdbms='pgsql', host=None, port=None, user=None,
                         password=None, database=None, schema=None):
         """
@@ -955,13 +970,9 @@ class PlateDB:
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
 
-        if self.schema:
-            table_name = '{}.plate'.format(self.schema)
-
         sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING plate_id'
-               .format(table_name, col_str, val_str))
+               .format(self.table_name('plate'), col_str, val_str))
         plate_id = self.db.execute_query(sql, val_tuple)
-        #plate_id = self.db.cursor.lastrowid
         platemeta['db_plate_id'] = plate_id
 
         # The exposure table
@@ -979,13 +990,9 @@ class PlateDB:
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
 
-            if self.schema:
-                table_name = '{}.exposure'.format(self.schema)
-
             sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING exposure_id'
-                   .format(table_name, col_str, val_str))
+                   .format(self.table_name('exposure'), col_str, val_str))
             exposure_id = self.db.execute_query(sql, val_tuple)
-            #exposure_id = self.db.cursor.lastrowid
 
             # The exposure_sub table
             if len(platemeta['numsub']) > exp and platemeta['numsub'][exp] > 1:
@@ -1007,11 +1014,9 @@ class PlateDB:
                     col_str = ','.join(col_list)
                     val_str = ','.join(['%s'] * len(col_list))
 
-                    if self.schema:
-                        table_name = '{}.plate'.format(self.schema)
-
                     sql = ('INSERT INTO {} ({}) VALUES ({})'
-                           .format(table_name, col_str, val_str))
+                           .format(self.table_name('exposure_sub'), col_str,
+                                   val_str))
                     self.db.execute_query(sql, val_tuple)
 
     def write_plate_logpage(self, platemeta):
@@ -1416,8 +1421,8 @@ class PlateDB:
         source_columns = col_list
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql_source = ('INSERT INTO source ({}) VALUES ({})'
-                      .format(col_str, val_str))
+        sql_source = ('INSERT INTO {} ({}) VALUES ({})'
+                      .format(self.table_name('source'), col_str, val_str))
 
         # Prepare query for the source_calib table
         col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
@@ -1430,8 +1435,9 @@ class PlateDB:
         source_calib_columns = col_list
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql_source_calib = ('INSERT INTO source_calib ({}) VALUES ({})'
-                            .format(col_str, val_str))
+        sql_source_calib = ('INSERT INTO {} ({}) VALUES ({})'
+                            .format(self.table_name('source_calib'), col_str,
+                                    val_str))
 
         # Write header rows to CSV files
         if write_csv:
@@ -1445,9 +1451,9 @@ class PlateDB:
         for i, source in enumerate(sources):
             # Insert 1000 rows simultaneously
             if not write_csv and i > 0 and i%1000 == 0:
-                self.executemany_query(sql_source, source_data)
+                self.db.executemany_query(sql_source, source_data)
                 source_data = []
-                self.executemany_query(sql_source_calib, source_calib_data)
+                self.db.executemany_query(sql_source_calib, source_calib_data)
                 source_calib_data = []
 
             # Prepare source data
@@ -1506,8 +1512,8 @@ class PlateDB:
             source_calib_csv.close()
         else:
             # Insert remaining rows
-            self.executemany_query(sql_source, source_data)
-            self.executemany_query(sql_source_calib, source_calib_data)
+            self.db.executemany_query(sql_source, source_data)
+            self.db.executemany_query(sql_source_calib, source_calib_data)
 
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):
@@ -1616,13 +1622,8 @@ class PlateDB:
 
         """
 
-        if self.schema:
-            table_name = '{}.plate'.format(self.schema)
-        else:
-            table_name = 'plate'
-
         sql = ('SELECT plate_id FROM {} WHERE archive_id=%s AND plate_num=%s'
-               .format(table_name))
+               .format(self.table_name('plate')))
         plate_id = self.db.execute_query(sql, (archive_id, plate_num))
 
         return plate_id
@@ -1643,12 +1644,8 @@ class PlateDB:
 
         """
 
-        if self.schema:
-            table_name = '{}.plate'.format(self.schema)
-        else:
-            table_name = 'plate'
-
-        sql = 'SELECT plate_id FROM {} WHERE wfpdb_id=%s'.format(table_name)
+        sql = ('SELECT plate_id FROM {} WHERE wfpdb_id=%s'
+               .format(self.table_name('plate')))
         plate_id = self.db.execute_query(sql, (wfpdb_id,))
 
         return plate_id
