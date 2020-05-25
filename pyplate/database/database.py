@@ -3,9 +3,12 @@ import time
 import socket
 import os
 import csv
+import astropy.units as u
 from collections import OrderedDict
 from astropy.time import Time
+from astropy.io import fits
 from .db_pgsql import DB_pgsql
+from .db_yaml import fetch_ordered_tables
 from ..conf import read_conf
 from .._version import __version__
 
@@ -34,12 +37,8 @@ class csvWriter(object):
         map(self.writerow, rows)
 
 
-
 def _get_schema_old():
     return _schema 
-
-
-
 
 _schema = OrderedDict()
 
@@ -446,6 +445,7 @@ _schema['solution'] = OrderedDict([
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
+    ('solution_num',     ('INT UNSIGNED', True)),
     ('raj2000',          ('DOUBLE', True)),
     ('dej2000',          ('DOUBLE', True)),
     ('raj2000_hms',      ('CHAR(11)', True)),
@@ -464,7 +464,9 @@ _schema['solution'] = OrderedDict([
     ('scp_on_plate',     ('TINYINT(1)', True)),
     ('stc_box',          ('VARCHAR(100)', True)),
     ('stc_polygon',      ('VARCHAR(200)', True)),
-    ('wcs',              ('TEXT', True)),
+    ('header_wcs',       ('TEXT', True)),
+    ('header_anet',      ('TEXT', True)),
+    ('header_scamp',     ('TEXT', True)),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
@@ -530,10 +532,10 @@ _schema['phot_calib'] = OrderedDict([
     ('exposure_id',      ('INT UNSIGNED', False)),
     ('plate_id',         ('INT UNSIGNED NOT NULL', False)),
     ('archive_id',       ('INT UNSIGNED NOT NULL', False)),
-    ('annular_bin',      ('TINYINT', True)),
+    ('solution_num',     ('TINYINT', True)),
     ('color_term',       ('FLOAT', True)),
     ('color_term_err',   ('FLOAT', True)),
-    ('num_bin_stars',    ('INT UNSIGNED', True)),
+    ('num_candidate_stars', ('INT UNSIGNED', True)),
     ('num_calib_stars',  ('INT UNSIGNED', True)),
     ('num_bright_stars', ('INT UNSIGNED', True)),
     ('num_outliers',     ('INT UNSIGNED', True)),
@@ -765,6 +767,14 @@ class PlateDB:
         self.database = kwargs.pop('database', '')
         self.password = kwargs.pop('password', '')
         self.schema = kwargs.pop('schema', '')
+        self.schema_dict = None
+
+        if self.schema in ['applause_dr4']:
+            fn_yaml = '{}.yaml'.format(self.schema)
+            path_yaml = os.path.join(os.path.dirname(__file__), '../config',
+                                     fn_yaml)
+            self.schema_dict = fetch_ordered_tables(path_yaml, self.rdbms,
+                                                    True)
 
         self.db = None
 
@@ -811,6 +821,23 @@ class PlateDB:
             return '{}.{}'.format(self.schema, table)
         else:
             return table
+
+    def get_table_dict(self, table):
+        """
+        Combine schema and table names and get table structure from schema_dict
+
+        Paramaters
+        ----------
+        table : str
+            Table name
+        """
+
+        table_name = self.table_name('table')
+
+        if self.schema_dict and table_name in self.schema_dict:
+            return self.schema_dict[table_name]
+        else:
+            return None
 
     def open_connection(self, rdbms='pgsql', host=None, port=None, user=None,
                         password=None, database=None, schema=None):
@@ -1210,14 +1237,23 @@ class PlateDB:
 
         """
 
-        col_list = ['process_id', 'scan_id', 'exposure_id',
-                    'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
+        val_tuple = (process_id, scan_id, plate_id, archive_id)
 
         for k,v in _schema['solution'].items():
             if v[1]:
                 col_list.append(k)
-                val_tuple = val_tuple + (solution[k], )
+
+                if isinstance(solution[k], u.Quantity):
+                    value = solution[k].value
+                elif isinstance(solution[k], fits.Header):
+                    value = solution[k].tostring(sep='\\n')
+                elif isinstance(solution[k], bool):
+                    value = int(solution[k])
+                else:
+                    value = solution[k]
+
+                val_tuple = val_tuple + (value, )
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))

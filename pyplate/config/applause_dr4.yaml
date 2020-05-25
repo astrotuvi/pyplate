@@ -1446,17 +1446,17 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
-      order: 5
+      order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: archive_id
-      order: 6
+      order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: solution_num
+      order: 6
+      mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: raj2000
       order: 7
@@ -1530,16 +1530,24 @@
       order: 24
       mysql_datatype: "VARCHAR(200)"
       pgsql_datatype: "character varying(200) COLLATE ucs_basic"
-    - name: wcs
+    - name: header_wcs
       order: 25
       mysql_datatype: "TEXT"
       pgsql_datatype: "text COLLATE ucs_basic"
-    - name: timestamp_insert
+    - name: header_anet
       order: 26
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: header_scamp
+      order: 27
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: timestamp_insert
+      order: 28
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp without time zone"
     - name: timestamp_update
-      order: 27
+      order: 29
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp without time zone"
       
@@ -1751,7 +1759,7 @@
       order: 6
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: annular_bin
+    - name: solution_num
       order: 7
       mysql_datatype: "TINYINT"
       pgsql_datatype: "smallint"
@@ -1763,7 +1771,7 @@
       order: 9
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: num_bin_stars
+    - name: num_candidate_stars
       order: 10
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
