@@ -80,7 +80,7 @@ _schema['plate'] = OrderedDict([
     ('ota_foclen',       ('FLOAT', 'ota_foclen')),
     ('ota_scale',        ('FLOAT', 'ota_scale')),
     ('instrument',       ('VARCHAR(80)', 'instrument')),
-    ('method',           ('TINYINT UNSIGNED', 'method_code')),
+    ('method_code',      ('TINYINT UNSIGNED', 'method_code')),
     ('prism',            ('VARCHAR(80)', 'prism')),
     ('prism_angle',      ('VARCHAR(10)', 'prism_angle')),
     ('dispersion',       ('FLOAT', 'dispersion')),
@@ -99,7 +99,7 @@ _schema['plate'] = OrderedDict([
                           'ON UPDATE CURRENT_TIMESTAMP', None)),
     ('INDEX archive_ind', ('(archive_id)', None)),
     ('INDEX wfpdb_ind',   ('(wfpdb_id)', None)),
-    ('INDEX method_ind',  ('(method)', None))
+    ('INDEX method_ind',  ('(method_code)', None))
     ])
 
 _schema['exposure'] = OrderedDict([
@@ -108,7 +108,7 @@ _schema['exposure'] = OrderedDict([
     ('archive_id',       ('INT UNSIGNED NOT NULL', 'archive_id')),
     ('exposure_num',     ('TINYINT UNSIGNED NOT NULL', None)),
     ('object_name',      ('VARCHAR(80)', 'object_name')),
-    ('object_type',      ('CHAR(2)', 'object_type_code')),
+    ('object_type_code', ('CHAR(2)', 'object_type_code')),
     ('ra_orig',          ('CHAR(11)', 'ra_orig')),
     ('dec_orig',         ('CHAR(11)', 'dec_orig')),
     ('flag_coord',       ('CHAR(1)', 'coord_flag')),
@@ -137,7 +137,7 @@ _schema['exposure'] = OrderedDict([
     ('hjd_weighted',     ('DOUBLE', 'hjd_weighted')),
     ('exptime',          ('FLOAT', 'exptime')),
     ('num_sub',          ('TINYINT UNSIGNED', 'numsub')),
-    ('method',           ('TINYINT UNSIGNED', None)),
+    ('method_code',      ('TINYINT UNSIGNED', None)),
     ('focus',            ('FLOAT', 'focus')),
     ('timestamp_insert', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP', None)),
     ('timestamp_update', ('TIMESTAMP DEFAULT CURRENT_TIMESTAMP '
@@ -832,10 +832,10 @@ class PlateDB:
             Table name
         """
 
-        table_name = self.table_name('table')
+        table_name = self.table_name(table)
 
         if self.schema_dict and table_name in self.schema_dict:
-            return self.schema_dict[table_name]
+            return self.schema_dict[table_name].copy()
         else:
             return None
 
@@ -915,6 +915,30 @@ class PlateDB:
 
         """
 
+        # Create a dictionary of keywords that differ from database schema
+        pmeta_dict = {}
+        pmeta_dict['plate_id'] = 'db_plate_id'
+        pmeta_dict['flag_coord'] = 'coord_flag'
+        pmeta_dict['raj2000'] = 'ra_deg'
+        pmeta_dict['dej2000'] = 'dec_deg'
+        pmeta_dict['raj2000_hms'] = 'ra'
+        pmeta_dict['dej2000_dms'] = 'dec'
+        pmeta_dict['date_orig_start'] = 'date_orig'
+        pmeta_dict['date_orig_end'] = 'date_orig_end'
+        pmeta_dict['time_orig_start'] = 'tms_orig'
+        pmeta_dict['time_orig_end'] = 'tme_orig'
+        pmeta_dict['flag_time'] = 'time_flag'
+        pmeta_dict['ut_start'] = 'date_obs'
+        pmeta_dict['ut_mid'] = 'date_avg'
+        pmeta_dict['ut_weighted'] = 'date_weighted'
+        pmeta_dict['ut_end'] = 'date_end'
+        pmeta_dict['year_start'] = 'year'
+        pmeta_dict['year_mid'] = 'year_avg'
+        pmeta_dict['jd_start'] = 'jd'
+        pmeta_dict['jd_mid'] = 'jd_avg'
+        pmeta_dict['hjd_mid'] = 'hjd_avg'
+        pmeta_dict['num_sub'] = 'numsub'
+
         # The plate table
         col_list = []
         val_tuple = ()
@@ -924,24 +948,30 @@ class PlateDB:
             col_list.append('plate_id')
             val_tuple = val_tuple + (platemeta['db_plate_id'],)
 
-        for k,v in _schema['plate'].items():
-            if v[1]:
+        plate_table = self.get_table_dict('plate')
+        del plate_table['plate_id']
+
+        for k,v in plate_table.items():
+            if k in platemeta:
                 col_list.append(k)
 
+                # Take a keyword from pmeta_dict if it is there
+                kw = pmeta_dict[k] if k in pmeta_dict else k
+
                 # Validate date type and insert NULL instead of invalid value
-                if v[0] == 'DATE':
+                if v == 'DATE':
                     try:
-                        d = Time(platemeta.get_value(v[1]), scale='tai')
+                        d = Time(platemeta.get_value(kw), scale='tai')
 
                         if d >= Time('1000-01-01', scale='tai'):
                             val_tuple = (val_tuple 
-                                         + (platemeta.get_value(v[1]),))
+                                         + (platemeta.get_value(kw),))
                         else:
                             val_tuple = val_tuple + (None,)
                     except ValueError:
                         val_tuple = val_tuple + (None,)
                 else:
-                    val_tuple = val_tuple + (platemeta.get_value(v[1]),)
+                    val_tuple = val_tuple + (platemeta.get_value(kw),)
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
@@ -957,10 +987,16 @@ class PlateDB:
             col_list = ['exposure_num']
             val_tuple = (exp_num,)
 
-            for k,v in _schema['exposure'].items():
-                if v[1]:
+            exposure_table = self.get_table_dict('exposure')
+
+            for k,v in exposure_table.items():
+                if k in platemeta:
                     col_list.append(k)
-                    val = platemeta.get_value(v[1], exp=exp)
+
+                    # Take a keyword from pmeta_dict if it is there
+                    kw = pmeta_dict[k] if k in pmeta_dict else k
+
+                    val = platemeta.get_value(kw, exp=exp)
                     val_tuple = val_tuple + (val,)
 
             col_str = ','.join(col_list)
@@ -980,12 +1016,17 @@ class PlateDB:
                                  subexp_num)
 
                     expmeta = platemeta.exposures[exp]
+                    exposure_sub_table = self.get_table_dict('exposure_sub')
 
-                    for k,v in _schema['exposure_sub'].items():
-                        if v[1]:
+                    for k,v in exposure_sub_table.items():
+                        if k in expmeta:
                             col_list.append(k)
+
+                            # Take a keyword from pmeta_dict if it is there
+                            kw = pmeta_dict[k] if k in pmeta_dict else k
+
                             val_tuple = val_tuple \
-                                    + (expmeta.get_value(v[1], exp=subexp), )
+                                    + (expmeta.get_value(kw, exp=subexp), )
 
                     col_str = ','.join(col_list)
                     val_str = ','.join(['%s'] * len(col_list))
@@ -1051,6 +1092,21 @@ class PlateDB:
 
         """
 
+        # Create a dictionary of keywords that differ from database schema
+        pmeta_dict = {}
+        pmeta_dict['plate_id'] = 'db_plate_id'
+        pmeta_dict['filename_scan'] = 'filename'
+        pmeta_dict['filename_wedge'] = 'fn_wedge'
+        pmeta_dict['naxis1'] = 'fits_naxis1'
+        pmeta_dict['naxis2'] = 'fits_naxis2'
+        pmeta_dict['minval'] = 'fits_minval'
+        pmeta_dict['maxval'] = 'fits_maxval'
+        pmeta_dict['pixel_size1'] = 'pix_size1'
+        pmeta_dict['pixel_size2'] = 'pix_size2'
+        pmeta_dict['scan_date'] = 'datescan'
+        pmeta_dict['file_datetime'] = 'fits_datetime'
+        pmeta_dict['file_size'] = 'fits_size'
+
         if (isinstance(platemeta['db_plate_id'], int) and 
             (platemeta['db_plate_id'] > 0)):
             plate_id = platemeta['db_plate_id']
@@ -1070,11 +1126,20 @@ class PlateDB:
             col_list.append('scan_id')
             val_tuple += (platemeta['scan_id'],)
 
-        for k,v in _schema['scan'].items():
-            if v[1]:
+        # Get scan table columns from database schema
+        scan_table = self.get_table_dict('scan')
+        del scan_table['plate_id']
+        del scan_table['scan_id']
+
+        for k,v in scan_table.items():
+            if k in platemeta:
                 col_list.append(k)
+
+                # Take a keyword from pmeta_dict if it is there
+                kw = pmeta_dict[k] if k in pmeta_dict else k
+
                 val_tuple = val_tuple \
-                        + (platemeta.get_value(v[1]), )
+                        + (platemeta.get_value(kw), )
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
@@ -1098,6 +1163,21 @@ class PlateDB:
 
         """
 
+        # Create a dictionary of keywords that differ from database schema
+        pmeta_dict = {}
+        pmeta_dict['plate_id'] = 'db_plate_id'
+        pmeta_dict['filename_scan'] = 'filename'
+        pmeta_dict['filename_wedge'] = 'fn_wedge'
+        pmeta_dict['naxis1'] = 'fits_naxis1'
+        pmeta_dict['naxis2'] = 'fits_naxis2'
+        pmeta_dict['minval'] = 'fits_minval'
+        pmeta_dict['maxval'] = 'fits_maxval'
+        pmeta_dict['pixel_size1'] = 'pix_size1'
+        pmeta_dict['pixel_size2'] = 'pix_size2'
+        pmeta_dict['scan_date'] = 'datescan'
+        pmeta_dict['file_datetime'] = 'fits_datetime'
+        pmeta_dict['file_size'] = 'fits_size'
+
         if (isinstance(platemeta['scan_id'], int) and 
             (platemeta['scan_id'] > 0)):
             scan_id = platemeta['scan_id']
@@ -1115,7 +1195,11 @@ class PlateDB:
         col_list = []
         val_tuple = ()
 
-        columns = [k for k,v in _schema['scan'].items() if v[1]]
+        # Get scan table columns from database schema
+        scan_table = self.get_table_dict('scan')
+        del scan_table['scan_id']
+
+        columns = [k for k in scan_table.keys() if k in platemeta]
 
         # Update only specific columns
         if filecols:
@@ -1125,7 +1209,7 @@ class PlateDB:
         for c in columns:
             c_str = '{}=%s'.format(c)
             col_list.append(c_str)
-            platemeta_key = _schema['scan'][c][1]
+            platemeta_key = pmeta_dict[c] if c in pmeta_dict else c
             val_tuple = val_tuple + (platemeta.get_value(platemeta_key), )
 
         col_str = ','.join(col_list)

@@ -149,7 +149,7 @@
       order: 28
       mysql_datatype: "VARCHAR(80)"
       pgsql_datatype: "character varying(80) COLLATE ucs_basic"
-    - name: method
+    - name: method_code
       order: 29
       mysql_datatype: "TINYINT UNSIGNED"
       pgsql_datatype: "smallint"
@@ -224,7 +224,7 @@
     - name: index_2
       val: "CREATE INDEX wfpdb_ind ON plate (wfpdb_id)"
     - name: index_3
-      val: "CREATE INDEX method_ind ON plate (method)"
+      val: "CREATE INDEX method_ind ON plate (method_code)"
 
   - name: exposure
     order: 3
@@ -250,7 +250,7 @@
       order: 5
       mysql_datatype: "VARCHAR(80)"
       pgsql_datatype: "character varying(80) COLLATE ucs_basic"
-    - name: object_type
+    - name: object_type_code
       order: 6
       mysql_datatype: "CHAR(2)"
       pgsql_datatype: "character(2) COLLATE ucs_basic"
@@ -366,7 +366,7 @@
       order: 34
       mysql_datatype: "TINYINT UNSIGNED"
       pgsql_datatype: "smallint"
-    - name: method
+    - name: method_code
       order: 35
       mysql_datatype: "TINYINT UNSIGNED"
       pgsql_datatype: "smallint"
