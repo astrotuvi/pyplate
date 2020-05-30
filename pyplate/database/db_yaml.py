@@ -49,7 +49,7 @@ def __get_yamlschema(filename):
     """
 
     f = open(filename)
-    local_schema = yaml.load(f.read())
+    local_schema = yaml.load(f.read(), Loader=yaml.FullLoader)
     f.close()
 
     lsc = local_schema[0]
