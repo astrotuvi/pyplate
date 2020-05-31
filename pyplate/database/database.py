@@ -768,13 +768,15 @@ class PlateDB:
         self.password = kwargs.pop('password', '')
         self.schema = kwargs.pop('schema', '')
         self.schema_dict = None
+        self.trigger_dict = None
 
         if self.schema in ['applause_dr4']:
             fn_yaml = '{}.yaml'.format(self.schema)
             path_yaml = os.path.join(os.path.dirname(__file__), '../config',
                                      fn_yaml)
-            self.schema_dict = fetch_ordered_tables(path_yaml, self.rdbms,
-                                                    True)
+            d1, d2 = fetch_ordered_tables(path_yaml, self.rdbms, True)
+            self.schema_dict = d1
+            self.trigger_dict = d2
 
         self.db = None
 

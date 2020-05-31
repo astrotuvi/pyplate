@@ -16,8 +16,10 @@ def fetch_ordered_tables(scmfile,rdbms,sig):
     """
 
     yscm = __get_yamlschema(scmfile)
-    odict = __get_tablesdict(yscm,rdbms,sig)
-    return odict
+    tablesdict = __get_tablesdict(yscm, rdbms, sig)
+    triggersdict = __get_triggersdict(yscm, rdbms, sig)
+
+    return tablesdict, triggersdict
 
 def fetch_ordered_indexes(scmfile,rdbms,sig):
     """
@@ -109,8 +111,12 @@ def __get_indexdict(lsc, rdbms, t_prefix):
         for tbl in lsx:
             tbs = tbl['name']
             tbn = scnam + '.' + tbs
-            if(tbl['indexes'] is None): break
+
+            if tbl['indexes'] is None:
+                break
+
             xdict =OrderedDict()
+
             for clm in tbl['indexes']:
                 try:
                     kn = clm['name']
@@ -150,14 +156,23 @@ def __get_tablesdict(lsc,rdbms,sig):
     scnam = lsc['name']
 
     odic['schema'] = scnam
+
+    if 'functions' in lsc:
+        if rdbms in lsc['functions']:
+            odic['functions'] = lsc['functions'][rdbms]
+
     if(lsx):
         for tbl in lsx:
             tbn = tbl['name']
-            if(sig):
+
+            if sig:
                 tbn = scnam + '.' + tbl['name']
 
-            if(tbl['columns'] is None): break
-            xdict =OrderedDict()
+            if tbl['columns'] is None:
+                break
+
+            xdict = OrderedDict()
+
             for clm in tbl['columns']:
                 try:
                     kn = clm['name']
@@ -168,10 +183,51 @@ def __get_tablesdict(lsc,rdbms,sig):
                     print('   no clm data %s' % e)
 
             odic[tbn] = xdict
-    return(odic)
 
+    return odic
 
-def _get_columns_sql(tdict,table):
+def __get_triggersdict(lsc, rdbms, sig):
+    """
+    Convert YAML to TriggersDict (Helper function)
+
+    Parameters
+    ----------
+    lsc: yaml structure
+        yaml
+    rdbms: str
+        values: pgsql, mysql
+    sig: bool
+
+    """
+
+    odic = OrderedDict()
+    lsx = lsc['tables']
+    scnam = lsc['name']
+
+    odic['schema'] = scnam
+
+    if(lsx):
+        for tbl in lsx:
+            tbn = tbl['name']
+
+            if sig:
+                tbn = scnam + '.' + tbl['name']
+
+            if 'triggers' in tbl:
+                if rdbms in tbl['triggers']:
+                    trlist = []
+
+                    for trdict in tbl['triggers'][rdbms]:
+                        trstr = ('CREATE TRIGGER {} BEFORE UPDATE ON {} '
+                                 'FOR EACH ROW EXECUTE PROCEDURE {};')
+                        trlist.append(trstr.format(trdict['name'], tbn,
+                                                   trdict['function']))
+
+                    odic[tbn] = '\n'.join(trlist)
+
+    return odic
+
+def _get_columns_sql(tdict, table):
     """
     Print table column statements.
 
@@ -183,6 +239,19 @@ def _get_columns_sql(tdict,table):
         sql_list = ['    {:15s} {}'.format(k, v) 
                     for k,v in tdict[table].items()]
         sql = ',\n'.join(sql_list)
+
+    return sql
+
+def _get_triggers_sql(tdict, table):
+    """
+    Print table triggers statements.
+
+    """
+
+    sql = ''
+
+    if table in tdict:
+        sql = '{}\n'.format(tdict[table])
 
     return sql
 
@@ -204,32 +273,35 @@ def creat_schema_mysql(tdict, pdict, engine='Aria'):
                 for k in tdict.keys()]
     sql = '\n'.join(sql_list)
 
-
     pdict['create_schema'] = sql_schema + '\n\n' + sql  
     pdict['drop_schema'] = sql_drop +'\n\n' + sql_drop_schema
 
-
-
-def creat_schema_pgsql(tdict, pdict):
+def creat_schema_pgsql(tdict, triggersdict, pdict):
     """
     Print table creation SQL queries to standard output.
 
     """
 
     scm_name = tdict.pop('schema')
-    sql_schema = ('CREATE schema %s' % scm_name)
+    sql_schema = 'CREATE schema {};'.format(scm_name)
 
-    sql_drop_schema = ('DROP schema %s CASCADE;' % scm_name)
+    if 'functions' in tdict:
+        funcs = tdict.pop('functions')
+        sql_schema = '{}\n\n{}'.format(sql_schema, funcs)
+
+    sql_drop_schema = 'DROP schema {} CASCADE;'.format(scm_name)
     sql_drop = '\n'.join(['DROP TABLE IF EXISTS {};'.format(k) 
                           for k in tdict.keys()])
 
-    sql_list = ['CREATE TABLE {} (\n{}\n);\n'
-                .format(k, _get_columns_sql(tdict,k))
+    sql_list = ['CREATE TABLE {} (\n{}\n);\n{}'
+                .format(k, _get_columns_sql(tdict, k),
+                        _get_triggers_sql(triggersdict, k))
                 for k in tdict.keys()]
+
     sql = '\n'.join(sql_list)
 
-    pdict['create_schema'] =  sql_schema + ';\n\n' + sql  
-    pdict['drop_schema'] = sql_drop + '\n\n' + sql_drop_schema + '\n\n'
+    pdict['create_schema'] =  '{}\n\n{}\n'.format(sql_schema, sql)
+    pdict['drop_schema'] = '{}\n\n{}\n'.format(sql_drop, sql_drop_schema)
     tdict['schema'] = scm_name  
 
 def creat_schema_index(tdict, pdict):
@@ -241,7 +313,6 @@ def creat_schema_index(tdict, pdict):
     sql = None
     sql_drop = ''
     sql_create = ''
-        
 
     for table in tdict:
         sql_list = ['{};'.format(v) 

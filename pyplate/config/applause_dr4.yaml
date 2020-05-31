@@ -1,4 +1,15 @@
 - name: applause_dr4
+
+  functions:
+      pgsql: |-
+          CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+          RETURNS TRIGGER AS $$
+          BEGIN
+          NEW.timestamp_update = NOW();
+          RETURN NEW;
+          END;
+          $$ LANGUAGE plpgsql;
+
   tables:
 
   - name: archive
@@ -208,11 +219,11 @@
     - name: timestamp_insert
       order: 43
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 44
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
     indexes:
     - name: mysql_pk
@@ -377,11 +388,11 @@
     - name: timestamp_insert
       order: 37
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 38
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
     indexes:
     - name: mysql_pk
@@ -464,11 +475,11 @@
     - name: timestamp_insert
       order: 16
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 17
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
     indexes:
 
@@ -592,12 +603,17 @@
     - name: timestamp_insert
       order: 27
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 28
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
-  
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
     indexes:
 
     - name: mysql_pk
