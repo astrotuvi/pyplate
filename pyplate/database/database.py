@@ -954,11 +954,11 @@ class PlateDB:
         del plate_table['plate_id']
 
         for k,v in plate_table.items():
-            if k in platemeta:
-                col_list.append(k)
+            # Take a keyword from pmeta_dict if it is there
+            kw = pmeta_dict[k] if k in pmeta_dict else k
 
-                # Take a keyword from pmeta_dict if it is there
-                kw = pmeta_dict[k] if k in pmeta_dict else k
+            if kw in platemeta:
+                col_list.append(k)
 
                 # Validate date type and insert NULL instead of invalid value
                 if v == 'DATE':
@@ -966,14 +966,13 @@ class PlateDB:
                         d = Time(platemeta.get_value(kw), scale='tai')
 
                         if d >= Time('1000-01-01', scale='tai'):
-                            val_tuple = (val_tuple 
-                                         + (platemeta.get_value(kw),))
+                            val_tuple += (platemeta.get_value(kw),)
                         else:
-                            val_tuple = val_tuple + (None,)
+                            val_tuple += (None,)
                     except ValueError:
-                        val_tuple = val_tuple + (None,)
+                        val_tuple += (None,)
                 else:
-                    val_tuple = val_tuple + (platemeta.get_value(kw),)
+                    val_tuple += (platemeta.get_value(kw),)
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
@@ -992,14 +991,12 @@ class PlateDB:
             exposure_table = self.get_table_dict('exposure')
 
             for k,v in exposure_table.items():
-                if k in platemeta:
+                # Take a keyword from pmeta_dict if it is there
+                kw = pmeta_dict[k] if k in pmeta_dict else k
+
+                if kw in platemeta:
                     col_list.append(k)
-
-                    # Take a keyword from pmeta_dict if it is there
-                    kw = pmeta_dict[k] if k in pmeta_dict else k
-
-                    val = platemeta.get_value(kw, exp=exp)
-                    val_tuple = val_tuple + (val,)
+                    val_tuple += (platemeta.get_value(kw, exp=exp),)
 
             col_str = ','.join(col_list)
             val_str = ','.join(['%s'] * len(col_list))
@@ -1021,14 +1018,12 @@ class PlateDB:
                     exposure_sub_table = self.get_table_dict('exposure_sub')
 
                     for k,v in exposure_sub_table.items():
-                        if k in expmeta:
+                        # Take a keyword from pmeta_dict if it is there
+                        kw = pmeta_dict[k] if k in pmeta_dict else k
+
+                        if kw in expmeta:
                             col_list.append(k)
-
-                            # Take a keyword from pmeta_dict if it is there
-                            kw = pmeta_dict[k] if k in pmeta_dict else k
-
-                            val_tuple = val_tuple \
-                                    + (expmeta.get_value(kw, exp=subexp), )
+                            val_tuple += (expmeta.get_value(kw, exp=subexp),)
 
                     col_str = ','.join(col_list)
                     val_str = ','.join(['%s'] * len(col_list))
@@ -1134,11 +1129,11 @@ class PlateDB:
         del scan_table['scan_id']
 
         for k,v in scan_table.items():
-            if k in platemeta:
-                col_list.append(k)
+            # Take a keyword from pmeta_dict if it is there
+            kw = pmeta_dict[k] if k in pmeta_dict else k
 
-                # Take a keyword from pmeta_dict if it is there
-                kw = pmeta_dict[k] if k in pmeta_dict else k
+            if kw in platemeta:
+                col_list.append(k)
 
                 val_tuple = val_tuple \
                         + (platemeta.get_value(kw), )
@@ -1201,7 +1196,7 @@ class PlateDB:
         scan_table = self.get_table_dict('scan')
         del scan_table['scan_id']
 
-        columns = [k for k in scan_table.keys() if k in platemeta]
+        columns = [k for k in scan_table.keys()]
 
         # Update only specific columns
         if filecols:
@@ -1209,13 +1204,15 @@ class PlateDB:
                        'fits_datasum']
 
         for c in columns:
-            c_str = '{}=%s'.format(c)
-            col_list.append(c_str)
             platemeta_key = pmeta_dict[c] if c in pmeta_dict else c
-            val_tuple = val_tuple + (platemeta.get_value(platemeta_key), )
+
+            if platemeta_key in platemeta:
+                c_str = '{}=%s'.format(c)
+                col_list.append(c_str)
+                val_tuple += (platemeta.get_value(platemeta_key),)
 
         col_str = ','.join(col_list)
-        val_tuple = val_tuple + (scan_id, )
+        val_tuple += (scan_id,)
 
         sql = ('UPDATE {} SET {} WHERE scan_id=%s'
                .format(self.table_name('scan'), col_str))
@@ -1549,9 +1546,8 @@ class PlateDB:
 
         """
 
-        col_list = ['scan_id', 'plate_id', 'archive_id',
-                    'filename', 'hostname', 'timestamp_start', 'use_psf',
-                    'pyplate_version']
+        col_list = ['scan_id', 'plate_id', 'archive_id', 'filename',
+                    'hostname', 'use_psf', 'pyplate_version']
 
         if use_psf:
             use_psf = 1
@@ -1562,7 +1558,7 @@ class PlateDB:
         hostname = socket.gethostname()
             
         val_tuple = (scan_id, plate_id, archive_id, filename, hostname,
-                     None, use_psf, __version__)
+                     use_psf, __version__)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING process_id'
@@ -1614,10 +1610,9 @@ class PlateDB:
 
         """
 
-        col_list = ['process_id', 'timestamp_log',
-                    'scan_id', 'plate_id', 'archive_id',
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id',
                     'level', 'event', 'message']
-        val_tuple = (process_id, None, scan_id, plate_id, archive_id,
+        val_tuple = (process_id, scan_id, plate_id, archive_id,
                      level, event, message)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
