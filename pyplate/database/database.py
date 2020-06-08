@@ -769,19 +769,12 @@ class PlateDB:
         self.schema = kwargs.pop('schema', '')
         self.schema_dict = None
         self.trigger_dict = None
-
-        if self.schema in ['applause_dr4']:
-            fn_yaml = '{}.yaml'.format(self.schema)
-            path_yaml = os.path.join(os.path.dirname(__file__), '../config',
-                                     fn_yaml)
-            d1, d2 = fetch_ordered_tables(path_yaml, self.rdbms, True)
-            self.schema_dict = d1
-            self.trigger_dict = d2
-
         self.db = None
-
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
+
+        # Read database schema
+        self.read_schema()
 
     def assign_conf(self, conf):
         """
@@ -801,13 +794,43 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-        for attr in zip(['host', 'user', 'dbname', 'passwd'],
+        for attr in zip(['host', 'user', 'database', 'password', 'schema'],
                         ['output_db_host', 'output_db_user',
-                         'output_db_name', 'output_db_passwd']):
+                         'output_db_name', 'output_db_passwd',
+                         'output_db_schema']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
             except configparser.Error:
                 pass
+
+        for attr in [('port', 'output_db_port')]:
+            try:
+                setattr(self, attr[0], conf.getint('Database', attr[1]))
+            except configparser.Error:
+                pass
+
+        # Read database schema
+        self.read_schema()
+
+    def read_schema(self, schema=None):
+        """Read schema from schema YAML file.
+
+        Parameters
+        ----------
+        schema : str
+            Database schema
+        """
+
+        if schema is None:
+            schema = self.schema
+
+        if schema in ['applause_dr4']:
+            fn_yaml = '{}.yaml'.format(self.schema)
+            path_yaml = os.path.join(os.path.dirname(__file__), '../config',
+                                     fn_yaml)
+            d1, d2 = fetch_ordered_tables(path_yaml, self.rdbms, True)
+            self.schema_dict = d1
+            self.trigger_dict = d2
 
     def table_name(self, table):
         """
@@ -990,7 +1013,7 @@ class PlateDB:
 
             exposure_table = self.get_table_dict('exposure')
 
-            for k,v in exposure_table.items():
+            for k in exposure_table.keys():
                 # Take a keyword from pmeta_dict if it is there
                 kw = pmeta_dict[k] if k in pmeta_dict else k
 
@@ -1016,8 +1039,9 @@ class PlateDB:
 
                     expmeta = platemeta.exposures[exp]
                     exposure_sub_table = self.get_table_dict('exposure_sub')
+                    del exposure_sub_table['plate_id']
 
-                    for k,v in exposure_sub_table.items():
+                    for k in exposure_sub_table.keys():
                         # Take a keyword from pmeta_dict if it is there
                         kw = pmeta_dict[k] if k in pmeta_dict else k
 
@@ -1253,8 +1277,13 @@ class PlateDB:
             col_list.append('preview_id')
             val_tuple += (previewmeta['preview_id'],)
 
-        for k,v in _schema['preview'].items():
-            if v[1]:
+        # Get preview table columns from database schema
+        preview_table = self.get_table_dict('preview')
+        del preview_table['plate_id']
+        del preview_table['preview_id']
+
+        for k in preview_table.keys():
+            if k in previewmeta:
                 col_list.append(k)
                 val_tuple = val_tuple + (previewmeta[k], )
 
@@ -1275,8 +1304,12 @@ class PlateDB:
         col_list = []
         val_tuple = ()
 
-        for k,v in _schema['logbook'].items():
-            if v[1]:
+        # Get logbook table columns from database schema
+        logbook_table = self.get_table_dict('logbook')
+        del logbook_table['logbook_id']
+
+        for k in logbook_table.keys():
+            if k in logbookmeta:
                 col_list.append(k)
                 val_tuple = val_tuple + (logbookmeta[k], )
 
@@ -1301,8 +1334,12 @@ class PlateDB:
         col_list = []
         val_tuple = ()
 
-        for k,v in _schema['logpage'].items():
-            if v[1]:
+        # Get logpage table columns from database schema
+        logpage_table = self.get_table_dict('logpage')
+        del logpage_table['logpage_id']
+
+        for k in logpage_table.keys():
+            if k in logpagemeta:
                 col_list.append(k)
                 val_tuple = val_tuple + (logpagemeta[k], )
 
