@@ -2240,6 +2240,10 @@ class Plate(OrderedDict):
                             if tme_orig.count(':') == 1:
                                 tme_orig += ':00'
 
+                            # Handle time notation with ending colon
+                            if tme_orig.endswith(':'):
+                                tme_orig = tme_orig[:-1]
+
                             tsec = pytimeparse.parse(tme_orig)
 
                             if evening_date and tsec < 43200:
@@ -2260,6 +2264,10 @@ class Plate(OrderedDict):
                         if tms_orig:
                             if tms_orig.count(':') == 1:
                                 tms_orig += ':00'
+
+                            # Handle time notation with ending colon
+                            if tms_orig.endswith(':'):
+                                tms_orig = tms_orig[:-1]
 
                             tsec = pytimeparse.parse(tms_orig)
                             
