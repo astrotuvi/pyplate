@@ -1360,8 +1360,11 @@ class PlateDB:
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
         val_tuple = (process_id, scan_id, plate_id, archive_id)
 
-        for k,v in _schema['solution'].items():
-            if v[1]:
+        # Get solution table columns from database schema
+        solution_table = self.get_table_dict('solution')
+
+        for k in solution_table.keys():
+            if k in solution:
                 col_list.append(k)
 
                 if isinstance(solution[k], u.Quantity):
@@ -1393,8 +1396,11 @@ class PlateDB:
                     'plate_id', 'archive_id']
         val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
-        for k,v in _schema['phot_cterm'].items():
-            if v[1]:
+        # Get phot_cterm table columns from database schema
+        phot_cterm_table = self.get_table_dict('phot_cterm')
+
+        for k in phot_cterm_table.keys():
+            if k in phot_cterm:
                 col_list.append(k)
                 val_tuple = val_tuple + (phot_cterm[k], )
 
@@ -1415,8 +1421,11 @@ class PlateDB:
                     'plate_id', 'archive_id']
         val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
-        for k,v in _schema['phot_color'].items():
-            if v[1]:
+        # Get phot_cterm table columns from database schema
+        phot_color_table = self.get_table_dict('phot_color')
+
+        for k in phot_color_table.keys():
+            if k in phot_color:
                 col_list.append(k)
                 val_tuple = val_tuple + (phot_color[k], )
 
@@ -1437,8 +1446,11 @@ class PlateDB:
                     'plate_id', 'archive_id']
         val_tuple = (process_id, scan_id, None, plate_id, archive_id)
 
-        for k,v in _schema['phot_calib'].items():
-            if v[1]:
+        # Get phot_calib table columns from database schema
+        phot_calib_table = self.get_table_dict('phot_calib')
+
+        for k in phot_calib_table.keys():
+            if k in phot_calib:
                 col_list.append(k)
                 val_tuple = val_tuple + (phot_calib[k], )
 
