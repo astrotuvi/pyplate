@@ -1485,10 +1485,14 @@ class PlateDB:
                                             quoting=csv.QUOTE_MINIMAL)
 
         # Prepare query for the source table
-        col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
-                    'plate_id', 'archive_id']
-        for k,v in _schema['source'].items():
-            if v[1]:
+        col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
+                    'archive_id']
+
+        # Get source table columns from database schema
+        source_table = self.get_table_dict('source')
+
+        for k in source_table.keys():
+            if k in sources.columns:
                 col_list.append(k)
 
         source_columns = col_list
@@ -1498,11 +1502,14 @@ class PlateDB:
                       .format(self.table_name('source'), col_str, val_str))
 
         # Prepare query for the source_calib table
-        col_list = ['source_id', 'process_id', 'scan_id', 'exposure_id', 
-                    'plate_id', 'archive_id']
+        col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
+                    'archive_id']
 
-        for k,v in _schema['source_calib'].items():
-            if v[1]:
+        # Get source table columns from database schema
+        source_calib_table = self.get_table_dict('source_calib')
+
+        for k in source_calib_table.keys():
+            if k in sources.columns:
                 col_list.append(k)
 
         source_calib_columns = col_list
@@ -1531,11 +1538,10 @@ class PlateDB:
 
             # Prepare source data
             source_id = process_id * 10000000 + i + 1
-            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
-                         archive_id)
+            val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
 
-            for k,v in _schema['source'].items():
-                if v[1]:
+            for k in source_columns:
+                if k in sources.columns:
                     source_val = (source[k] if np.isfinite(source[k]) 
                                   else None)
                     val_tuple = val_tuple + (source_val, )
@@ -1546,11 +1552,10 @@ class PlateDB:
                 source_data.append(val_tuple)
 
             # Prepare source_calib data
-            val_tuple = (source_id, process_id, scan_id, None, plate_id, 
-                         archive_id)
+            val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
 
-            for k,v in _schema['source_calib'].items():
-                if v[1]:
+            for k in source_calib_columns:
+                if k in sources.columns:
                     try:
                         source_val = (source[k] if np.isfinite(source[k])
                                       else None)
