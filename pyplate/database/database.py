@@ -1629,10 +1629,13 @@ class PlateDB:
         col_list = []
         val_tuple = ()
 
+        # Get process table columns from database schema
+        process_table = self.get_table_dict('process')
+
         for k in kwargs:
             # Check if the keyword matches a column name in the process table
             # and if the keyword is not None
-            if k in _schema['process'] and kwargs[k] is not None:
+            if k in process_table and kwargs[k] is not None:
                 col_list.append('{}=%s'.format(k))
                 val_tuple = val_tuple + (kwargs[k], )
 
