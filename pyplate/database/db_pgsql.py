@@ -9,7 +9,8 @@ from astropy.time import Time
 from ..config.local import ROOTDIR, SCHEMAFILE, RDBMS, FQTN
 from ..config.conf import read_conf
 #from ..config._version import __version__
-from .db_yaml import fetch_ordered_tables, fetch_ordered_indexes
+from .db_yaml import (fetch_ordered_tables, fetch_ordered_indexes,
+                      creat_schema_pgsql, creat_schema_index)
 
 try:
     import configparser
@@ -64,6 +65,10 @@ class DB_pgsql:
         self.database = ''
         self.schema = ''
 
+        self.schema_dict = None
+        self.trigger_dict = None
+        self.index_dict = None
+
         self.db = None
         self.cursor = None
 
@@ -95,13 +100,60 @@ class DB_pgsql:
             except configparser.Error:
                 pass
 
-        for attr in zip(['host', 'port', 'user', 'database', 'password'],
+        for attr in zip(['host', 'port', 'user', 'database', 'password',
+                         'schema'],
                         ['output_db_host', 'output_db_port', 'output_db_user',
-                         'output_db_name', 'output_db_passwd']):
+                         'output_db_name', 'output_db_passwd',
+                         'output_db_schema']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
             except configparser.Error:
                 pass
+
+    def read_schema(self, schema=None):
+        """Read schema from schema YAML file.
+
+        Parameters
+        ----------
+        schema : str
+            Database schema
+        """
+
+        if schema is None:
+            schema = self.schema
+
+        if schema in ['applause_dr4']:
+            fn_yaml = '{}.yaml'.format(self.schema)
+            path_yaml = os.path.join(os.path.dirname(__file__), '../config',
+                                     fn_yaml)
+            d1, d2 = fetch_ordered_tables(path_yaml, 'pgsql', True)
+            self.schema_dict = d1
+            self.trigger_dict = d2
+            self.index_dict = fetch_ordered_indexes(path_yaml, 'pgsql', True)
+
+    def get_schema_sql(self, schema=None, mode='create_schema'):
+        """
+        Return schema creation or drop SQL statements.
+
+        Parameters
+        ----------
+        schema : str
+            Database schema
+        mode : str
+            Controls which statements to return ('create_schema',
+            'drop_schema', 'create_indexes', 'drop_indexes')
+        """
+
+        self.read_schema(schema=schema)
+
+        pdict = OrderedDict()
+        creat_schema_pgsql(self.schema_dict, self.trigger_dict, pdict)
+        creat_schema_index(self.index_dict, pdict)
+
+        if mode in pdict:
+            return pdict[mode]
+        else:
+            return ''
 
     def open_connection(self, host=None, port=None, user=None, password=None, database=None):
         """

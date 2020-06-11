@@ -908,6 +908,7 @@ class PlateDB:
 
         if rdbms == 'pgsql':
             self.db = DB_pgsql()
+            self.db.assign_conf(self.conf)
             self.db.open_connection(host=host, port=port,
                                     user=user, password=password,
                                     database=database)
@@ -923,7 +924,21 @@ class PlateDB:
 
         if self.db is not None:
             self.db.close_connection()
-        
+
+    def create_schema(self):
+        """Create database schema"""
+
+        if self.db is not None:
+            sql = self.db.get_schema_sql(mode='create_schema')
+            self.db.execute_query(sql)
+
+    def drop_schema(self):
+        """Drop database schema"""
+
+        if self.db is not None:
+            sql = self.db.get_schema_sql(mode='drop_schema')
+            self.db.execute_query(sql)
+
     def write_plate(self, platemeta):
         """
         Write plate entry to the database.

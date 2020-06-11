@@ -235,7 +235,7 @@ def _get_columns_sql(tdict, table):
 
     sql = None
 
-    if table in tdict:
+    if table in tdict and isinstance(tdict[table], dict):
         sql_list = ['    {:15s} {}'.format(k, v) 
                     for k,v in tdict[table].items()]
         sql = ',\n'.join(sql_list)
@@ -255,14 +255,20 @@ def _get_triggers_sql(tdict, table):
 
     return sql
 
-def creat_schema_mysql(tdict, pdict, engine='Aria'):
+def creat_schema_mysql(tablesdict, pdict, engine='Aria'):
     """
     Print table creation SQL queries to standard output.
 
     """
+
+    tdict = tablesdict.copy()
+
     scm_name = tdict.pop('schema')
     sql_schema = ('--- CREATE DATABASE %s;' % scm_name)
     sql_drop_schema = ('--- DROP DATABASE %s CASCADE;' % scm_name)
+
+    if 'functions' in tdict:
+        del tdict['functions']
 
     sql_drop = '\n'.join(['DROP TABLE IF EXISTS {};'.format(k) 
                           for k in tdict.keys()])
@@ -276,11 +282,13 @@ def creat_schema_mysql(tdict, pdict, engine='Aria'):
     pdict['create_schema'] = sql_schema + '\n\n' + sql  
     pdict['drop_schema'] = sql_drop +'\n\n' + sql_drop_schema
 
-def creat_schema_pgsql(tdict, triggersdict, pdict):
+def creat_schema_pgsql(tablesdict, triggersdict, pdict):
     """
     Print table creation SQL queries to standard output.
 
     """
+
+    tdict = tablesdict.copy()
 
     scm_name = tdict.pop('schema')
     sql_schema = 'CREATE schema {};'.format(scm_name)
@@ -330,4 +338,4 @@ def creat_schema_index(tdict, pdict):
         sql_drop = sql_drop + '\n'
 
     pdict['create_indexes'] =  sql_create 
-    pdict['drop_indexes'] = sql_drop 
+    pdict['drop_indexes'] = sql_drop
