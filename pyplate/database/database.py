@@ -69,6 +69,7 @@ class PlateDB:
         self.schema_dict = None
         self.trigger_dict = None
         self.db = None
+        self.conf = None
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
 

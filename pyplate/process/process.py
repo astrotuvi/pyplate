@@ -190,6 +190,7 @@ class Process:
         self.process_id = None
         self.scan_id = None
         self.plate_id = None
+        self.conf = None
 
         self.fits_dir = ''
         self.index_dir = ''
@@ -533,6 +534,7 @@ class Process:
         # Open database connection for logs
         if self.enable_db_log:
             platedb = PlateDB(schema=self.output_db_schema)
+            platedb.assign_conf(self.conf)
             platedb.open_connection(host=self.output_db_host,
                                     port=self.output_db_port,
                                     user=self.output_db_user,
@@ -642,6 +644,7 @@ class Process:
         """
 
         platedb = PlateDB(schema=self.output_db_schema)
+        platedb.assign_conf(self.conf)
         platedb.open_connection(host=self.output_db_host,
                                 port=self.output_db_port,
                                 user=self.output_db_user,
@@ -680,6 +683,7 @@ class Process:
 
         if self.process_id is not None:
             platedb = PlateDB(schema=self.output_db_schema)
+            platedb.assign_conf(self.conf)
             platedb.open_connection(host=self.output_db_host,
                                     port=self.output_db_port,
                                     user=self.output_db_user,
@@ -701,6 +705,7 @@ class Process:
 
         if self.process_id is not None:
             platedb = PlateDB(schema=self.output_db_schema)
+            platedb.assign_conf(self.conf)
             platedb.open_connection(host=self.output_db_host,
                                     port=self.output_db_port,
                                     user=self.output_db_user,
@@ -1569,6 +1574,7 @@ class Process:
         self.log.write('Open database connection for writing to the '
                        'solution table')
         platedb = PlateDB(schema=self.output_db_schema)
+        platedb.assign_conf(self.conf)
         platedb.open_connection(host=self.output_db_host,
                                 port=self.output_db_port,
                                 user=self.output_db_user,
