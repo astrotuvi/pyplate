@@ -126,8 +126,7 @@ class PlateDB:
 
         if schema in ['applause_dr4']:
             fn_yaml = '{}.yaml'.format(self.schema)
-            path_yaml = os.path.join(os.path.dirname(__file__), '../config',
-                                     fn_yaml)
+            path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
             d1, d2 = fetch_ordered_tables(path_yaml, self.rdbms, True)
             self.schema_dict = d1
             self.trigger_dict = d2
