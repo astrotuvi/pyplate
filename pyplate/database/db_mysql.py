@@ -29,7 +29,8 @@ class DB_mysql:
 
     def __init__(self, **kwargs):
         self.host = 'localhost'
-        self.port = '3306'
+        self.port = 3306
+        self.socket = None
         self.user = ''
         self.password = ''
         self.database = ''
@@ -63,10 +64,10 @@ class DB_mysql:
                 pass
 
         for attr in zip(['host', 'port', 'user', 'database', 'password',
-                         'schema'],
+                         'schema', 'socket'],
                         ['output_db_host', 'output_db_port', 'output_db_user',
                          'output_db_name', 'output_db_passwd',
-                         'output_db_schema']):
+                         'output_db_schema', 'output_db_socket']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
             except configparser.Error:
@@ -89,10 +90,10 @@ class DB_mysql:
         if schema in ['applause_dr4']:
             fn_yaml = '{}.yaml'.format(self.schema)
             path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
-            d1, _ = fetch_ordered_tables(path_yaml, 'mysql', False,
+            d1, _ = fetch_ordered_tables(path_yaml, 'mysql', True,
                                           new_name=new_name)
             self.schema_dict = d1
-            self.index_dict = fetch_ordered_indexes(path_yaml, 'mysql', False,
+            self.index_dict = fetch_ordered_indexes(path_yaml, 'mysql', True,
                                                     new_name=new_name)
 
     def get_schema_sql(self, schema=None, mode='create_schema'):
@@ -120,7 +121,8 @@ class DB_mysql:
         else:
             return ''
 
-    def open_connection(self, host=None, port=None, user=None, password=None, database=None):
+    def open_connection(self, host=None, port=None, socket=None,
+                        user=None, password=None, database=None):
         """
         Open mysql database connection.
 
@@ -131,6 +133,8 @@ class DB_mysql:
             mysql database host name
         port : str
             mysql database port number
+        socket : str
+            mysql database socket
         user : str
             mysql database user name
         password : str
@@ -146,6 +150,9 @@ class DB_mysql:
         if port is None:
             port = self.port
 
+        if socket is None:
+            socket = self.socket
+
         if user is None:
             user = self.user
 
@@ -157,10 +164,13 @@ class DB_mysql:
 
         while True:
             try:
-                self.db = pymysql.connect(host=host, port=port, user=user, password=password, 
+                self.db = pymysql.connect(host=host, port=port,
+                                          unix_socket=socket,
+                                          user=user, password=password,
                                           database=database)
                 self.host = host
                 self.port = port
+                self.socket = socket
                 self.user = user
                 self.password = password
                 self.database = database

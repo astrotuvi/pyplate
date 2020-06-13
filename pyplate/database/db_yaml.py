@@ -276,8 +276,8 @@ def creat_schema_mysql(tablesdict, pdict, engine='Aria'):
     tdict = tablesdict.copy()
 
     scm_name = tdict.pop('schema')
-    sql_schema = ('--- CREATE DATABASE %s;' % scm_name)
-    sql_drop_schema = ('--- DROP DATABASE %s CASCADE;' % scm_name)
+    sql_schema = ('CREATE DATABASE %s;' % scm_name)
+    sql_drop_schema = ('DROP DATABASE %s CASCADE;' % scm_name)
 
     if 'functions' in tdict:
         del tdict['functions']

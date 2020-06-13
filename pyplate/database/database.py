@@ -50,6 +50,8 @@ class PlateDB:
             Database host name
         port : int
             Port number for database connection
+        socket : str
+            Socket for database connection on localhost
         user : str
             Database user name
         password : str
@@ -63,6 +65,7 @@ class PlateDB:
         self.rdbms = kwargs.pop('rdbms', 'pgsql')
         self.host = kwargs.pop('host', 'localhost')
         self.port = kwargs.pop('port', None)
+        self.socket = kwargs.pop('socket', None)
         self.user = kwargs.pop('user', '')
         self.database = kwargs.pop('database', '')
         self.password = kwargs.pop('password', '')
@@ -179,8 +182,8 @@ class PlateDB:
         else:
             return None
 
-    def open_connection(self, rdbms='pgsql', host=None, port=None, user=None,
-                        password=None, database=None, schema=None):
+    def open_connection(self, rdbms=None, host=None, port=None, socket=None,
+                        user=None, password=None, database=None, schema=None):
         """
         Open database connection.
 
@@ -192,6 +195,8 @@ class PlateDB:
             Database host name
         port : int
             Port number for database connection
+        socket : str
+            Socket for database connection on localhost
         user : str
             Database user name
         password : str
@@ -203,11 +208,17 @@ class PlateDB:
 
         """
 
+        if rdbms is None:
+            rdbms = self.rdbms
+
         if host is None:
             host = self.host
 
         if port is None:
             port = self.port
+
+        if socket is None:
+            socket = self.socket
 
         if user is None:
             user = self.user
@@ -230,8 +241,13 @@ class PlateDB:
                                     user=user, password=password,
                                     database=database)
         elif rdbms == 'mysql':
-            # Implement MySQL/MariaDB connection here
-            pass
+            if self.db is None:
+                self.db = DB_mysql()
+                self.db.assign_conf(self.conf)
+
+            self.db.open_connection(host=host, port=port, socket=socket,
+                                    user=user, password=password,
+                                    database=database)
 
     def close_connection(self):
         """
