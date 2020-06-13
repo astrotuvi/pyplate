@@ -75,7 +75,7 @@ class PlateDB:
         if self.rdbms == 'pgsql':
             self.db = DB_pgsql(schema=self.schema)
         elif self.rdbms == 'mysql':
-            self.db = DB_mysql()
+            self.db = DB_mysql(schema=self.schema)
         else:
             self.db = None
 

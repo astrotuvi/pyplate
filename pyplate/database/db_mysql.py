@@ -7,7 +7,8 @@ from collections import OrderedDict
 from astropy.time import Time
 from ..conf import read_conf
 from .._version import __version__
-from .db_yaml import fetch_ordered_tables, fetch_ordered_indexes
+from .db_yaml import (fetch_ordered_tables, fetch_ordered_indexes,
+                      creat_schema_mysql, creat_schema_index)
 
 try:
     import configparser
@@ -26,12 +27,16 @@ class DB_mysql:
 
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.host = 'localhost'
         self.port = '3306'
         self.user = ''
         self.password = ''
         self.database = ''
+        self.schema = kwargs.pop('schema', '')
+
+        self.schema_dict = None
+        self.index_dict = None
 
         self.db = None
         self.cursor = None
@@ -57,13 +62,63 @@ class DB_mysql:
             except configparser.Error:
                 pass
 
-        for attr in zip(['host', 'port', 'user', 'database', 'password'],
+        for attr in zip(['host', 'port', 'user', 'database', 'password',
+                         'schema'],
                         ['output_db_host', 'output_db_port', 'output_db_user',
-                         'output_db_name', 'output_db_passwd']):
+                         'output_db_name', 'output_db_passwd',
+                         'output_db_schema']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
             except configparser.Error:
                 pass
+
+    def read_schema(self, schema=None, new_name=None):
+        """Read schema from schema YAML file.
+
+        Parameters
+        ----------
+        schema : str
+            Database schema name
+        new_name : str
+            New name for the schema (rename during reading)
+        """
+
+        if schema is None:
+            schema = self.schema
+
+        if schema in ['applause_dr4']:
+            fn_yaml = '{}.yaml'.format(self.schema)
+            path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
+            d1, _ = fetch_ordered_tables(path_yaml, 'mysql', False,
+                                          new_name=new_name)
+            self.schema_dict = d1
+            self.index_dict = fetch_ordered_indexes(path_yaml, 'mysql', False,
+                                                    new_name=new_name)
+
+    def get_schema_sql(self, schema=None, mode='create_schema'):
+        """
+        Return schema creation or drop SQL statements.
+
+        Parameters
+        ----------
+        schema : str
+            Database schema
+        mode : str
+            Controls which statements to return ('create_schema',
+            'drop_schema', 'create_indexes', 'drop_indexes')
+        """
+
+        if self.schema_dict is None or self.index_dict is None:
+            self.read_schema(schema=schema)
+
+        pdict = OrderedDict()
+        creat_schema_mysql(self.schema_dict, pdict)
+        creat_schema_index(self.index_dict, pdict)
+
+        if mode in pdict:
+            return pdict[mode]
+        else:
+            return ''
 
     def open_connection(self, host=None, port=None, user=None, password=None, database=None):
         """
