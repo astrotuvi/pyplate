@@ -2,7 +2,7 @@ import yaml
 import re
 from collections import OrderedDict
 
-def fetch_ordered_tables(scmfile,rdbms,sig):
+def fetch_ordered_tables(scmfile, rdbms, sig, new_name=None):
     """
     Fetch Tables into ordered Dict
 
@@ -12,16 +12,23 @@ def fetch_ordered_tables(scmfile,rdbms,sig):
         yaml file with tables definitions
     rdbms: str
         values: pgsql, mysql
-    sig: boolean 
+    sig: bool
+        If True, use fully qualified table names (schema.table)
+    new_name: str
+        New name for the schema
     """
 
     yscm = __get_yamlschema(scmfile)
+
+    if new_name is not None:
+        yscm['name'] = new_name
+
     tablesdict = __get_tablesdict(yscm, rdbms, sig)
     triggersdict = __get_triggersdict(yscm, rdbms, sig)
 
     return tablesdict, triggersdict
 
-def fetch_ordered_indexes(scmfile,rdbms,sig):
+def fetch_ordered_indexes(scmfile, rdbms, sig, new_name=None):
     """
     Fetch Index Creation Stmts into Ordered Dict
 
@@ -31,13 +38,18 @@ def fetch_ordered_indexes(scmfile,rdbms,sig):
         yaml file with tables definitions
     rdbms: str
         values: pgsql, mysql
-    sig: for using fully qualified table names (schema.table)
-        boolean
-        
+    sig: bool
+        If True, use fully qualified table names (schema.table)
+    new_name: str
+        New name for the schema
     """
 
     yscm = __get_yamlschema(scmfile)
-    odict = __get_indexdict(yscm,rdbms,sig)
+
+    if new_name is not None:
+        yscm['name'] = new_name
+
+    odict = __get_indexdict(yscm, rdbms, sig)
     return odict
 
 def __get_yamlschema(filename):

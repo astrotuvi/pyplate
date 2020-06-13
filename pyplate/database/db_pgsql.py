@@ -28,13 +28,13 @@ class DB_pgsql:
 
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.host = 'localhost'
         self.port = '5432'
         self.user = ''
         self.password = ''
         self.database = ''
-        self.schema = ''
+        self.schema = kwargs.pop('schema', '')
 
         self.schema_dict = None
         self.trigger_dict = None
@@ -80,13 +80,15 @@ class DB_pgsql:
             except configparser.Error:
                 pass
 
-    def read_schema(self, schema=None):
+    def read_schema(self, schema=None, new_name=None):
         """Read schema from schema YAML file.
 
         Parameters
         ----------
         schema : str
-            Database schema
+            Database schema name
+        new_name : str
+            New name for the schema (rename during reading)
         """
 
         if schema is None:
@@ -95,10 +97,12 @@ class DB_pgsql:
         if schema in ['applause_dr4']:
             fn_yaml = '{}.yaml'.format(self.schema)
             path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
-            d1, d2 = fetch_ordered_tables(path_yaml, 'pgsql', True)
+            d1, d2 = fetch_ordered_tables(path_yaml, 'pgsql', True,
+                                          new_name=new_name)
             self.schema_dict = d1
             self.trigger_dict = d2
-            self.index_dict = fetch_ordered_indexes(path_yaml, 'pgsql', True)
+            self.index_dict = fetch_ordered_indexes(path_yaml, 'pgsql', True,
+                                                    new_name=new_name)
 
     def get_schema_sql(self, schema=None, mode='create_schema'):
         """
@@ -113,7 +117,9 @@ class DB_pgsql:
             'drop_schema', 'create_indexes', 'drop_indexes')
         """
 
-        self.read_schema(schema=schema)
+        if (self.schema_dict is None or self.trigger_dict is None or
+            self.index_dict is None):
+            self.read_schema(schema=schema)
 
         pdict = OrderedDict()
         creat_schema_pgsql(self.schema_dict, self.trigger_dict, pdict)

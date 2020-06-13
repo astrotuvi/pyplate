@@ -8,6 +8,7 @@ from collections import OrderedDict
 from astropy.time import Time
 from astropy.io import fits
 from .db_pgsql import DB_pgsql
+from .db_mysql import DB_mysql
 from .db_yaml import fetch_ordered_tables
 from ..conf import read_conf
 from .._version import __version__
@@ -67,11 +68,16 @@ class PlateDB:
         self.password = kwargs.pop('password', '')
         self.schema = kwargs.pop('schema', '')
         self.schema_dict = None
-        self.trigger_dict = None
-        self.db = None
         self.conf = None
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
+
+        if self.rdbms == 'pgsql':
+            self.db = DB_pgsql(schema=self.schema)
+        elif self.rdbms == 'mysql':
+            self.db = DB_mysql()
+        else:
+            self.db = None
 
         # Read database schema
         self.read_schema()
@@ -109,16 +115,23 @@ class PlateDB:
             except configparser.Error:
                 pass
 
+        # Apply conf to self.db
+        if self.db is not None:
+            self.db.assign_conf(self.conf)
+            self.db.read_schema()
+
         # Read database schema
         self.read_schema()
 
-    def read_schema(self, schema=None):
+    def read_schema(self, schema=None, new_name=None):
         """Read schema from schema YAML file.
 
         Parameters
         ----------
         schema : str
-            Database schema
+            Database schema name
+        new_name : str
+            New name for the schema (rename during reading)
         """
 
         if schema is None:
@@ -127,9 +140,12 @@ class PlateDB:
         if schema in ['applause_dr4']:
             fn_yaml = '{}.yaml'.format(self.schema)
             path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
-            d1, d2 = fetch_ordered_tables(path_yaml, self.rdbms, True)
+            d1, _ = fetch_ordered_tables(path_yaml, self.rdbms, True,
+                                         new_name=new_name)
             self.schema_dict = d1
-            self.trigger_dict = d2
+
+        if self.db is not None:
+            self.db.read_schema(schema=schema, new_name=new_name)
 
     def table_name(self, table):
         """
@@ -206,8 +222,10 @@ class PlateDB:
             self.schema = schema
 
         if rdbms == 'pgsql':
-            self.db = DB_pgsql()
-            self.db.assign_conf(self.conf)
+            if self.db is None:
+                self.db = DB_pgsql()
+                self.db.assign_conf(self.conf)
+
             self.db.open_connection(host=host, port=port,
                                     user=user, password=password,
                                     database=database)
@@ -224,19 +242,41 @@ class PlateDB:
         if self.db is not None:
             self.db.close_connection()
 
-    def create_schema(self):
-        """Create database schema"""
+    def create_schema(self, execute=False):
+        """Create database schema
+
+        Parameters
+        ----------
+        execute : bool
+            If True, execute schema creation; if False, only print the schema
+            creation statements
+        """
 
         if self.db is not None:
             sql = self.db.get_schema_sql(mode='create_schema')
-            self.db.execute_query(sql)
 
-    def drop_schema(self):
-        """Drop database schema"""
+            if execute:
+                self.db.execute_query(sql)
+            else:
+                print(sql)
+
+    def drop_schema(self, execute=False):
+        """Drop database schema
+
+        Parameters
+        ----------
+        execute : bool
+            If True, execute schema creation; if False, only print the schema
+            creation statements
+        """
 
         if self.db is not None:
             sql = self.db.get_schema_sql(mode='drop_schema')
-            self.db.execute_query(sql)
+
+            if execute:
+                self.db.execute_query(sql)
+            else:
+                print(sql)
 
     def write_plate(self, platemeta):
         """
