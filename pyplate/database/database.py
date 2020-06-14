@@ -83,7 +83,8 @@ class PlateDB:
             self.db = None
 
         # Read database schema
-        self.read_schema()
+        if self.rdbms is not None:
+            self.read_schema()
 
     def assign_conf(self, conf):
         """
@@ -119,7 +120,7 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-        # Create database handler based on configuretion
+        # Create database handler based on configuration
         if self.rdbms == 'pgsql':
             self.db = DB_pgsql(schema=self.schema)
         elif self.rdbms == 'mysql':
@@ -128,10 +129,10 @@ class PlateDB:
         # Apply conf to self.db
         if self.db is not None:
             self.db.assign_conf(self.conf)
-            self.db.read_schema()
 
-        # Read database schema
-        self.read_schema()
+            # Read database schema
+            self.db.read_schema()
+            self.read_schema()
 
     def read_schema(self, schema=None, new_name=None):
         """Read schema from schema YAML file.
