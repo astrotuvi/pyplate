@@ -45,6 +45,12 @@ class DB_mysql:
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
 
+        # https://stackoverflow.com/a/52949184
+        pymysql.converters.encoders[np.float64] = pymysql.converters.escape_float
+        pymysql.converters.encoders[np.int64] = pymysql.converters.escape_int
+        pymysql.converters.conversions = pymysql.converters.encoders.copy()
+        pymysql.converters.conversions.update(pymysql.converters.decoders)
+
     def assign_conf(self, conf):
         """
         Assign and parse configuration.
@@ -226,7 +232,10 @@ class DB_mysql:
 
             self.db.commit()
         except AttributeError:
-            numrows = None
+            raise
+        except pymysql.IntegrityError as e:
+            if e.args[0] == 1062:
+                print(e.args[1])
         except pymysql.OperationalError as e:
             if e.args[0] == 2006:
                 print('MySQL server has gone away, trying to reconnect')
