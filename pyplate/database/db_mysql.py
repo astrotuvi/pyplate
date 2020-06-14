@@ -46,7 +46,11 @@ class DB_mysql:
         self.write_db_source_calib_dir = ''
 
         # https://stackoverflow.com/a/52949184
+        pymysql.converters.encoders[np.float32] = pymysql.converters.escape_float
         pymysql.converters.encoders[np.float64] = pymysql.converters.escape_float
+        pymysql.converters.encoders[np.int8] = pymysql.converters.escape_int
+        pymysql.converters.encoders[np.int16] = pymysql.converters.escape_int
+        pymysql.converters.encoders[np.int32] = pymysql.converters.escape_int
         pymysql.converters.encoders[np.int64] = pymysql.converters.escape_int
         pymysql.converters.conversions = pymysql.converters.encoders.copy()
         pymysql.converters.conversions.update(pymysql.converters.decoders)
@@ -260,7 +264,8 @@ class DB_mysql:
         try:
             numrows = self.cursor.executemany(*args)
         except AttributeError:
-            numrows = None
+            raise
+            #numrows = None
         except pymysql.OperationalError as e:
             if e.args[0] == 2006:
                 print('MySQL server has gone away, trying to reconnect')
