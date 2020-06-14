@@ -66,7 +66,7 @@ class DB_mysql:
         for attr in zip(['host', 'port', 'user', 'database', 'password',
                          'schema', 'socket'],
                         ['output_db_host', 'output_db_port', 'output_db_user',
-                         'output_db_name', 'output_db_passwd',
+                         'output_db_name', 'output_db_password',
                          'output_db_schema', 'output_db_socket']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
@@ -201,8 +201,30 @@ class DB_mysql:
 
         """
 
+        # Default return value
+        val = None
+
         try:
-            numrows = self.cursor.execute(*args)
+            if len(args) == 1 and args[0].count(';') > 1:
+                for sql in args[0].split(';'):
+                    if sql.strip() != '':
+                        numrows = self.cursor.execute(sql)
+            elif 'RETURNING' in args[0]:
+                sql = args[0].split('RETURNING')[0].rstrip()
+                args = (sql,) + args[1:]
+                numrows = self.cursor.execute(*args)
+                val = self.cursor.lastrowid
+            elif args[0].startswith('SELECT'):
+                numrows = self.cursor.execute(*args)
+                val = self.cursor.fetchone()
+
+                if val is not None:
+                    if len(val) == 1:
+                        val = val[0]
+            else:
+                numrows = self.cursor.execute(*args)
+
+            self.db.commit()
         except AttributeError:
             numrows = None
         except pymysql.OperationalError as e:
@@ -217,7 +239,7 @@ class DB_mysql:
             else:
                 raise
 
-        return numrows
+        return val
 
     def executemany_query(self, *args):
         """

@@ -62,7 +62,7 @@ class PlateDB:
             Database schema
         """
 
-        self.rdbms = kwargs.pop('rdbms', 'pgsql')
+        self.rdbms = kwargs.pop('rdbms', None)
         self.host = kwargs.pop('host', 'localhost')
         self.port = kwargs.pop('port', None)
         self.socket = kwargs.pop('socket', None)
@@ -103,9 +103,10 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-        for attr in zip(['host', 'user', 'database', 'password', 'schema'],
-                        ['output_db_host', 'output_db_user',
-                         'output_db_name', 'output_db_passwd',
+        for attr in zip(['rdbms', 'host', 'user', 'database', 'password',
+                         'schema'],
+                        ['output_db_rdbms', 'output_db_host', 'output_db_user',
+                         'output_db_name', 'output_db_password',
                          'output_db_schema']):
             try:
                 setattr(self, attr[0], conf.get('Database', attr[1]))
@@ -117,6 +118,12 @@ class PlateDB:
                 setattr(self, attr[0], conf.getint('Database', attr[1]))
             except configparser.Error:
                 pass
+
+        # Create database handler based on configuretion
+        if self.rdbms == 'pgsql':
+            self.db = DB_pgsql(schema=self.schema)
+        elif self.rdbms == 'mysql':
+            self.db = DB_mysql(schema=self.schema)
 
         # Apply conf to self.db
         if self.db is not None:
