@@ -35,15 +35,13 @@ class DB_mysql:
         self.password = ''
         self.database = ''
         self.schema = kwargs.pop('schema', '')
+        self.yaml = kwargs.pop('yaml', None)
 
         self.schema_dict = None
         self.index_dict = None
 
         self.db = None
         self.cursor = None
-
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
 
         # https://stackoverflow.com/a/52949184
         pymysql.converters.encoders[np.float32] = pymysql.converters.escape_float
@@ -55,9 +53,14 @@ class DB_mysql:
         pymysql.converters.conversions = pymysql.converters.encoders.copy()
         pymysql.converters.conversions.update(pymysql.converters.decoders)
 
-    def assign_conf(self, conf):
+    def assign_conf(self, conf, section='DB_mysql'):
         """
         Assign and parse configuration.
+
+        Parameters
+        ----------
+        section : str
+            Configuration file section to be read from
 
         """
 
@@ -66,45 +69,45 @@ class DB_mysql:
 
         self.conf = conf
 
-        for attr in ['write_log_dir', 'write_db_source_dir', 
-                     'write_db_source_calib_dir']:
+        for attr in ['host', 'socket', 'user', 'password', 'database',
+                     'schema', 'yaml']:
             try:
-                setattr(self, attr, conf.get('Files', attr))
+                setattr(self, attr, conf.get(section, attr))
             except configparser.Error:
                 pass
 
-        for attr in zip(['host', 'port', 'user', 'database', 'password',
-                         'schema', 'socket'],
-                        ['output_db_host', 'output_db_port', 'output_db_user',
-                         'output_db_name', 'output_db_password',
-                         'output_db_schema', 'output_db_socket']):
+        for attr in ['port']:
             try:
-                setattr(self, attr[0], conf.get('Database', attr[1]))
+                setattr(self, attr, conf.getint(section, attr))
             except configparser.Error:
                 pass
 
-    def read_schema(self, schema=None, new_name=None):
+    def read_schema(self, schema=None, yaml=None):
         """Read schema from schema YAML file.
 
         Parameters
         ----------
         schema : str
             Database schema name
-        new_name : str
-            New name for the schema (rename during reading)
+        yaml : str
+            Schema YAML file
         """
 
         if schema is None:
             schema = self.schema
 
-        if schema in ['applause_dr4']:
-            fn_yaml = '{}.yaml'.format(self.schema)
-            path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
-            d1, _ = fetch_ordered_tables(path_yaml, 'mysql', True,
-                                          new_name=new_name)
-            self.schema_dict = d1
-            self.index_dict = fetch_ordered_indexes(path_yaml, 'mysql', True,
-                                                    new_name=new_name)
+        if yaml is None:
+            yaml = self.yaml
+
+        if yaml is None and schema is not None:
+            yaml = '{}.yaml'.format(self.schema)
+
+        path_yaml = os.path.join(os.path.dirname(__file__), yaml)
+        d1, _ = fetch_ordered_tables(path_yaml, 'mysql', True,
+                                      new_name=schema)
+        self.schema_dict = d1
+        self.index_dict = fetch_ordered_indexes(path_yaml, 'mysql', True,
+                                                new_name=schema)
 
     def get_schema_sql(self, schema=None, mode='create_schema'):
         """

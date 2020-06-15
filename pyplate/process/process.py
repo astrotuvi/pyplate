@@ -224,12 +224,7 @@ class Process:
         self.apass_db_passwd = ''
         self.apass_db_table = 'apass'
 
-        self.output_db_host = 'localhost'
-        self.output_db_port = None
-        self.output_db_user = ''
-        self.output_db_name = ''
-        self.output_db_passwd = ''
-        self.output_db_schema = None
+        self.output_db = None
         self.write_sources_csv = False
 
         self.sextractor_path = 'sex'
@@ -411,19 +406,11 @@ class Process:
                      'ucac4_db_passwd', 'ucac4_db_table',
                      'apass_db_host', 'apass_db_user', 'apass_db_name', 
                      'apass_db_passwd', 'apass_db_table',
-                     'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd',
-                     'output_db_schema']:
+                     'output_db']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except configparser.Error:
                 pass
-
-        try:
-            setattr(self, 'output_db_port',
-                    conf.getint('Database', 'output_db_port'))
-        except configparser.Error:
-            pass
 
         for attr in ['use_filter', 'use_psf', 'circular_film']:
             try:
@@ -528,7 +515,7 @@ class Process:
             self.log.open()
 
         # Get process_id from the database
-        if self.output_db_name:
+        if self.output_db:
             self.db_process_start()
 
         # Open database connection for logs

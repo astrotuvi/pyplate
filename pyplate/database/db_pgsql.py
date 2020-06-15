@@ -35,6 +35,7 @@ class DB_pgsql:
         self.password = ''
         self.database = ''
         self.schema = kwargs.pop('schema', '')
+        self.yaml = kwargs.pop('yaml', None)
 
         self.schema_dict = None
         self.trigger_dict = None
@@ -43,18 +44,20 @@ class DB_pgsql:
         self.db = None
         self.cursor = None
 
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
-
         # Register AsIs adapter for numpy data types
         # Credit: https://github.com/musically-ut/psycopg2_numpy_ext
         for t in [np.int8, np.int16, np.int32, np.int64,
                   np.float32, np.float64]:
             register_adapter(t, AsIs)
 
-    def assign_conf(self, conf):
+    def assign_conf(self, conf, section='DB_pgsql'):
         """
         Assign and parse configuration.
+
+        Parameters
+        ----------
+        section : str
+            Configuration file section to be read from
 
         """
 
@@ -63,46 +66,45 @@ class DB_pgsql:
 
         self.conf = conf
 
-        for attr in ['write_log_dir', 'write_db_source_dir', 
-                     'write_db_source_calib_dir']:
+        for attr in ['host', 'user', 'password', 'database', 'schema', 'yaml']:
             try:
-                setattr(self, attr, conf.get('Files', attr))
+                setattr(self, attr, conf.get(section, attr))
             except configparser.Error:
                 pass
 
-        for attr in zip(['host', 'port', 'user', 'database', 'password',
-                         'schema'],
-                        ['output_db_host', 'output_db_port', 'output_db_user',
-                         'output_db_name', 'output_db_passwd',
-                         'output_db_schema']):
+        for attr in ['port']:
             try:
-                setattr(self, attr[0], conf.get('Database', attr[1]))
+                setattr(self, attr, conf.getint(section, attr))
             except configparser.Error:
                 pass
 
-    def read_schema(self, schema=None, new_name=None):
+    def read_schema(self, schema=None, yaml=None):
         """Read schema from schema YAML file.
 
         Parameters
         ----------
         schema : str
             Database schema name
-        new_name : str
-            New name for the schema (rename during reading)
+        yaml : str
+            Schema YAML file
         """
 
         if schema is None:
             schema = self.schema
 
-        if schema in ['applause_dr4']:
-            fn_yaml = '{}.yaml'.format(self.schema)
-            path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
-            d1, d2 = fetch_ordered_tables(path_yaml, 'pgsql', True,
-                                          new_name=new_name)
-            self.schema_dict = d1
-            self.trigger_dict = d2
-            self.index_dict = fetch_ordered_indexes(path_yaml, 'pgsql', True,
-                                                    new_name=new_name)
+        if yaml is None:
+            yaml = self.yaml
+
+        if yaml is None and schema is not None:
+            yaml = '{}.yaml'.format(self.schema)
+
+        path_yaml = os.path.join(os.path.dirname(__file__), yaml)
+        d1, d2 = fetch_ordered_tables(path_yaml, 'pgsql', True,
+                                      new_name=schema)
+        self.schema_dict = d1
+        self.trigger_dict = d2
+        self.index_dict = fetch_ordered_indexes(path_yaml, 'pgsql', True,
+                                                new_name=schema)
 
     def get_schema_sql(self, schema=None, mode='create_schema'):
         """

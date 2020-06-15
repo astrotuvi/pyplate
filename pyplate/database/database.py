@@ -71,6 +71,7 @@ class PlateDB:
         self.password = kwargs.pop('password', '')
         self.schema = kwargs.pop('schema', '')
         self.schema_dict = None
+        self.yaml = kwargs.pop('yaml', None)
         self.conf = None
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
@@ -104,19 +105,21 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-        for attr in zip(['rdbms', 'host', 'user', 'database', 'password',
-                         'schema'],
-                        ['output_db_rdbms', 'output_db_host', 'output_db_user',
-                         'output_db_name', 'output_db_password',
-                         'output_db_schema']):
+        try:
+            db_section = conf.get('Database', 'output_db')
+        except configparser.Error:
+            db_section = None
+
+        for attr in ['rdbms', 'host', 'user', 'database', 'password',
+                     'schema', 'yaml']:
             try:
-                setattr(self, attr[0], conf.get('Database', attr[1]))
+                setattr(self, attr, conf.get(db_section, attr))
             except configparser.Error:
                 pass
 
-        for attr in [('port', 'output_db_port')]:
+        for attr in ['port']:
             try:
-                setattr(self, attr[0], conf.getint('Database', attr[1]))
+                setattr(self, attr, conf.getint(db_section, attr))
             except configparser.Error:
                 pass
 
@@ -128,35 +131,39 @@ class PlateDB:
 
         # Apply conf to self.db
         if self.db is not None:
-            self.db.assign_conf(self.conf)
+            self.db.assign_conf(self.conf, section=db_section)
 
             # Read database schema
             self.db.read_schema()
             self.read_schema()
 
-    def read_schema(self, schema=None, new_name=None):
+    def read_schema(self, schema=None, yaml=None):
         """Read schema from schema YAML file.
 
         Parameters
         ----------
         schema : str
             Database schema name
-        new_name : str
-            New name for the schema (rename during reading)
+        yaml : str
+            Schema YAML file
         """
 
         if schema is None:
             schema = self.schema
 
-        if schema in ['applause_dr4']:
-            fn_yaml = '{}.yaml'.format(self.schema)
-            path_yaml = os.path.join(os.path.dirname(__file__), fn_yaml)
-            d1, _ = fetch_ordered_tables(path_yaml, self.rdbms, True,
-                                         new_name=new_name)
-            self.schema_dict = d1
+        if yaml is None:
+            yaml = self.yaml
+
+        if yaml is None and schema is not None:
+            yaml = '{}.yaml'.format(self.schema)
+
+        path_yaml = os.path.join(os.path.dirname(__file__), yaml)
+        d1, _ = fetch_ordered_tables(path_yaml, self.rdbms, True,
+                                     new_name=schema)
+        self.schema_dict = d1
 
         if self.db is not None:
-            self.db.read_schema(schema=schema, new_name=new_name)
+            self.db.read_schema(schema=schema, yaml=yaml)
 
     def table_name(self, table):
         """
