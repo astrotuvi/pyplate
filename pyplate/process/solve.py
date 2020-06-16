@@ -344,7 +344,8 @@ class AstrometricSolution(OrderedDict):
         self.log = None
 
     def populate(self):
-        keys = ['raj2000', 'dej2000', 'raj2000_hms', 'dej2000_dms',
+        keys = ['solution_num', 'raj2000', 'dej2000',
+                'raj2000_hms', 'dej2000_dms',
                 'fov1', 'fov2', 'half_diag', 'pixel_scale', 'source_density',
                 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 'rotation_angle',
                 'plate_mirrored', 'ncp_close', 'scp_close',
@@ -1324,6 +1325,7 @@ class SolveProcess:
                     brute_force = True
                     continue
 
+            solution['solution_num'] = self.num_solutions + 1
             self.solutions.append(solution)
             self.astref_tables.append(astref_table)
             self.num_solutions = len(self.solutions)

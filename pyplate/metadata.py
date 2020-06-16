@@ -160,7 +160,7 @@ _keyword_meta = OrderedDict([
     ('pix_size1', (float, False, None, 'PIXSIZE1', None)),
     ('pix_size2', (float, False, None, 'PIXSIZE2', None)),
     ('scan_software', (str, False, None, 'SCANSOFT', None)),
-    ('scan_gamma', (str, False, None, 'SCANGAM', None)),
+    ('scan_gamma', (float, False, None, 'SCANGAM', None)),
     ('scan_focus', (str, False, None, 'SCANFOC', None)),
     ('wedge', (str, False, None, 'WEDGE', None)),
     ('datescan', (str, False, None, 'DATESCAN', None)),
@@ -2240,6 +2240,10 @@ class Plate(OrderedDict):
                             if tme_orig.count(':') == 1:
                                 tme_orig += ':00'
 
+                            # Handle time notation with ending colon
+                            if tme_orig.endswith(':'):
+                                tme_orig = tme_orig[:-1]
+
                             tsec = pytimeparse.parse(tme_orig)
 
                             if evening_date and tsec < 43200:
@@ -2260,6 +2264,10 @@ class Plate(OrderedDict):
                         if tms_orig:
                             if tms_orig.count(':') == 1:
                                 tms_orig += ':00'
+
+                            # Handle time notation with ending colon
+                            if tms_orig.endswith(':'):
+                                tms_orig = tms_orig[:-1]
 
                             tsec = pytimeparse.parse(tms_orig)
                             
