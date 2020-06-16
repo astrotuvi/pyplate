@@ -190,6 +190,7 @@ class Process:
         self.process_id = None
         self.scan_id = None
         self.plate_id = None
+        self.conf = None
 
         self.fits_dir = ''
         self.index_dir = ''
@@ -223,10 +224,7 @@ class Process:
         self.apass_db_passwd = ''
         self.apass_db_table = 'apass'
 
-        self.output_db_host = 'localhost'
-        self.output_db_user = ''
-        self.output_db_name = ''
-        self.output_db_passwd = ''
+        self.output_db = None
         self.write_sources_csv = False
 
         self.sextractor_path = 'sex'
@@ -408,8 +406,7 @@ class Process:
                      'ucac4_db_passwd', 'ucac4_db_table',
                      'apass_db_host', 'apass_db_user', 'apass_db_name', 
                      'apass_db_passwd', 'apass_db_table',
-                     'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
+                     'output_db']:
             try:
                 setattr(self, attr, conf.get('Database', attr))
             except configparser.Error:
@@ -518,16 +515,15 @@ class Process:
             self.log.open()
 
         # Get process_id from the database
-        if self.output_db_name:
+        if self.output_db:
             self.db_process_start()
 
         # Open database connection for logs
         if self.enable_db_log:
             platedb = PlateDB()
-            platedb.open_connection(host=self.output_db_host,
-                                    user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
+            platedb.assign_conf(self.conf)
+            platedb.open_connection()
+
             self.log.platedb = platedb
             self.log.archive_id = self.archive_id
             self.log.plate_id = self.plate_id
@@ -632,10 +628,8 @@ class Process:
         """
 
         platedb = PlateDB()
-        platedb.open_connection(host=self.output_db_host,
-                                user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
+        platedb.assign_conf(self.conf)
+        platedb.open_connection()
         self.scan_id, self.plate_id = platedb.get_scan_id(self.filename, 
                                                           self.archive_id)
         pid = platedb.write_process_start(scan_id=self.scan_id,
@@ -669,10 +663,8 @@ class Process:
 
         if self.process_id is not None:
             platedb = PlateDB()
-            platedb.open_connection(host=self.output_db_host,
-                                    user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
+            platedb.assign_conf(self.conf)
+            platedb.open_connection()
             platedb.update_process(self.process_id, **kwargs)
             platedb.close_connection()
 
@@ -689,10 +681,8 @@ class Process:
 
         if self.process_id is not None:
             platedb = PlateDB()
-            platedb.open_connection(host=self.output_db_host,
-                                    user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
+            platedb.assign_conf(self.conf)
+            platedb.open_connection()
             duration = (dt.datetime.now()-self.timestamp).seconds
             platedb.write_process_end(self.process_id, 
                                       completed=completed, 
@@ -1556,10 +1546,8 @@ class Process:
         self.log.write('Open database connection for writing to the '
                        'solution table')
         platedb = PlateDB()
-        platedb.open_connection(host=self.output_db_host,
-                                user=self.output_db_user,
-                                dbname=self.output_db_name,
-                                passwd=self.output_db_passwd)
+        platedb.assign_conf(self.conf)
+        platedb.open_connection()
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):

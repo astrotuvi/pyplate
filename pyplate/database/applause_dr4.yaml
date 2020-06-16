@@ -1,10 +1,20 @@
 - name: applause_dr4
+
+  functions:
+      pgsql: |-
+          CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+          RETURNS TRIGGER AS $$
+          BEGIN
+          NEW.timestamp_update = NOW();
+          RETURN NEW;
+          END;
+          $$ LANGUAGE plpgsql;
+
   tables:
 
   - name: archive
     order: 1
     columns:
-    
     - name: archive_id
       order: 1
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -20,14 +30,18 @@
     - name: timestamp_insert
       order: 4
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 5
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
-    
     - name: mysql_pk
       val: "ALTER TABLE archive ADD CONSTRAINT archive_pky PRIMARY KEY (archive_id)"
     - name: pgsql_pk
@@ -36,11 +50,10 @@
   - name: plate
     order: 2
     columns:
-
     - name: plate_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: archive_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -149,7 +162,7 @@
       order: 28
       mysql_datatype: "VARCHAR(80)"
       pgsql_datatype: "character varying(80) COLLATE ucs_basic"
-    - name: method
+    - name: method_code
       order: 29
       mysql_datatype: "TINYINT UNSIGNED"
       pgsql_datatype: "smallint"
@@ -208,15 +221,20 @@
     - name: timestamp_insert
       order: 43
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 44
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id)"
+      val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id); ALTER TABLE plate MODIFY plate_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE plate ADD CONSTRAINT plate_pky PRIMARY KEY (plate_id)"
     - name: index_1
@@ -224,16 +242,15 @@
     - name: index_2
       val: "CREATE INDEX wfpdb_ind ON plate (wfpdb_id)"
     - name: index_3
-      val: "CREATE INDEX method_ind ON plate (method)"
+      val: "CREATE INDEX method_ind ON plate (method_code)"
 
   - name: exposure
     order: 3
     columns:
-
     - name: exposure_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: plate_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -250,7 +267,7 @@
       order: 5
       mysql_datatype: "VARCHAR(80)"
       pgsql_datatype: "character varying(80) COLLATE ucs_basic"
-    - name: object_type
+    - name: object_type_code
       order: 6
       mysql_datatype: "CHAR(2)"
       pgsql_datatype: "character(2) COLLATE ucs_basic"
@@ -366,7 +383,7 @@
       order: 34
       mysql_datatype: "TINYINT UNSIGNED"
       pgsql_datatype: "smallint"
-    - name: method
+    - name: method_code
       order: 35
       mysql_datatype: "TINYINT UNSIGNED"
       pgsql_datatype: "smallint"
@@ -377,15 +394,20 @@
     - name: timestamp_insert
       order: 37
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 38
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id)"
+      val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id);ALTER TABLE exposure MODIFY exposure_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE exposure ADD CONSTRAINT exposure_pky PRIMARY KEY (exposure_id)"
     - name: index_1
@@ -400,11 +422,10 @@
   - name: exposure_sub
     order: 4
     columns:
-
     - name: subexposure_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: exposure_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -464,16 +485,20 @@
     - name: timestamp_insert
       order: 16
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 17
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
-
     - name: mysql_pk
-      val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id)"
+      val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id);ALTER TABLE exposure_sub MODIFY subexposure_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE exposure_sub ADD CONSTRAINT subexposure_pky PRIMARY KEY (subexposure_id)"
     - name: index_1
@@ -484,11 +509,10 @@
   - name: scan
     order: 5
     columns:
-
     - name: scan_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: plate_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -592,16 +616,20 @@
     - name: timestamp_insert
       order: 27
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 28
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
-  
-    indexes:
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
+    indexes:
     - name: mysql_pk
-      val:  "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id)"
+      val: "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id);ALTER TABLE scan MODIFY scan_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE scan ADD CONSTRAINT scan_pky PRIMARY KEY (scan_id)"
     - name: index_1
@@ -612,11 +640,10 @@
   - name: preview
     order: 6
     columns:
-
     - name: preview_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: plate_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -660,16 +687,20 @@
     - name: timestamp_insert
       order: 12
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 13
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
-
     - name: mysql_pk
-      val:  "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id)"
+      val: "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id);ALTER TABLE preview MODIFY preview_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE preview ADD CONSTRAINT preview_pky PRIMARY KEY (preview_id)"
     - name: index_1
@@ -678,11 +709,10 @@
   - name: logbook
     order: 7
     columns:
-
     - name: logbook_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: archive_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -706,16 +736,20 @@
     - name: timestamp_insert
       order: 7
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 8
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
-
     - name: mysql_pk
-      val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id)"
+      val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id);ALTER TABLE logbook MODIFY logbook_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val:  "ALTER TABLE logbook ADD CONSTRAINT logbook_pky PRIMARY KEY (logbook_id)"
     - name: index_1
@@ -724,11 +758,10 @@
   - name: logpage
     order: 8
     columns:
-
     - name: logpage_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: logbook_id
       order: 2
       mysql_datatype: "INT UNSIGNED"
@@ -780,16 +813,20 @@
     - name: timestamp_insert
       order: 14
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 15
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
- 
     - name: mysql_pk
-      val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id)"
+      val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id);ALTER TABLE logpage MODIFY logpage_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE logpage ADD CONSTRAINT logpage_pky PRIMARY KEY (logpage_id)"
     - name: index_1
@@ -798,7 +835,6 @@
   - name: plate_logpage
     order: 9
     columns:
-
     - name: plate_id
       order: 1
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -814,14 +850,18 @@
     - name: timestamp_insert
       order: 4
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 5
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
-
     - name: index_1
       val: "CREATE INDEX plate_ind ON plate_logpage (plate_id)"
     - name: index_2
@@ -830,7 +870,6 @@
   - name: source
     order: 10
     columns:
-
     - name: source_id
       order: 1
       mysql_datatype: "BIGINT UNSIGNED NOT NULL"
@@ -1030,11 +1069,16 @@
     - name: timestamp_insert
       order: 50
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 50
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
 
     indexes:
     - name: mysql_pk
@@ -1057,7 +1101,6 @@
   - name: source_calib
     order: 11
     columns:
-
     - name: source_id
       order: 1
       mysql_datatype: "BIGINT UNSIGNED NOT NULL"
@@ -1377,13 +1420,17 @@
     - name: timestamp_insert
       order: 80
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 81
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
-      
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
     indexes:
     - name: mysql_pk
       val: "ALTER TABLE source_calib ADD CONSTRAINT source_calib_pky PRIMARY KEY (source_id)"
@@ -1433,11 +1480,10 @@
   - name: solution
     order: 12
     columns:
-
     - name: solution_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1446,17 +1492,17 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
-      order: 5
+      order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: archive_id
-      order: 6
+      order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: solution_num
+      order: 6
+      mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: raj2000
       order: 7
@@ -1530,22 +1576,35 @@
       order: 24
       mysql_datatype: "VARCHAR(200)"
       pgsql_datatype: "character varying(200) COLLATE ucs_basic"
-    - name: wcs
+    - name: header_wcs
       order: 25
       mysql_datatype: "TEXT"
       pgsql_datatype: "text COLLATE ucs_basic"
-    - name: timestamp_insert
+    - name: header_anet
       order: 26
-      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
-    - name: timestamp_update
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: header_scamp
       order: 27
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: timestamp_insert
+      order: 28
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+    - name: timestamp_update
+      order: 29
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
       
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id)"
+      val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id);ALTER TABLE solution MODIFY solution_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id)"
     - name: index_1
@@ -1563,174 +1622,13 @@
     - name: index_7
       val: "CREATE INDEX dej2000_ind ON solution (dej2000)"
 
-  - name: astrom_sub
+  - name: phot_calib
     order: 13
     columns:
-
-    - name: sub_id
-      order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
-    - name: process_id
-      order: 2
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: scan_id
-      order: 3
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: plate_id
-      order: 5
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: archive_id
-      order: 6
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: astrom_sub_grid
-      order: 7
-      mysql_datatype: "SMALLINT"
-      pgsql_datatype: "smallint"
-    - name: astrom_sub_id
-      order: 8
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: parent_sub_id
-      order: 9
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: x_min
-      order: 10
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: x_max
-      order: 11
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: y_min
-      order: 12
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: y_max
-      order: 13
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: x_min_ext
-      order: 14
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: x_max_ext
-      order: 15
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: y_min_ext
-      order: 16
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: y_max_ext
-      order: 17
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: num_sub_stars
-      order: 18
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: num_ref_stars
-      order: 19
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: above_threshold
-      order: 20
-      mysql_datatype: "TINYINT(1)"
-      pgsql_datatype: "smallint"
-    - name: num_selected_ref_stars
-      order: 21
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: scamp_crossid_radius
-      order: 22
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: num_scamp_stars
-      order: 23
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: scamp_sigma_axis1
-      order: 24
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: scamp_sigma_axis2
-      order: 25
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: scamp_sigma_mean
-      order: 26
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: scamp_sigma_prev_axis1
-      order: 27
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: scamp_sigma_prev_axis2
-      order: 28
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: scamp_sigma_prev_mean
-      order: 29
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: scamp_sigma_diff
-      order: 30
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apply_astrometry
-      order: 31
-      mysql_datatype: "TINYINT(1)"
-      pgsql_datatype: "smallint"
-    - name: num_applied_stars
-      order: 32
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: timestamp_insert
-      order: 33
-      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
-    - name: timestamp_update
-      order: 34
-      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
-
-
-    indexes:
-    - name: mysql_pk
-      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id)"
-    - name: pgsql_pk
-      val:  "ALTER TABLE astrom_sub ADD CONSTRAINT astrom_sub_pky PRIMARY KEY (sub_id)"
-    - name: index_1
-      val: "CREATE INDEX process_ind ON source (process_id)"
-    - name: index_2
-      val: "CREATE INDEX scan_ind ON source (scan_id)"
-    - name: index_3
-      val: "CREATE INDEX exposure_ind ON source (exposure_id)"
-    - name: index_4
-      val: "CREATE INDEX plate_ind ON source (plate_id)"
-    - name: index_5
-      val: "CREATE INDEX archive_ind ON source (archive_id)"
-    - name: index_6
-      val: "CREATE INDEX annularbin_ind ON source (annular_bin)"
-
-  - name: phot_calib
-    order: 14
-    columns:
-
     - name: calib_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1751,7 +1649,7 @@
       order: 6
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: annular_bin
+    - name: solution_num
       order: 7
       mysql_datatype: "TINYINT"
       pgsql_datatype: "smallint"
@@ -1763,7 +1661,7 @@
       order: 9
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: num_bin_stars
+    - name: num_candidate_stars
       order: 10
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
@@ -1806,16 +1704,20 @@
     - name: timestamp_insert
       order: 20
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 21
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
-      
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id)"
+      val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id);ALTER TABLE phot_calib MODIFY calib_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE phot_calib ADD CONSTRAINT calib_pky PRIMARY KEY (calib_id)"
     - name: index_1
@@ -1831,133 +1733,13 @@
     - name: index_6
       val: "CREATE INDEX annularbin_ind ON phot_calib (annular_bin)"
 
-  - name: phot_sub
-    order: 15
-    columns:
-
-    - name: sub_id
-      order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
-    - name: process_id
-      order: 2
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: scan_id
-      order: 3
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer NOT NULL"
-    - name: plate_id
-      order: 5
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: archive_id
-      order: 6
-      mysql_datatype: "INT UNSIGNED NOT NULL"
-      pgsql_datatype: "integer NOT NULL"
-    - name: phot_sub_grid
-      order: 7
-      mysql_datatype: "SMALLINT"
-      pgsql_datatype: "smallint"
-    - name: phot_sub_id
-      order: 8
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: parent_sub_id
-      order: 9
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: x_min
-      order: 10
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: x_max
-      order: 11
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: y_min
-      order: 12
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: y_max
-      order: 13
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: num_selected_stars
-      order: 14
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: above_threshold
-      order: 15
-      mysql_datatype: "TINYINT(1)"
-      pgsql_datatype: "smallint"
-    - name: num_fit_stars
-      order: 16
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: correction_min
-      order: 17
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: correction_max
-      order: 18
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: num_applied_stars
-      order: 19
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: rmse_min
-      order: 20
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: rmse_median
-      order: 21
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: rmse_max
-      order: 22
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: timestamp_insert
-      order: 23
-      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
-    - name: timestamp_update
-      order: 24
-      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
-
-    indexes:
-    - name: mysql_pk
-      val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id)"
-    - name: pgsql_pk
-      val: "ALTER TABLE phot_sub ADD CONSTRAINT phot_sub_pky PRIMARY KEY (sub_id)"
-    - name: index_1
-      val: "CREATE INDEX process_ind ON phot_sub (process_id)"
-    - name: index_2
-      val: "CREATE INDEX scan_ind ON phot_sub (scan_id)"
-    - name: index_3
-      val: "CREATE INDEX exposure_ind ON phot_sub (exposure_id)"
-    - name: index_4
-      val: "CREATE INDEX plate_ind ON phot_sub (plate_id)"
-    - name: index_5
-      val: "CREATE INDEX archive_ind ON phot_sub (archive_id)"
-    - name: index_6
-      val: "CREATE INDEX photsubid_ind ON phot_sub (phot_sub_id)"
-
   - name: phot_color
-    order: 16
+    order: 14
     columns:
-
     - name: color_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -2013,16 +1795,20 @@
     - name: timestamp_insert
       order: 15
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 16
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
-      
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id)"
+      val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id);ALTER TABLE phot_color MODIFY color_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE phot_color ADD CONSTRAINT phot_color_pky PRIMARY KEY (color_id)"
     - name: index_1
@@ -2037,13 +1823,12 @@
       val: "CREATE INDEX archive_ind ON phot_color (archive_id)"
 
   - name: phot_cterm
-    order: 17
+    order: 15
     columns:
-
     - name: cterm_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: process_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -2083,16 +1868,20 @@
     - name: timestamp_insert
       order: 11
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
       order: 12
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
 
-      
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id)"
+      val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id);ALTER TABLE phot_cterm MODIFY cterm_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE phot_cterm ADD CONSTRAINT phot_cterm_pky PRIMARY KEY (cterm_id)"
     - name: index_1
@@ -2107,13 +1896,12 @@
       val: "CREATE INDEX archive_ind ON phot_cterm (archive_id)"
 
   - name: process
-    order: 18
+    order: 16
     columns:
-
     - name: process_id
       order: 1
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT"
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: scan_id
       order: 2
       mysql_datatype: "INT UNSIGNED"
@@ -2137,11 +1925,11 @@
     - name: timestamp_start
       order: 7
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone NOT NULL"
+      pgsql_datatype: "timestamp with time zone default NOW()"
     - name: timestamp_end
       order: 8
-      mysql_datatype: "TIMESTAMP DEFAULT NULL"
-      pgsql_datatype: "timestamp without time zone"
+      mysql_datatype: "TIMESTAMP NULL"
+      pgsql_datatype: "timestamp with time zone default null"
     - name: duration
       order: 9
       mysql_datatype: "INT UNSIGNED"
@@ -2234,10 +2022,9 @@
       mysql_datatype: "VARCHAR(15)"
       pgsql_datatype: "character varying(15) COLLATE ucs_basic"
 
-      
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id)"
+      val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id);ALTER TABLE process MODIFY process_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE process ADD CONSTRAINT process_pky PRIMARY KEY (process_id)"
     - name: index_1
@@ -2250,18 +2037,17 @@
       val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
-    order: 19
+    order: 17
     columns:
-
     - name: processlog_id
-      mysql_datatype: "INT UNSIGNED NOT NULL AUTO_INCREMENT "
-      pgsql_datatype: "integer NOT NULL"
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
     - name: process_id
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer NOT NULL"
     - name: timestamp_log
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-      pgsql_datatype: "timestamp without time zone"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: scan_id
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
@@ -2281,10 +2067,9 @@
       mysql_datatype: "TEXT"
       pgsql_datatype: "text COLLATE ucs_basic"
 
-      
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id)"
+      val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id);ALTER TABLE process_log MODIFY processlog_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
     - name: pgsql_pk
       val: "ALTER TABLE process_log ADD CONSTRAINT processlog_pky PRIMARY KEY (processlog_id)"
     - name: index_1
@@ -2297,4 +2082,3 @@
       val: "CREATE INDEX archive_ind ON process_log (archive_id)"
     - name:  index_5
       val: "CREATE INDEX event_ind ON process_log (event)"
-
