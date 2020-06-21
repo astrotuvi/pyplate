@@ -280,6 +280,7 @@ class SourceTable(Table):
         self.pattern_x = None
         self.pattern_y = None
         self.pattern_ratio = None
+        self.num_crossmatch_gaia = None
 
     def populate(self, num_sources=0):
         """
@@ -612,6 +613,7 @@ class SourceTable(Table):
         self['gaiadr2_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
         self['gaiadr2_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
         self['gaiadr2_dist'][ind_plate] = dist_arcsec
+        self.num_crossmatch_gaia = len(ind_plate)
 
         # Mask nan values in listed columns
         for col in ['gaiadr2_ra', 'gaiadr2_dec', 'gaiadr2_gmag',

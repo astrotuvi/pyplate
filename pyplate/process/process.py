@@ -2134,7 +2134,10 @@ class Process:
         self.phot_calib_curves = phot_calib_curves
 
         mag_range = max_cur_faint_limit - min_cur_bright_limit
-        self.db_update_process(color_term=mean_cur_color_term,
+        num_gaia_dr2 = self.sources.num_crossmatch_gaia
+
+        self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+                               color_term=mean_cur_color_term,
                                bright_limit=min_cur_bright_limit,
                                faint_limit=max_cur_faint_limit,
                                mag_range=mag_range, num_calib=num_calib,
