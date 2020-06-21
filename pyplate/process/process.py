@@ -1992,6 +1992,12 @@ class Process:
         ind_dense = kde_all.density > 0.2 * kde_all.density.max()
         plate_mag_lim = kde_all.support[ind_dense][-1]
 
+        # Default values
+        mean_cur_color_term = None
+        max_cur_faint_limit = None
+        min_cur_bright_limit = None
+        num_calib = None
+
         # Variables to store calibration results
         phot_color = []
         phot_calib_curves = []
@@ -2063,6 +2069,9 @@ class Process:
             cur_catalog_limit = new_mag_range[1]
             self.sources.crossmatch_gaia(self.plate_solution, self.star_catalog)
 
+            cur_calib_stars = []
+            cur_color_term = []
+            cur_bright_limit = []
             cur_faint_limit = []
             est_faint_limit = []
 
@@ -2072,13 +2081,25 @@ class Process:
                 phot_color.append(photproc.phot_color)
                 phot_calib_curves.append(photproc.calib_curve)
 
-                # Get current faint limit
-                flim = photproc.phot_calib[-1]['faint_limit']
-                cur_faint_limit.append(flim)
+                # Get current color term, bright and faint limits
+                last_calib = photproc.phot_calib[-1]
+                cur_color_term.append(last_calib['color_term'])
+                cur_bright_limit.append(last_calib['bright_limit'])
+                cur_faint_limit.append(last_calib['faint_limit'])
+                cur_calib_stars.append(last_calib['num_calib_stars'])
 
                 # Estimate faint limit with the current calibration curve
                 estlim = photproc.calib_curve(plate_mag_lim).item()
                 est_faint_limit.append(estlim)
+
+            # Calculate total number of calibration stars in all solutions
+            num_calib = np.sum(cur_calib_stars)
+
+            # Calculate mean value in color-term list
+            mean_cur_color_term = np.array(cur_color_term).mean()
+
+            # Find min value in bright-limit list
+            min_cur_bright_limit = np.array(cur_bright_limit).min()
 
             # Calculate max values in faint-limit lists
             max_cur_faint_limit = np.array(cur_faint_limit).max()
@@ -2112,3 +2133,9 @@ class Process:
         self.phot_calib = photproc.phot_calib
         self.phot_calib_curves = phot_calib_curves
 
+        mag_range = max_cur_faint_limit - min_cur_bright_limit
+        self.db_update_process(color_term=mean_cur_color_term,
+                               bright_limit=min_cur_bright_limit,
+                               faint_limit=max_cur_faint_limit,
+                               mag_range=mag_range, num_calib=num_calib,
+                               calibrated=1)
