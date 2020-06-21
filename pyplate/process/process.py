@@ -1490,6 +1490,17 @@ class Process:
         prediction = model.predict(thumbs).flatten()
         self.sources['model_prediction'] = prediction
 
+        # Count probable artifacts and write the number to the database
+        num_artifacts = (prediction < 0.1).sum()
+        num_true_sources = (prediction > 0.9).sum()
+        self.db_update_process(num_artifacts=num_artifacts,
+                               num_true_sources=num_true_sources)
+        self.log.write('Classified {:d} sources as true sources '
+                       '(prediction > 0.9)'
+                       .format(num_artifacts), level=4, event=0)
+        self.log.write('Classified {:d} sources as artifacts (prediction < 0.1)'
+                       .format(num_artifacts), level=4, event=0)
+
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
         Solve astrometry in a FITS file.
@@ -1528,6 +1539,10 @@ class Process:
         # Apply scanner pattern to source coordinates
         if self.plate_solved:
             self.sources.apply_scanner_pattern(self.plate_solution)
+            self.db_update_process(solved=1,
+                                   num_solutions=plate_solution.num_solutions)
+        else:
+            self.db_update_process(solved=0, num_solutions=0)
 
     def output_solution_db(self):
         """
