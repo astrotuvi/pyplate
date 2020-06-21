@@ -273,36 +273,40 @@ class PlateDB:
         if self.db is not None:
             self.db.close_connection()
 
-    def create_schema(self, execute=False):
+    def create_schema(self, table=None, execute=False):
         """Create database schema
 
         Parameters
         ----------
+        table : str
+            Table name, if only single table is created
         execute : bool
             If True, execute schema creation; if False, only print the schema
             creation statements
         """
 
         if self.db is not None:
-            sql = self.db.get_schema_sql(mode='create_schema')
+            sql = self.db.get_schema_sql(table=table, mode='create_schema')
 
             if execute:
                 self.db.execute_query(sql)
             else:
                 print(sql)
 
-    def drop_schema(self, execute=False):
+    def drop_schema(self, table=None, execute=False):
         """Drop database schema
 
         Parameters
         ----------
+        table : str
+            Table name, if only single table is dropped
         execute : bool
             If True, execute schema creation; if False, only print the schema
             creation statements
         """
 
         if self.db is not None:
-            sql = self.db.get_schema_sql(mode='drop_schema')
+            sql = self.db.get_schema_sql(table=table, mode='drop_schema')
 
             if execute:
                 self.db.execute_query(sql)

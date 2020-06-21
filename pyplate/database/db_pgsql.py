@@ -106,7 +106,7 @@ class DB_pgsql:
         self.index_dict = fetch_ordered_indexes(path_yaml, 'pgsql', True,
                                                 new_name=schema)
 
-    def get_schema_sql(self, schema=None, mode='create_schema'):
+    def get_schema_sql(self, schema=None, table=None, mode='create_schema'):
         """
         Return schema creation or drop SQL statements.
 
@@ -114,6 +114,8 @@ class DB_pgsql:
         ----------
         schema : str
             Database schema
+        table : str
+            Table name, if only single table statement is required
         mode : str
             Controls which statements to return ('create_schema',
             'drop_schema', 'create_indexes', 'drop_indexes')
@@ -123,8 +125,23 @@ class DB_pgsql:
             self.index_dict is None):
             self.read_schema(schema=schema)
 
+        if table is None:
+            schema_dict = self.schema_dict.copy()
+            trigger_dict = self.trigger_dict.copy()
+        else:
+            schema_table = '{}.{}'.format(self.schema_dict['schema'], table)
+            schema_dict = OrderedDict()
+
+            if schema_table in self.schema_dict:
+                schema_dict[schema_table] = self.schema_dict[schema_table]
+
+            trigger_dict = OrderedDict()
+
+            if schema_table in self.trigger_dict:
+                trigger_dict[schema_table] = self.trigger_dict[schema_table]
+
         pdict = OrderedDict()
-        creat_schema_pgsql(self.schema_dict, self.trigger_dict, pdict)
+        creat_schema_pgsql(schema_dict, trigger_dict, pdict)
         creat_schema_index(self.index_dict, pdict)
 
         if mode in pdict:

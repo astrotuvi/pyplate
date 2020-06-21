@@ -275,9 +275,13 @@ def creat_schema_mysql(tablesdict, pdict, engine='Aria'):
 
     tdict = tablesdict.copy()
 
-    scm_name = tdict.pop('schema')
-    sql_schema = ('CREATE DATABASE %s;' % scm_name)
-    sql_drop_schema = ('DROP DATABASE %s;' % scm_name)
+    if 'schema' in tdict:
+        scm_name = tdict.pop('schema')
+        sql_schema = ('CREATE DATABASE %s;' % scm_name)
+        sql_drop_schema = ('DROP DATABASE %s;' % scm_name)
+    else:
+        sql_schema = ''
+        sql_drop_schema = ''
 
     if 'functions' in tdict:
         del tdict['functions']
@@ -302,14 +306,18 @@ def creat_schema_pgsql(tablesdict, triggersdict, pdict):
 
     tdict = tablesdict.copy()
 
-    scm_name = tdict.pop('schema')
-    sql_schema = 'CREATE schema {};'.format(scm_name)
+    if 'schema' in tdict:
+        scm_name = tdict.pop('schema')
+        sql_schema = 'CREATE schema {};'.format(scm_name)
+        sql_drop_schema = 'DROP schema {} CASCADE;'.format(scm_name)
+    else:
+        sql_schema = ''
+        sql_drop_schema = ''
 
     if 'functions' in tdict:
         funcs = tdict.pop('functions')
         sql_schema = '{}\n\n{}'.format(sql_schema, funcs)
 
-    sql_drop_schema = 'DROP schema {} CASCADE;'.format(scm_name)
     sql_drop = '\n'.join(['DROP TABLE IF EXISTS {};'.format(k) 
                           for k in tdict.keys()])
 
@@ -322,7 +330,6 @@ def creat_schema_pgsql(tablesdict, triggersdict, pdict):
 
     pdict['create_schema'] =  '{}\n\n{}\n'.format(sql_schema, sql)
     pdict['drop_schema'] = '{}\n\n{}\n'.format(sql_drop, sql_drop_schema)
-    tdict['schema'] = scm_name  
 
 def creat_schema_index(tdict, pdict):
     """

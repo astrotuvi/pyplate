@@ -109,7 +109,7 @@ class DB_mysql:
         self.index_dict = fetch_ordered_indexes(path_yaml, 'mysql', True,
                                                 new_name=schema)
 
-    def get_schema_sql(self, schema=None, mode='create_schema'):
+    def get_schema_sql(self, schema=None, table=None, mode='create_schema'):
         """
         Return schema creation or drop SQL statements.
 
@@ -117,6 +117,8 @@ class DB_mysql:
         ----------
         schema : str
             Database schema
+        table : str
+            Table name, if only single table is required
         mode : str
             Controls which statements to return ('create_schema',
             'drop_schema', 'create_indexes', 'drop_indexes')
@@ -125,8 +127,17 @@ class DB_mysql:
         if self.schema_dict is None or self.index_dict is None:
             self.read_schema(schema=schema)
 
+        if table is None:
+            schema_dict = self.schema_dict.copy()
+        else:
+            schema_table = '{}.{}'.format(self.schema_dict['schema'], table)
+            schema_dict = OrderedDict()
+
+            if schema_table in self.schema_dict:
+                schema_dict[schema_table] = self.schema_dict[schema_table]
+
         pdict = OrderedDict()
-        creat_schema_mysql(self.schema_dict, pdict)
+        creat_schema_mysql(schema_dict, pdict)
         creat_schema_index(self.index_dict, pdict)
 
         if mode in pdict:
