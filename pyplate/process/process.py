@@ -2142,3 +2142,47 @@ class Process:
                                faint_limit=max_cur_faint_limit,
                                mag_range=mag_range, num_calib=num_calib,
                                calibrated=1)
+
+    def output_calibration_db(self):
+        """
+        Write photometric calibration to the database.
+
+        """
+
+        self.log.to_db(3, 'Writing photometric calibration to the database',
+                       event=78)
+
+        if self.phot_calib == []:
+            self.log.write('No photometric calibration to write to the database',
+                           level=2, event=78)
+            return
+
+        if (self.scan_id is None or self.plate_id is None or
+            self.archive_id is None or self.process_id is None):
+            self.log.write('Cannot output calibration data. Missing process_id,'
+                           'scan_id, plate_id or archive_id.',
+                           level=2, event=78)
+            return
+
+        kwargs = {'process_id': self.process_id,
+                  'scan_id': self.scan_id,
+                  'plate_id': self.plate_id,
+                  'archive_id': self.archive_id}
+
+        self.log.write('Open database connection for writing to the '
+                       'phot_cterm, phot_color and phot_calib tables')
+        platedb = PlateDB()
+        platedb.assign_conf(self.conf)
+        platedb.open_connection()
+
+        for cterm in self.phot_cterm:
+            platedb.write_phot_cterm(cterm, **kwargs)
+
+        for color in self.phot_color:
+            platedb.write_phot_color(color, **kwargs)
+
+        for calib in self.phot_calib:
+            platedb.write_phot_calib(calib, **kwargs)
+
+        platedb.close_connection()
+        self.log.write('Closed database connection')
