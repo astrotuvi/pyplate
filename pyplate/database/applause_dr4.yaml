@@ -1502,8 +1502,8 @@
       pgsql_datatype: "integer"
     - name: solution_num
       order: 6
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
     - name: raj2000
       order: 7
       mysql_datatype: "DOUBLE"
@@ -1637,76 +1637,72 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
-      order: 5
+      order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: archive_id
-      order: 6
+      order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: solution_num
-      order: 7
-      mysql_datatype: "TINYINT"
+      order: 6
+      mysql_datatype: "SMALLINT UNSIGNED"
       pgsql_datatype: "smallint"
     - name: color_term
-      order: 8
+      order: 7
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: color_term_err
-      order: 9
+      order: 8
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: num_candidate_stars
-      order: 10
+      order: 9
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: num_calib_stars
-      order: 11
+      order: 10
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: num_bright_stars
-      order: 12
+      order: 11
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: num_outliers
-      order: 13
+      order: 12
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: bright_limit
-      order: 14
+      order: 13
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: faint_limit
-      order: 15
+      order: 14
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: mag_range
-      order: 16
+      order: 15
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: rmse_min
-      order: 17
+      order: 16
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: rmse_median
-      order: 18
+      order: 17
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: rmse_max
-      order: 19
+      order: 18
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: timestamp_insert
-      order: 20
+      order: 19
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 21
+      order: 20
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
 
@@ -1748,18 +1744,18 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
-      order: 5
+      order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: archive_id
-      order: 6
+      order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
+    - name: solution_num
+      order: 6
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
     - name: color_term
       order: 7
       mysql_datatype: "FLOAT"
@@ -1837,18 +1833,18 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
-      order: 5
+      order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: archive_id
-      order: 6
+      order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
+    - name: solution_num
+      order: 6
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
     - name: iteration
       order: 7
       mysql_datatype: "INT UNSIGNED"

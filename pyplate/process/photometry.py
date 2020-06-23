@@ -467,6 +467,7 @@ class PhotometryProcess:
 
             # Store cterm data
             self.phot_cterm.append(OrderedDict([
+                ('solution_num', solution_num),
                 ('iteration', 1),
                 ('cterm', cterm),
                 ('stdev', stdev_val),
@@ -527,6 +528,7 @@ class PhotometryProcess:
 
             # Store cterm data
             self.phot_cterm.append(OrderedDict([
+                ('solution_num', solution_num),
                 ('iteration', 2),
                 ('cterm', cterm),
                 ('stdev', stdev_val),
@@ -576,6 +578,7 @@ class PhotometryProcess:
 
             # Store cterm data
             self.phot_cterm.append(OrderedDict([
+                ('solution_num', solution_num),
                 ('iteration', 3),
                 ('cterm', cterm),
                 ('stdev', stdev_val),

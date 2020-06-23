@@ -781,9 +781,8 @@ class PlateDB:
 
         """
 
-        col_list = ['process_id', 'scan_id', 'exposure_id',
-                    'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
+        val_tuple = (process_id, scan_id, plate_id, archive_id)
 
         # Get phot_cterm table columns from database schema
         phot_cterm_table = self.get_table_dict('phot_cterm')
@@ -806,9 +805,8 @@ class PlateDB:
 
         """
 
-        col_list = ['process_id', 'scan_id', 'exposure_id',
-                    'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
+        val_tuple = (process_id, scan_id, plate_id, archive_id)
 
         # Get phot_cterm table columns from database schema
         phot_color_table = self.get_table_dict('phot_color')
@@ -831,9 +829,8 @@ class PlateDB:
 
         """
 
-        col_list = ['process_id', 'scan_id', 'exposure_id',
-                    'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, None, plate_id, archive_id)
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
+        val_tuple = (process_id, scan_id, plate_id, archive_id)
 
         # Get phot_calib table columns from database schema
         phot_calib_table = self.get_table_dict('phot_calib')
