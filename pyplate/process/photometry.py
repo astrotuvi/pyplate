@@ -187,15 +187,11 @@ class PhotometryProcess:
         self.astref_tables = []
         self.gaia_files = None
         self.neighbors_gaia = None
-        self.sol_centroid = None
-        self.sol_radius = None
-        self.sol_max_sep = None
-        self.astrom_sub = []
-        self.phot_cterm = []
-        self.phot_color = None
-        self.phot_calib = []
+
+        self.phot_cterm_list = []
+        self.phot_calib = None
+        self.phot_calib_list = []
         self.phot_calibrated = False
-        self.phot_sub = []
         self.calib_curve = None
         self.faint_limit = None
         self.bright_limit = None
@@ -466,7 +462,7 @@ class PhotometryProcess:
             stdev_list.append(stdev_val)
 
             # Store cterm data
-            self.phot_cterm.append(OrderedDict([
+            self.phot_cterm_list.append(OrderedDict([
                 ('solution_num', solution_num),
                 ('iteration', 1),
                 ('cterm', cterm),
@@ -527,7 +523,7 @@ class PhotometryProcess:
             stdev_list.append(stdev_val)
 
             # Store cterm data
-            self.phot_cterm.append(OrderedDict([
+            self.phot_cterm_list.append(OrderedDict([
                 ('solution_num', solution_num),
                 ('iteration', 2),
                 ('cterm', cterm),
@@ -577,7 +573,7 @@ class PhotometryProcess:
             stdev_list.append(stdev_val)
 
             # Store cterm data
-            self.phot_cterm.append(OrderedDict([
+            self.phot_cterm_list.append(OrderedDict([
                 ('solution_num', solution_num),
                 ('iteration', 3),
                 ('cterm', cterm),
@@ -629,18 +625,21 @@ class PhotometryProcess:
             self.log.write('Taking color term from previous iteration',
                            level=4, event=72)
 
+        # Create dictionary for calibration results, if not exists
+        if self.phot_calib is None:
+            self.phot_calib = OrderedDict()
+            self.phot_calib['solution_num'] = solution_num
+            self.phot_calib['iteration'] = 0
+
         # Store color term result
-        self.phot_color = OrderedDict([
-            ('solution_num', solution_num),
-            ('color_term', cterm),
-            ('color_term_err', cterm_err),
-            ('stdev_fit', stdev_fit),
-            ('stdev_min', stdev_min),
-            ('cterm_min', cterm_minval),
-            ('cterm_max', cterm_maxval),
-            ('iteration', iteration),
-            ('num_stars', num_stars)
-        ])
+        self.phot_calib['color_term'] = cterm
+        self.phot_calib['color_term_err'] = cterm_err
+        self.phot_calib['cterm_stdev_fit'] = stdev_fit
+        self.phot_calib['cterm_stdev_min'] = stdev_min
+        self.phot_calib['cterm_range_min'] = cterm_minval
+        self.phot_calib['cterm_range_max'] = cterm_maxval
+        self.phot_calib['cterm_iterations'] = iteration
+        self.phot_calib['cterm_num_stars'] = num_stars
 
         self.log.write('Plate color term (solution {:d}): {:.3f} ({:.3f})'
                        .format(solution_num, cterm, cterm_err),
@@ -674,6 +673,9 @@ class PhotometryProcess:
                 #self.db_update_process(calibrated=0)
                 return
 
+        # Create dictionary for calibration results
+        self.phot_calib = OrderedDict()
+
         # Create output directory, if missing
         if self.write_phot_dir and not os.path.isdir(self.write_phot_dir):
             self.log.write('Creating output directory {}'
@@ -704,6 +706,9 @@ class PhotometryProcess:
         if solution_num is None:
             solution_num = 1
 
+        self.phot_calib['solution_num'] = solution_num
+        self.phot_calib['iteration'] = iteration
+
         # For single exposures, exclude blended sources.
         # For multiple exposures, include them, because otherwise the bright
         # end will lack calibration stars.
@@ -726,6 +731,7 @@ class PhotometryProcess:
                     (self.sources['gaiadr2_neighbors'] == 1))
 
         num_calstars = cal_mask.sum()
+        self.phot_calib['num_candidate_stars'] = num_calstars
 
         if num_calstars == 0:
             self.log.write('No stars for photometric calibration',
@@ -757,8 +763,8 @@ class PhotometryProcess:
         self.evaluate_color_term(self.sources[cterm_mask],
                                  solution_num=solution_num)
 
-        cterm = self.phot_color['color_term']
-        cterm_err = self.phot_color['color_term_err']
+        cterm = self.phot_calib['color_term']
+        cterm_err = self.phot_calib['color_term_err']
 
         #self.db_update_process(color_term=cterm)
 
@@ -1229,27 +1235,23 @@ class PhotometryProcess:
         bright_limit = s(plate_mag_brightest).item()
         faint_limit = s(plate_mag_lim).item()
 
-        self.phot_calib.append(OrderedDict([
-            ('solution_num', solution_num),
-            ('iteration', iteration),
-            ('color_term', cterm),
-            ('color_term_err', cterm_err),
-            ('num_candidate_stars', num_calstars),
-            ('num_calib_stars', num_valid),
-            ('num_bright_stars', nbright),
-            ('num_outliers', num_outliers),
-            ('bright_limit', bright_limit),
-            ('faint_limit', faint_limit),
-            ('mag_range', faint_limit - bright_limit),
-            ('rmse_min', rmse.min()),
-            ('rmse_median', np.median(rmse)),
-            ('rmse_max', rmse.max()),
-            ('plate_mag_brightest', plate_mag_brightest),
-            ('plate_mag_density02', kde.support[ind_dense[0]]),
-            ('plate_mag_brightcut', brightmag),
-            ('plate_mag_maxden', plate_mag_maxden),
-            ('plate_mag_lim', plate_mag_lim)
-        ]))
+        self.phot_calib['num_calib_stars'] = num_valid
+        self.phot_calib['num_bright_stars'] = nbright
+        self.phot_calib['num_outliers'] = num_outliers
+        self.phot_calib['bright_limit'] = bright_limit
+        self.phot_calib['faint_limit'] = faint_limit
+        self.phot_calib['mag_range'] = faint_limit - bright_limit
+        self.phot_calib['rmse_min'] = rmse.min()
+        self.phot_calib['rmse_median'] = np.median(rmse)
+        self.phot_calib['rmse_max'] = rmse.max()
+        self.phot_calib['plate_mag_brightest'] = plate_mag_brightest
+        self.phot_calib['plate_mag_density02'] = kde.support[ind_dense[0]]
+        self.phot_calib['plate_mag_brightcut'] = brightmag
+        self.phot_calib['plate_mag_maxden'] = plate_mag_maxden
+        self.phot_calib['plate_mag_lim'] = plate_mag_lim
+
+        # Append calibration results to the list
+        self.phot_calib_list.append(self.phot_calib)
 
         # Apply photometric calibration to sources
         sol_mask = ((self.sources['solution_num'] == solution_num) &
@@ -1340,10 +1342,12 @@ class PhotometryProcess:
             #self.sources['bmagerr'][ind] = bmagerr
 
         try:
-            brightlim = min([cal['bright_limit'] for cal in self.phot_calib 
+            brightlim = min([cal['bright_limit']
+                             for cal in self.phot_calib_list
                              if cal['solution_num'] == solution_num
                              and cal['iteration'] == iteration])
-            faintlim = max([cal['faint_limit'] for cal in self.phot_calib 
+            faintlim = max([cal['faint_limit']
+                            for cal in self.phot_calib_list
                             if cal['solution_num'] == solution_num
                             and cal['iteration'] == iteration])
             mag_range = faintlim - brightlim

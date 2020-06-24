@@ -248,7 +248,7 @@ def _get_columns_sql(tdict, table):
     sql = None
 
     if table in tdict and isinstance(tdict[table], dict):
-        sql_list = ['    {:15s} {}'.format(k, v) 
+        sql_list = ['    {:20s} {}'.format(k, v) 
                     for k,v in tdict[table].items()]
         sql = ',\n'.join(sql_list)
 

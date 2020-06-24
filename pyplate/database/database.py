@@ -774,54 +774,6 @@ class PlateDB:
         solution_id = self.db.execute_query(sql, val_tuple)
         return solution_id
 
-    def write_phot_cterm(self, phot_cterm, process_id=None, scan_id=None, 
-                         plate_id=None, archive_id=None):
-        """
-        Write photometric color term data to the database.
-
-        """
-
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, plate_id, archive_id)
-
-        # Get phot_cterm table columns from database schema
-        phot_cterm_table = self.get_table_dict('phot_cterm')
-
-        for k in phot_cterm_table.keys():
-            if k in phot_cterm:
-                col_list.append(k)
-                val_tuple = val_tuple + (phot_cterm[k], )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
-               .format(self.table_name('phot_cterm'), col_str, val_str))
-        self.db.execute_query(sql, val_tuple)
-
-    def write_phot_color(self, phot_color, process_id=None, scan_id=None, 
-                         plate_id=None, archive_id=None):
-        """
-        Write photometric color term result to the database.
-
-        """
-
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, plate_id, archive_id)
-
-        # Get phot_cterm table columns from database schema
-        phot_color_table = self.get_table_dict('phot_color')
-
-        for k in phot_color_table.keys():
-            if k in phot_color:
-                col_list.append(k)
-                val_tuple = val_tuple + (phot_color[k], )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
-               .format(self.table_name('phot_color'), col_str, val_str))
-        self.db.execute_query(sql, val_tuple)
-
     def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
                          plate_id=None, archive_id=None):
         """

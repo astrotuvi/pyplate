@@ -288,9 +288,8 @@ class Process:
         self.scampcat = None
         self.gaia_files = None
         self.neighbors_gaia = None
-        self.phot_cterm = []
-        self.phot_color = None
-        self.phot_calib = []
+        self.phot_cterm_list = []
+        self.phot_calib_list = []
         self.phot_calibrated = False
         self.phot_calib_curves = None
 
@@ -1999,7 +1998,6 @@ class Process:
         num_calib = None
 
         # Variables to store calibration results
-        phot_color = []
         phot_calib_curves = []
         prelim_color_term = []
         cur_faint_limit = []
@@ -2009,20 +2007,18 @@ class Process:
         for i in np.arange(1, self.plate_solution.num_solutions+1):
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=1)
 
-            # Retrieve phot_color and calibration curve
-            phot_color.append(photproc.phot_color)
+            # Retrieve calibration curve
             phot_calib_curves.append(photproc.calib_curve)
 
             # Second iteration
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=2)
 
-            # Retrieve phot_color and calibration curve
-            phot_color.append(photproc.phot_color)
+            # Retrieve calibration curve
             phot_calib_curves.append(photproc.calib_curve)
 
             # Collect color term and faint limit from the second iteration
-            prelim_color_term.append(photproc.phot_color['color_term'])
-            cur_faint_limit.append(photproc.phot_calib[-1]['faint_limit'])
+            prelim_color_term.append(photproc.phot_calib['color_term'])
+            cur_faint_limit.append(photproc.phot_calib['faint_limit'])
 
             # Estimate faint limit with the current calibration curve
             estlim = photproc.calib_curve(plate_mag_lim).item()
@@ -2078,11 +2074,10 @@ class Process:
             for i in np.arange(1, self.plate_solution.num_solutions+1):
                 photproc.calibrate_photometry_gaia(solution_num=i,
                                                    iteration=iteration)
-                phot_color.append(photproc.phot_color)
                 phot_calib_curves.append(photproc.calib_curve)
 
                 # Get current color term, bright and faint limits
-                last_calib = photproc.phot_calib[-1]
+                last_calib = photproc.phot_calib
                 cur_color_term.append(last_calib['color_term'])
                 cur_bright_limit.append(last_calib['bright_limit'])
                 cur_faint_limit.append(last_calib['faint_limit'])
@@ -2129,8 +2124,7 @@ class Process:
 
             iteration += 1
 
-        self.phot_color = phot_color
-        self.phot_calib = photproc.phot_calib
+        self.phot_calib_list = photproc.phot_calib_list
         self.phot_calib_curves = phot_calib_curves
 
         mag_range = max_cur_faint_limit - min_cur_bright_limit
@@ -2152,7 +2146,7 @@ class Process:
         self.log.to_db(3, 'Writing photometric calibration to the database',
                        event=78)
 
-        if self.phot_calib == []:
+        if len(self.phot_calib_list) == 0:
             self.log.write('No photometric calibration to write to the database',
                            level=2, event=78)
             return
@@ -2170,18 +2164,12 @@ class Process:
                   'archive_id': self.archive_id}
 
         self.log.write('Open database connection for writing to the '
-                       'phot_cterm, phot_color and phot_calib tables')
+                       'phot_cterm and phot_calib tables')
         platedb = PlateDB()
         platedb.assign_conf(self.conf)
         platedb.open_connection()
 
-        for cterm in self.phot_cterm:
-            platedb.write_phot_cterm(cterm, **kwargs)
-
-        for color in self.phot_color:
-            platedb.write_phot_color(color, **kwargs)
-
-        for calib in self.phot_calib:
+        for calib in self.phot_calib_list:
             platedb.write_phot_calib(calib, **kwargs)
 
         platedb.close_connection()
