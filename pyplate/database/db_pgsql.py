@@ -260,6 +260,20 @@ class DB_pgsql:
 
         return val
 
+    def execute_select_query(self, *args):
+        """
+        Execute SQL SELECT query and return all results.
+
+        Parameters
+        ----------
+        args : tuple
+            Query arguments that will be passed to the database cursor
+        """
+
+        self.cursor.execute(*args)
+        val = self.cursor.fetchall()
+        return val
+
     def executemany_query(self, *args):
         """
         Execute SQL query with mutliple data rows and reopen connection if 
