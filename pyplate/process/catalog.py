@@ -86,8 +86,9 @@ class StarCatalog(Table):
         """
 
         # Construct query string
-        pos_query_str = ('POINT(ra,dec) @ '
-                         'CIRCLE(POINT({:f},{:f}),{:f})')
+        pos_query_str = ('pos @ '
+                         'SCIRCLE(SPOINT(RADIANS({:f}), RADIANS({:f})), '
+                         'RADIANS({:f}))')
         pos_query = (pos_query_str
                      .format(skycoord.ra.to(u.deg).value,
                              skycoord.dec.to(u.deg).value,
