@@ -102,7 +102,8 @@ class StarCatalog(Table):
         res = self.db.db.execute_select_query(sql_query)
         cols = [col.strip() for col in
                 sql_query.split('FROM')[0].split('SELECT')[1].split(',')]
-        tab = Table(rows=res, names=cols)
+        dtype = ['i8'] + ['f8'] * (len(cols) - 1)
+        tab = Table(rows=res, names=cols, dtype=dtype)
 
         return tab
 
