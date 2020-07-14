@@ -89,12 +89,10 @@ def new_scampref():
     tbl.header.set('TDIM1', '(80, 36)', after='TFORM1')
     hdulist.append(tbl)
 
-    col1 = fits.Column(name='X_WORLD', format='1D', unit='deg', disp='E15')
-    col2 = fits.Column(name='Y_WORLD', format='1D', unit='deg', disp='E15')
-    col3 = fits.Column(name='ERRA_WORLD', format='1E', unit='deg',
-                       disp='E12')
-    col4 = fits.Column(name='ERRB_WORLD', format='1E', unit='deg',
-                       disp='E12')
+    col1 = fits.Column(name='X_WORLD', format='1D', unit='deg')
+    col2 = fits.Column(name='Y_WORLD', format='1D', unit='deg')
+    col3 = fits.Column(name='ERRA_WORLD', format='1E', unit='deg')
+    col4 = fits.Column(name='ERRB_WORLD', format='1E', unit='deg')
     col5 = fits.Column(name='MAG', format='1E', unit='mag', disp='F8.4')
     col6 = fits.Column(name='MAGERR', format='1E', unit='mag', disp='F8.4')
     col7 = fits.Column(name='OBSDATE', format='1D', unit='yr',
