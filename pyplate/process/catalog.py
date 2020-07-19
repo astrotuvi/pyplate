@@ -39,6 +39,7 @@ class StarCatalog(Table):
         self.catalog = catalog
         self.protocol = protocol
         self.db_section = None
+        self.table_name = None
 
         self.log = None
         self.gaia_dir = ''
@@ -48,7 +49,6 @@ class StarCatalog(Table):
 
         self.conf = None
         self.db = None
-        self.gaia_table = None
 
     def assign_conf(self, conf):
         """
@@ -61,7 +61,7 @@ class StarCatalog(Table):
 
         self.conf = conf
 
-        for attr in ['catalog', 'protocol']:
+        for attr in ['catalog', 'protocol', 'table_name']:
             try:
                 setattr(self, attr, conf.get('Catalog', attr))
             except configparser.Error:
@@ -97,7 +97,7 @@ class StarCatalog(Table):
         tap_service = vo.dal.TAPService('https://gaia.aip.de/tap')
 
         # Schema and table name in the Gaia database
-        gaia_table = 'gdr2.gaia_source'
+        table_name = 'gdr2.gaia_source'
 
         # Suppress warnings
         warnings.filterwarnings('ignore', module='astropy.io.votable')
@@ -109,7 +109,7 @@ class StarCatalog(Table):
                      .format(skycoord.ra.to(u.deg).value,
                              skycoord.dec.to(u.deg).value,
                              radius.to(u.deg).value))
-        tap_query = query.format(gaia_table, pos_query)
+        tap_query = query.format(table_name, pos_query)
 
         if self.log is not None:
             self.log.write('Gaia TAP query: {}'.format(tap_query),
@@ -143,7 +143,7 @@ class StarCatalog(Table):
                      .format(skycoord.ra.to(u.deg).value,
                              skycoord.dec.to(u.deg).value,
                              radius.to(u.deg).value))
-        sql_query = query.format(self.gaia_table, pos_query)
+        sql_query = query.format(self.table_name, pos_query)
 
         if self.log is not None:
             self.log.write('Gaia SQL query: {}'.format(sql_query),
