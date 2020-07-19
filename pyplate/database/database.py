@@ -69,7 +69,7 @@ class PlateDB:
         self.user = kwargs.pop('user', '')
         self.database = kwargs.pop('database', '')
         self.password = kwargs.pop('password', '')
-        self.schema = kwargs.pop('schema', '')
+        self.schema = kwargs.pop('schema', None)
         self.schema_dict = None
         self.yaml = kwargs.pop('yaml', None)
         self.conf = None
@@ -84,7 +84,7 @@ class PlateDB:
             self.db = None
 
         # Read database schema
-        if self.rdbms is not None:
+        if self.rdbms is not None and self.schema is not None:
             self.read_schema()
 
     def assign_conf(self, conf, section=None):
@@ -118,6 +118,9 @@ class PlateDB:
             except configparser.Error:
                 pass
 
+            if attr == 'schema' and self.schema == ''
+                self.schema = None
+
         for attr in ['port']:
             try:
                 setattr(self, attr, conf.getint(section, attr))
@@ -135,8 +138,9 @@ class PlateDB:
             self.db.assign_conf(self.conf, section=section)
 
             # Read database schema
-            self.db.read_schema()
-            self.read_schema()
+            if self.schema is not None:
+                self.db.read_schema()
+                self.read_schema()
 
     def read_schema(self, schema=None, yaml=None):
         """Read schema from schema YAML file.

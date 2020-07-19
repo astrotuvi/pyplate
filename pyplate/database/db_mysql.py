@@ -34,7 +34,7 @@ class DB_mysql:
         self.user = ''
         self.password = ''
         self.database = ''
-        self.schema = kwargs.pop('schema', '')
+        self.schema = kwargs.pop('schema', None)
         self.yaml = kwargs.pop('yaml', None)
 
         self.schema_dict = None
@@ -75,6 +75,9 @@ class DB_mysql:
                 setattr(self, attr, conf.get(section, attr))
             except configparser.Error:
                 pass
+
+            if attr == 'schema' and self.schema == '':
+                self.schema = None
 
         for attr in ['port']:
             try:
