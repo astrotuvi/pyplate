@@ -118,7 +118,7 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-            if attr == 'schema' and self.schema == ''
+            if attr == 'schema' and self.schema == '':
                 self.schema = None
 
         for attr in ['port']:
