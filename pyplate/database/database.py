@@ -87,7 +87,7 @@ class PlateDB:
         if self.rdbms is not None:
             self.read_schema()
 
-    def assign_conf(self, conf):
+    def assign_conf(self, conf, section=None):
         """
         Assign and parse configuration.
 
@@ -105,21 +105,22 @@ class PlateDB:
             except configparser.Error:
                 pass
 
-        try:
-            db_section = conf.get('Database', 'output_db')
-        except configparser.Error:
-            db_section = None
+        if section is None:
+            try:
+                section = conf.get('Database', 'output_db')
+            except configparser.Error:
+                section = None
 
         for attr in ['rdbms', 'host', 'user', 'database', 'password',
                      'schema', 'yaml']:
             try:
-                setattr(self, attr, conf.get(db_section, attr))
+                setattr(self, attr, conf.get(section, attr))
             except configparser.Error:
                 pass
 
         for attr in ['port']:
             try:
-                setattr(self, attr, conf.getint(db_section, attr))
+                setattr(self, attr, conf.getint(section, attr))
             except configparser.Error:
                 pass
 
@@ -131,7 +132,7 @@ class PlateDB:
 
         # Apply conf to self.db
         if self.db is not None:
-            self.db.assign_conf(self.conf, section=db_section)
+            self.db.assign_conf(self.conf, section=section)
 
             # Read database schema
             self.db.read_schema()

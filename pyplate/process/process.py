@@ -1595,6 +1595,7 @@ class Process:
         # Initialise star_catalog
         if self.star_catalog is None:
             self.star_catalog = StarCatalog()
+            self.star_catalog.assign_conf(self.conf)
             self.star_catalog.gaia_dir = self.gaia_dir
             self.star_catalog.scratch_dir = self.scratch_dir
             self.star_catalog.log = self.log

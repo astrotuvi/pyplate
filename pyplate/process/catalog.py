@@ -8,6 +8,12 @@ from astropy import units as u
 #from astroquery.gaia import Gaia
 from .solve import PlateSolution
 from ..conf import read_conf
+from ..database import PlateDB
+
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 
 
 class StarCatalog(Table):
@@ -16,8 +22,23 @@ class StarCatalog(Table):
 
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, catalog='Gaia', protocol='TAP', **kwargs):
+        """
+        Initialise StarCatalog class.
+
+        Parameters
+        ----------
+        catalog : str
+            Name of the external catalog (currently, only Gaia is supported)
+        protocol : str
+            Catalog query protocol (TAP or SQL)
+        """
+
         super().__init__(*args, **kwargs)
+
+        self.catalog = catalog
+        self.protocol = protocol
+        self.db_section = None
 
         self.log = None
         self.gaia_dir = ''
@@ -25,8 +46,37 @@ class StarCatalog(Table):
         self.mag_range = None
         self.name = None
 
+        self.conf = None
         self.db = None
         self.gaia_table = None
+
+    def assign_conf(self, conf):
+        """
+        Parse configuration and set class attributes.
+
+        """
+
+        if isinstance(conf, str):
+            conf = read_conf(conf)
+
+        self.conf = conf
+
+        for attr in ['catalog', 'protocol']:
+            try:
+                setattr(self, attr, conf.get('Catalog', attr))
+            except configparser.Error:
+                pass
+
+        try:
+            self.protocol = self.protocol.upper()
+        except TypeError:
+            pass
+
+        if self.protocol == 'SQL':
+            try:
+                self.db_section = conf.get('Catalog', 'db')
+            except configparser.Error:
+                pass
 
     def query_gaia_tap(self, query, skycoord, radius):
         """
@@ -99,17 +149,23 @@ class StarCatalog(Table):
             self.log.write('Gaia SQL query: {}'.format(sql_query),
                            level=4, event=0)
 
-        res = self.db.db.execute_select_query(sql_query)
+        gaiadb = PlateDB()
+        gaiadb.assign_conf(self.conf, section=self.db_section)
+        gaiadb.open_connection()
+
+        res = gaiadb.db.execute_select_query(sql_query)
         cols = [col.strip() for col in
                 sql_query.split('FROM')[0].split('SELECT')[1].split(',')]
         dtype = ['i8'] + ['f8'] * (len(cols) - 1)
         tab = Table(rows=res, names=cols, dtype=dtype)
 
+        gaiadb.close_connection()
+
         return tab
 
     def query_gaia(self, plate_solution=None, skycoord=None, radius=None,
                    mag_range=[0,20], color_term=None, filename=None,
-                   method='tap'):
+                   protocol=None):
         """
         Query Gaia DR2 catalogue for all plate solutions and
         store results in FITS files.
@@ -130,8 +186,9 @@ class StarCatalog(Table):
             natural magnitude = RP + C * (BP-RP)
         filename : str
             Name of FITS file for storing query results
-        method : str
-            Query method ('tap', 'sql')
+        protocol : str
+            Query protocol ('TAP', 'SQL'). If not specified, the value of the
+            class attribute is used.
 
         """
 
@@ -141,10 +198,14 @@ class StarCatalog(Table):
         assert not isinstance(mag_range, str)
         assert len(mag_range) == 2
         assert isinstance(plate_solution, PlateSolution) or use_coord_radius
-        assert isinstance(method, str)
+
+        if protocol is None:
+            protocol = self.protocol
+
+        assert isinstance(protocol, str)
 
         psol = plate_solution
-        method = method.lower()
+        protocol = protocol.upper()
 
         if mag_range[0] is None:
             mag_range[0] = 0
@@ -179,7 +240,7 @@ class StarCatalog(Table):
 
         # Use given coordinates and radius for query
         if use_coord_radius:
-            if method == 'sql':
+            if protocol == 'SQL':
                 tab = self.query_gaia_sql(query_str, skycoord, radius)
             else:
                 tab = self.query_gaia_tap(query_str, skycoord, radius)
@@ -206,7 +267,7 @@ class StarCatalog(Table):
             # FOV diagonal, then query Gaia once for all solutions.
             # Otherwise, query Gaia separately for individual solutions.
             if psol.max_sep < fov_diag:
-                if method == 'sql':
+                if protocol == 'SQL':
                     tab = self.query_gaia_sql(query_str, psol.centroid,
                                               psol.radius)
                 else:
@@ -224,7 +285,7 @@ class StarCatalog(Table):
                     sol_skycoord = SkyCoord(ra=solution['raj2000']*u.deg,
                                             dec=solution['dej2000']*u.deg)
 
-                    if method == 'sql':
+                    if protocol == 'SQL':
                         tab = self.query_gaia_sql(query_str, sol_skycoord,
                                                   solution['half_diag'])
                     else:
