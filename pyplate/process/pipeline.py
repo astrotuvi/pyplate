@@ -5,7 +5,7 @@ from deprecated import deprecated
 from ..metadata import Archive, PlateHeader, read_conf
 from ..database import PlateDB
 from ..image import PlateConverter
-from .solve import SolveProcess
+from .process import Process
 
 try:
     import configparser
@@ -39,13 +39,12 @@ class PlatePipeline:
         self.output_header_fits = False
         self.invert_image = False
         self.extract_sources = False
+        self.classify_artifacts = False
         self.solve_plate = False
         self.output_solution_db = False
         self.output_wcs_file = False
-        self.get_reference_catalogs = False
-        self.solve_recursive = False
+        self.crossmatch_gaia = False
         self.calibrate_photometry = False
-        self.improve_photometry = False
         self.output_calibration_db = False
         self.output_sources_db = False
         self.output_sources_csv = False
@@ -69,11 +68,9 @@ class PlatePipeline:
 
         for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
                      'output_header_file', 'output_header_fits', 
-                     'invert_image', 'extract_sources', 'solve_plate', 
-                     'output_solution_db', 'output_wcs_file',
-                     'get_reference_catalogs',
-                     'solve_recursive', 'calibrate_photometry', 
-                     'improve_photometry',
+                     'invert_image', 'extract_sources', 'classify_artifacts',
+                     'solve_plate', 'output_solution_db', 'output_wcs_file',
+                     'crossmatch_gaia', 'calibrate_photometry',
                      'output_calibration_db', 
                      'output_sources_db', 'output_sources_csv']:
             try:
@@ -115,17 +112,17 @@ class PlatePipeline:
             
         """
 
-        ameta = Archive()
-        ameta.assign_conf(self.conf)
+        archive = Archive()
+        archive.assign_conf(self.conf)
 
         if self.read_wfpdb:
-            ameta.read_wfpdb()
+            archive.read_wfpdb()
 
         if self.read_csv:
-            ameta.read_csv()
+            archive.read_csv()
 
         fn = os.path.basename(filename)
-        pmeta = ameta.get_platemeta(filename=fn)
+        pmeta = archive.get_platemeta(filename=fn)
         pmeta.compute_values()
 
         h = PlateHeader()
@@ -141,7 +138,7 @@ class PlatePipeline:
             fn_header = os.path.splitext(fn)[0] + '.hdr'
             h.output_to_file(fn_header)
 
-        proc = SolveProcess(fn)
+        proc = Process(fn)
         proc.assign_conf(pmeta.conf)
         proc.assign_header(h)
         proc.assign_metadata(pmeta)
@@ -160,8 +157,12 @@ class PlatePipeline:
         if self.extract_sources:
             proc.extract_sources()
 
+            if self.classify_artifacts:
+                proc.classify_artifacts()
+
             if self.solve_plate:
                 proc.solve_plate()
+                #proc.sources.process_source_coordinates()
 
             if self.output_solution_db:
                 proc.output_solution_db()
@@ -169,10 +170,10 @@ class PlatePipeline:
             if self.output_wcs_file:
                 proc.output_wcs_header()
 
-            if proc.solution is not None:
+            if proc.plate_solved:
                 proc.log.write('Updating FITS header with the WCS', 
                                level=3, event=37)
-                h.insert_wcs(proc.solution['wcs'])
+                h.insert_wcs(proc.plate_solution.wcs_header)
 
             if self.output_header_file:
                 proc.log.write('Writing FITS header to a file', 
@@ -197,33 +198,23 @@ class PlatePipeline:
                 platedb.update_scan(pmeta, filecols=True)
                 platedb.close_connection()
         
-            if self.get_reference_catalogs:
-                proc.get_reference_catalogs()
-
-            if self.solve_recursive:
-                proc.solve_recursive()
-
-                if self.output_solution_db:
-                    proc.output_astrom_sub_db()
-
-            proc.process_source_coordinates()
+            if self.crossmatch_gaia:
+                proc.query_star_catalog(mag_range=[0,12])
+                proc.sources.log = proc.log
+                proc.sources.crossmatch_gaia(proc.plate_solution,
+                                             proc.star_catalog)
 
             if self.calibrate_photometry:
                 proc.calibrate_photometry()
 
-            if self.improve_photometry:
-                proc.improve_photometry_recursive()
-
             if self.output_calibration_db:
-                proc.output_cterm_db()
-                proc.output_color_db()
                 proc.output_calibration_db()
 
             if self.output_sources_db:
-                proc.output_sources_db()
+                proc.sources.output_sources_db()
 
             if self.output_sources_csv:
-                proc.output_sources_csv()
+                proc.sources.output_sources_csv()
 
         proc.finish()
 
@@ -341,7 +332,7 @@ class PlatePipeline:
 
             try:
                 with open(os.path.join(self.work_dir, 'pyplate.done'), 
-                          'ab') as f:
+                          'a') as f:
                     for fn in done_list:
                         f.write('{}\n'.format(fn))
             except IOError:
@@ -349,7 +340,7 @@ class PlatePipeline:
 
             try:
                 with open(os.path.join(self.work_dir, 'pyplate.queue'), 
-                          'wb') as f:
+                          'w') as f:
                     for fn in queue_list:
                         f.write('{}\n'.format(fn))
             except IOError:
@@ -389,7 +380,7 @@ class PlatePipeline:
 
         try:
             with open(os.path.join(self.work_dir, 'pyplate.done'), 
-                      'ab') as f:
+                      'a') as f:
                 for fn in done_list:
                     f.write('{}\n'.format(fn))
         except IOError:
@@ -397,7 +388,7 @@ class PlatePipeline:
 
         try:
             with open(os.path.join(self.work_dir, 'pyplate.queue'), 
-                      'wb') as f:
+                      'w') as f:
                 for fn in queue_list:
                     f.write('{}\n'.format(fn))
         except IOError:

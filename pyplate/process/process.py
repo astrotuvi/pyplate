@@ -1531,6 +1531,10 @@ class Process:
         plate_solution = solveproc.solve_plate(plate_epoch=plate_epoch, sip=sip,
                                                skip_bright=skip_bright)
 
+        # Create WCS header
+        if plate_solution.plate_solved:
+            plate_solution.create_wcs_header()
+
         # Retrieve solutions
         self.plate_solution = plate_solution
         self.plate_solved = plate_solution.plate_solved
@@ -1573,6 +1577,28 @@ class Process:
             
         platedb.close_connection()
         self.log.write('Closed database connection')
+
+    def output_wcs_header(self):
+        """
+        Write WCS header to an ASCII file.
+
+        """
+
+        if self.plate_solved:
+            self.log.write('Writing WCS header to a file', level=3, event=36)
+
+            # Create output directory, if missing
+            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
+                self.log.write('Creating WCS output directory {}'
+                               ''.format(self.write_wcs_dir), level=4, event=36)
+                os.makedirs(self.write_wcs_dir)
+
+            fn_wcshead = '{}.wcs'.format(self.basefn)
+            fn_wcshead = os.path.join(self.write_wcs_dir, fn_wcshead)
+            self.log.write('Writing WCS output file {}'.format(fn_wcshead),
+                           level=4, event=36)
+            wcshead = self.plate_solution.wcs_header
+            wcshead.tofile(fn_wcshead, overwrite=True)
 
     def query_star_catalog(self, mag_range=[0,15], color_term=None):
         """
