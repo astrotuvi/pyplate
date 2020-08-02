@@ -303,8 +303,7 @@ class PlatePipeline:
         queue_list = []
 
         try:
-            with open(os.path.join(self.work_dir, 'pyplate.queue'), 
-                      'rb') as f:
+            with open(os.path.join(self.work_dir, 'pyplate.queue'), 'r') as f:
                 queue_list = [fn.strip() for fn in f.readlines()]
         except IOError:
             pass
