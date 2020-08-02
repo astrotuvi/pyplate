@@ -954,93 +954,16 @@ class SourceTable(Table):
                     self.sources['apass_nn_dist'][ind] = (nndist
                                                           .astype(np.float32))
 
-    def output_sources_db(self, write_csv=None):
-        """
-        Write extracted sources to the database.
-
-        """
-
-        if write_csv is None:
-            write_csv = self.write_sources_csv
-
-        if write_csv:
-            self.log.to_db(3, 'Writing sources to database files', event=80)
-        else:
-            self.log.to_db(3, 'Writing sources to the database', event=80)
-
-        platedb = PlateDB()
-        platedb.assign_conf(self.conf)
-
-        if write_csv:
-            # Create output directories, if missing
-            if (self.write_db_source_dir and 
-                not os.path.isdir(self.write_db_source_dir)):
-                self.log.write('Creating output directory {}'
-                               .format(self.write_db_source_dir), 
-                               level=4, event=80)
-                os.makedirs(self.write_db_source_dir)
-
-            if (self.write_db_source_calib_dir and 
-                not os.path.isdir(self.write_db_source_calib_dir)):
-                self.log.write('Creating output directory {}'
-                               .format(self.write_db_source_calib_dir), 
-                               level=4, event=80)
-                os.makedirs(self.write_db_source_calib_dir)
-        else:
-            # Open database connection
-            self.log.write('Open database connection for writing to the '
-                           'source and source_calib tables.')
-            platedb.open_connection(host=self.output_db_host,
-                                    user=self.output_db_user,
-                                    dbname=self.output_db_name,
-                                    passwd=self.output_db_passwd)
-
-        # Check for identification numbers and write data
-        if (self.scan_id is not None and self.plate_id is not None and 
-            self.archive_id is not None and self.process_id is not None):
-            platedb.write_sources(self.sources, process_id=self.process_id,
-                                  scan_id=self.scan_id, plate_id=self.plate_id,
-                                  archive_id=self.archive_id, 
-                                  write_csv=write_csv)
-        else:
-            self.log.write('Cannot write source data due to missing '
-                           'plate identification number(s).', 
-                           level=2, event=80)
-
-        # Close database connection
-        if not write_csv:
-            platedb.close_connection()
-            self.log.write('Closed database connection.')
-
-    def output_sources_csv(self, filename=None):
+    def output_csv(self, filename):
         """
         Write extracted sources to a CSV file.
 
         """
-
-        self.log.to_db(3, 'Writing sources to a file', event=81)
-
-        # Create output directory, if missing
-        if self.write_source_dir and not os.path.isdir(self.write_source_dir):
-            self.log.write('Creating output directory {}'
-                           .format(self.write_source_dir), level=4, event=81)
-            os.makedirs(self.write_source_dir)
-
-        if filename:
-            fn_world = os.path.join(self.write_source_dir, 
-                                    os.path.basename(filename))
-        else:
-            fn_world = os.path.join(self.write_source_dir, 
-                                    '{}_sources.csv'.format(self.basefn))
 
         outfields = list(_source_meta)
         outfmt = [_source_meta[f][1] for f in outfields]
         outhdr = ','.join(outfields)
         delimiter = ','
 
-        # Output CSV file with extracted sources
-        self.log.write('Writing output file {}'.format(fn_world), level=4, 
-                       event=81)
-        np.savetxt(fn_world, self.sources[outfields], fmt=outfmt, 
+        np.savetxt(filename, self[outfields], fmt=outfmt,
                    delimiter=delimiter, header=outhdr, comments='')
-

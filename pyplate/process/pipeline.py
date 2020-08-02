@@ -211,10 +211,10 @@ class PlatePipeline:
                 proc.output_calibration_db()
 
             if self.output_sources_db:
-                proc.sources.output_sources_db()
+                proc.output_sources_db()
 
             if self.output_sources_csv:
-                proc.sources.output_sources_csv()
+                proc.output_sources_csv()
 
         proc.finish()
 
