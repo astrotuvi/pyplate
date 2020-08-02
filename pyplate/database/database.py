@@ -768,7 +768,11 @@ class PlateDB:
                 elif isinstance(solution[k], bool):
                     value = int(solution[k])
                 else:
-                    value = solution[k]
+                    try:
+                        value = (solution[k] if np.isfinite(solution[k])
+                                 else None)
+                    except TypeError:
+                        value = solution[k]
 
                 val_tuple = val_tuple + (value, )
 
