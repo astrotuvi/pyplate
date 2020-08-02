@@ -882,10 +882,6 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer NOT NULL"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
       order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
@@ -1066,12 +1062,16 @@
       order: 49
       mysql_datatype: "TINYINT"
       pgsql_datatype: "smallint"
-    - name: timestamp_insert
+    - name: model_prediction
       order: 50
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: timestamp_insert
+      order: 51
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 50
+      order: 52
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
 
@@ -1113,18 +1113,18 @@
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: exposure_id
-      order: 4
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: plate_id
-      order: 5
+      order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
     - name: archive_id
-      order: 6
+      order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
+    - name: solution_num
+      order: 6
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
     - name: annular_bin
       order: 7
       mysql_datatype: "TINYINT"
@@ -1189,14 +1189,6 @@
       order: 22
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: astrom_sub_grid
-      order: 23
-      mysql_datatype: "SMALLINT"
-      pgsql_datatype: "smallint"
-    - name: astrom_sub_id
-      order: 24
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: nn_dist
       order: 25
       mysql_datatype: "FLOAT"
@@ -1261,14 +1253,6 @@
       order: 40
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: phot_sub_grid
-      order: 41
-      mysql_datatype: "SMALLINT"
-      pgsql_datatype: "smallint"
-    - name: phot_sub_id
-      order: 42
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
     - name: phot_sub_flags
       order: 43
       mysql_datatype: "TINYINT"
@@ -1293,136 +1277,96 @@
       order: 48
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: tycho2_id
+    - name: gaiadr2_id
       order: 49
-      mysql_datatype: "CHAR(12)"
-      pgsql_datatype: "character(12) COLLATE ucs_basic"
-    - name: tycho2_id_pad
+      mysql_datatype: "BIGINT"
+      pgsql_datatype: "bigint"
+    - name: gaiadr2_ra
       order: 50
-      mysql_datatype: "CHAR(12)"
-      pgsql_datatype: "character(12) COLLATE ucs_basic"
-    - name: tycho2_ra
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: gaiadr2_dec
       order: 51
       mysql_datatype: "DOUBLE"
       pgsql_datatype: "double precision"
-    - name: tycho2_dec
+    - name: gaiadr2_gmag
       order: 52
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: tycho2_btmag
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: gaiadr2_bpmag
       order: 53
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: tycho2_vtmag
+    - name: gaiadr2_rpmag
       order: 54
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: tycho2_btmagerr
+    - name: gaiadr2_bp_rp
       order: 55
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: tycho2_vtmagerr
+    - name: gaiadr2_dist
       order: 56
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: tycho2_hip
+    - name: gaiadr2_neighbors
       order: 57
-      mysql_datatype: "INT UNSIGNED"
+      mysql_datatype: "INT"
       pgsql_datatype: "integer"
-    - name: tycho2_dist
-      order: 58
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: tycho2_dist2
+    - name: tycho2_id
       order: 59
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: tycho2_nn_dist
+      mysql_datatype: "CHAR(12)"
+      pgsql_datatype: "character(12) COLLATE ucs_basic"
+    - name: tycho2_id_pad
       order: 60
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: ucac4_id
+      mysql_datatype: "CHAR(12)"
+      pgsql_datatype: "character(12) COLLATE ucs_basic"
+    - name: tycho2_ra
       order: 61
-      mysql_datatype: "CHAR(10)"
-      pgsql_datatype: "character(10) COLLATE ucs_basic"
-    - name: ucac4_ra
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: tycho2_dec
       order: 62
       mysql_datatype: "DOUBLE"
       pgsql_datatype: "double precision"
-    - name: ucac4_dec
+    - name: tycho2_btmag
       order: 63
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: ucac4_bmag
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: tycho2_vtmag
       order: 64
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: ucac4_vmag
+    - name: tycho2_btmagerr
       order: 65
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: ucac4_bmagerr
+    - name: tycho2_vtmagerr
       order: 66
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: ucac4_vmagerr
+    - name: tycho2_hip
       order: 67
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: ucac4_dist
+      mysql_datatype: "INT UNSIGNED"
+      pgsql_datatype: "integer"
+    - name: tycho2_dist
       order: 68
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: ucac4_dist2
+    - name: tycho2_dist2
       order: 69
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: ucac4_nn_dist
+    - name: tycho2_nn_dist
       order: 70
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: apass_ra
-      order: 71
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: apass_dec
-      order: 72
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: apass_bmag
-      order: 73
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apass_vmag
-      order: 74
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apass_bmagerr
-      order: 75
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apass_vmagerr
-      order: 76
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apass_dist
-      order: 77
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apass_dist2
-      order: 78
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: apass_nn_dist
-      order: 79
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
     - name: timestamp_insert
-      order: 80
+      order: 71
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 81
+      order: 72
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
 
