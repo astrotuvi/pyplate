@@ -763,7 +763,9 @@ class PhotometryProcess:
         self.evaluate_color_term(self.sources[cterm_mask],
                                  solution_num=solution_num)
 
-        if self.phot_calib is None:
+        # If color term was not determined, we need to terminate the
+        # calibration
+        if 'color_term' not in self.phot_calib:
             self.log.write('Cannot continue photometric calibration without '
                            'color term', level=2, event=71)
             return
