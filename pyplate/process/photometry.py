@@ -763,6 +763,11 @@ class PhotometryProcess:
         self.evaluate_color_term(self.sources[cterm_mask],
                                  solution_num=solution_num)
 
+        if self.phot_calib is None:
+            self.log.write('Cannot continue photometric calibration without '
+                           'color term', level=2, event=71)
+            return
+
         cterm = self.phot_calib['color_term']
         cterm_err = self.phot_calib['color_term_err']
 
