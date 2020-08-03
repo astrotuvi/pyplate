@@ -2084,6 +2084,7 @@ class Process:
         max_catalog_mag = 19. + mean_color_term
 
         iteration = 3
+        num_calib_solutions = 0
 
         # Erase natmag and corrections of the preliminary calibration
         self.sources['natmag'] = np.nan
@@ -2098,6 +2099,7 @@ class Process:
             cur_catalog_limit = new_mag_range[1]
             self.sources.crossmatch_gaia(self.plate_solution, self.star_catalog)
 
+            num_calib_solutions = 0
             cur_calib_stars = []
             cur_color_term = []
             cur_bright_limit = []
@@ -2111,6 +2113,7 @@ class Process:
                 if not photproc.phot_calibrated:
                     break
 
+                num_calib_solutions += 1
                 phot_calib_curves.append(photproc.calib_curve)
 
                 # Get current color term, bright and faint limits
@@ -2123,6 +2126,9 @@ class Process:
                 # Estimate faint limit with the current calibration curve
                 estlim = photproc.calib_curve(plate_mag_lim).item()
                 est_faint_limit.append(estlim)
+
+            if num_calib_solutions == 0:
+                break
 
             # Calculate total number of calibration stars in all solutions
             num_calib = np.sum(cur_calib_stars)
@@ -2161,18 +2167,21 @@ class Process:
 
             iteration += 1
 
-        self.phot_calib_list = photproc.phot_calib_list
-        self.phot_calib_curves = phot_calib_curves
-
-        mag_range = max_cur_faint_limit - min_cur_bright_limit
         num_gaia_dr2 = self.sources.num_crossmatch_gaia
 
-        self.db_update_process(num_gaia_dr2=num_gaia_dr2,
-                               color_term=mean_cur_color_term,
-                               bright_limit=min_cur_bright_limit,
-                               faint_limit=max_cur_faint_limit,
-                               mag_range=mag_range, num_calib=num_calib,
-                               calibrated=1)
+        if num_calib_solutions == 0:
+            self.db_update_process(num_gaia_dr2=num_gaia_dr2, calibrated=0)
+        else:
+            self.phot_calib_list = photproc.phot_calib_list
+            self.phot_calib_curves = phot_calib_curves
+            mag_range = max_cur_faint_limit - min_cur_bright_limit
+
+            self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+                                   color_term=mean_cur_color_term,
+                                   bright_limit=min_cur_bright_limit,
+                                   faint_limit=max_cur_faint_limit,
+                                   mag_range=mag_range, num_calib=num_calib,
+                                   calibrated=1)
 
     def output_calibration_db(self):
         """
