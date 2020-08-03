@@ -2034,11 +2034,17 @@ class Process:
         for i in np.arange(1, self.plate_solution.num_solutions+1):
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=1)
 
+            if not photproc.phot_calibrated:
+                break
+
             # Retrieve calibration curve
             phot_calib_curves.append(photproc.calib_curve)
 
             # Second iteration
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=2)
+
+            if not photproc.phot_calibrated:
+                break
 
             # Retrieve calibration curve
             phot_calib_curves.append(photproc.calib_curve)
@@ -2101,6 +2107,10 @@ class Process:
             for i in np.arange(1, self.plate_solution.num_solutions+1):
                 photproc.calibrate_photometry_gaia(solution_num=i,
                                                    iteration=iteration)
+
+                if not photproc.phot_calibrated:
+                    break
+
                 phot_calib_curves.append(photproc.calib_curve)
 
                 # Get current color term, bright and faint limits
