@@ -660,6 +660,9 @@ class PhotometryProcess:
         self.log.write('Photometric calibration: solution {:d}, iteration {:d}'
                        .format(solution_num, iteration), level=3, event=70)
 
+        # Initialise the flag value
+        self.phot_calibrated = False
+
         if 'METHOD' in self.plate_header:
             pmethod = self.plate_header['METHOD']
 
