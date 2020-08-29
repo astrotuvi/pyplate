@@ -1566,8 +1566,75 @@
     - name: index_7
       val: "CREATE INDEX dej2000_ind ON solution (dej2000)"
 
-  - name: phot_calib
+  - name: scanner_pattern
     order: 13
+    columns:
+    - name: pattern_id
+      order: 1
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
+    - name: process_id
+      order: 2
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: scan_id
+      order: 3
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: plate_id
+      order: 4
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: archive_id
+      order: 5
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: axis
+      order: 6
+      mysql_datatype: "TINYINT(1)"
+      pgsql_datatype: "smallint"
+    - name: coord
+      order: 7
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: shift
+      order: 8
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: extrapolated
+      order: 9
+      mysql_datatype: "TINYINT(1)"
+      pgsql_datatype: "smallint"
+    - name: timestamp_insert
+      order: 10
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+    - name: timestamp_update
+      order: 11
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
+    indexes:
+    - name: mysql_pk
+      val: "ALTER TABLE scanner_pattern ADD CONSTRAINT pattern_pky PRIMARY KEY (pattern_id);ALTER TABLE scanner_pattern MODIFY pattern_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
+    - name: pgsql_pk
+      val: "ALTER TABLE scanner_pattern ADD CONSTRAINT pattern_pky PRIMARY KEY (pattern_id)"
+    - name: index_1
+      val: "CREATE INDEX process_ind ON solution (process_id)"
+    - name: index_2
+      val: "CREATE INDEX scan_ind ON solution (scan_id)"
+    - name: index_3
+      val: "CREATE INDEX plate_ind ON solution (plate_id)"
+    - name: index_4
+      val: "CREATE INDEX archive_ind ON solution (archive_id)"
+
+  - name: phot_calib
+    order: 14
     columns:
     - name: calib_id
       order: 1
@@ -1722,7 +1789,7 @@
       val: "CREATE INDEX annularbin_ind ON phot_calib (annular_bin)"
 
   - name: process
-    order: 14
+    order: 15
     columns:
     - name: process_id
       order: 1
@@ -1856,7 +1923,7 @@
       val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
-    order: 15
+    order: 16
     columns:
     - name: processlog_id
       mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
