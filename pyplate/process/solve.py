@@ -151,6 +151,7 @@ class PlateSolution:
         self.pattern_x = None
         self.pattern_y = None
         self.pattern_ratio = None
+        self.pattern_table = None
 
     def assign_conf(self, conf):
         """
@@ -715,6 +716,7 @@ class SolveProcess:
         self.pattern_x = None
         self.pattern_y = None
         self.pattern_ratio = None
+        self.pattern_table = None
         self.astref_tables = []
         self.gaia_files = None
         self.neighbors_gaia = None
@@ -1343,7 +1345,7 @@ class SolveProcess:
         for attr in ['imwidth', 'imheight', 'plate_solved',
                      'num_solutions', 'solutions', 'num_iterations',
                      'pattern_x', 'pattern_y', 'pattern_ratio',
-                     'mean_pixscale']:
+                     'pattern_table', 'mean_pixscale']:
             setattr(plate_solution, attr, getattr(self, attr))
 
         # Calculate solutions centroid
@@ -1948,31 +1950,22 @@ class SolveProcess:
         self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
                        '{:.3f}'.format(pattern_ratio), level=4, event=32)
 
-        # Calculate scanner pattern and output to file
-        xx_min = np.floor(coords_wobble[:,0].min() / 100.) * 100
-        xx_max = np.ceil(coords_wobble[:,0].max() / 100.) * 100
-        yy_min = np.floor(coords_wobble[:,1].min() / 100.) * 100
-        yy_max = np.ceil(coords_wobble[:,1].max() / 100.) * 100
-        xx = np.arange(xx_min, xx_max, 100)
-        yy = np.arange(yy_min, yy_max, 100)
+        # Calculate scanner pattern and output to a table
+        xx = np.arange(0, self.imwidth + 1, 50)
+        yy = np.arange(0, self.imheight + 1, 50)
+        xx_extra = ((xx < coords_wobble[:,0].min()) |
+                    (xx > coords_wobble[:,0].max()))
+        yy_extra = ((yy < coords_wobble[:,1].min()) |
+                    (yy > coords_wobble[:,1].max()))
         xx_pattern = pattern_x(xx)
         yy_pattern = pattern_y(yy)
 
         t = Table()
-        t['x'] = xx
-        t['x_pattern'] = xx_pattern
-        fn_out = os.path.join(self.scratch_dir,
-                              '{}_pattern_x_{:d}.fits'.format(self.basefn,
-                                                              self.num_iterations+1))
-        t.write(fn_out, format='fits', overwrite=True)
-
-        t = Table()
-        t['y'] = yy
-        t['y_pattern'] = yy_pattern
-        fn_out = os.path.join(self.scratch_dir,
-                              '{}_pattern_y_{:d}.fits'.format(self.basefn,
-                                                              self.num_iterations+1))
-        t.write(fn_out, format='fits', overwrite=True)
+        t['axis'] = np.append(np.full(len(xx), 1), np.full(len(yy), 2))
+        t['coord'] = np.append(xx, yy)
+        t['shift'] = np.append(xx_pattern, yy_pattern)
+        t['extrapolated'] = np.append(xx_extra, yy_extra).astype(np.int)
+        self.pattern_table = t
 
         # Create new array for xy coordinates of reference stars
         coords_ref = np.zeros((0,2))
@@ -2200,4 +2193,3 @@ class SolveProcess:
             return astref_table
 
         return None
-
