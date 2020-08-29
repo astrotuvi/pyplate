@@ -1867,44 +1867,48 @@
       order: 19
       mysql_datatype: "SMALLINT UNSIGNED"
       pgsql_datatype: "smallint"
-    - name: num_gaia_dr2
+    - name: pattern_ratio
       order: 20
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: num_tycho2
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: num_gaia_dr2
       order: 21
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: color_term
+    - name: num_tycho2
       order: 22
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: bright_limit
+      mysql_datatype: "INT UNSIGNED"
+      pgsql_datatype: "integer"
+    - name: color_term
       order: 23
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: faint_limit
+    - name: bright_limit
       order: 24
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: mag_range
+    - name: faint_limit
       order: 25
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: num_calib
+    - name: mag_range
       order: 26
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: num_calib
+      order: 27
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: calibrated
-      order: 27
-      mysql_datatype: "TINYINT(1) UNSIGNED"
-      pgsql_datatype: "smallint"
-    - name: completed
       order: 28
       mysql_datatype: "TINYINT(1) UNSIGNED"
       pgsql_datatype: "smallint"
-    - name: pyplate_version
+    - name: completed
       order: 29
+      mysql_datatype: "TINYINT(1) UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: pyplate_version
+      order: 30
       mysql_datatype: "VARCHAR(15)"
       pgsql_datatype: "character varying(15) COLLATE ucs_basic"
 

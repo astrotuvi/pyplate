@@ -1543,7 +1543,8 @@ class Process:
         if self.plate_solved:
             self.sources.apply_scanner_pattern(self.plate_solution)
             self.db_update_process(solved=1,
-                                   num_solutions=plate_solution.num_solutions)
+                                   num_solutions=plate_solution.num_solutions,
+                                   pattern_ratio=plate_solution.pattern_ratio)
         else:
             self.db_update_process(solved=0, num_solutions=0)
 
