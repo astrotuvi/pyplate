@@ -1569,11 +1569,16 @@ class Process:
 
         if (self.scan_id is not None and self.plate_id is not None and 
             self.archive_id is not None and self.process_id is not None):
+            kw = {'process_id': self.process_id,
+                  'scan_id': self.scan_id,
+                  'plate_id': self.plate_id,
+                  'archive_id': self.archive_id}
+
             for solution in self.plate_solution.solutions:
-                platedb.write_solution(solution, process_id=self.process_id,
-                                       scan_id=self.scan_id,
-                                       plate_id=self.plate_id,
-                                       archive_id=self.archive_id)
+                platedb.write_solution(solution, **kw)
+
+            for row in self.plate_solution.pattern_table:
+                platedb.write_scanner_pattern(row, **kw)
             
         platedb.close_connection()
         self.log.write('Closed database connection')

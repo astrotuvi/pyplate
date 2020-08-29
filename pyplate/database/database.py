@@ -786,6 +786,30 @@ class PlateDB:
         solution_id = self.db.execute_query(sql, val_tuple)
         return solution_id
 
+    def write_scanner_pattern(self, table_row, process_id=None, scan_id=None,
+                              plate_id=None, archive_id=None):
+        """
+        Write scanner pattern to the database.
+
+        """
+
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
+        val_tuple = (process_id, scan_id, plate_id, archive_id)
+
+        # Get phot_calib table columns from database schema
+        scanner_pattern_table = self.get_table_dict('scanner_pattern')
+
+        for k in scanner_pattern_table.keys():
+            if k in table_row.columns:
+                col_list.append(k)
+                val_tuple = val_tuple + (table_row[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('scanner_pattern'), col_str, val_str))
+        self.db.execute_query(sql, val_tuple)
+
     def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
                          plate_id=None, archive_id=None):
         """
