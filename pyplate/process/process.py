@@ -292,6 +292,7 @@ class Process:
         self.phot_calib_list = []
         self.phot_calibrated = False
         self.phot_calib_curves = None
+        self.num_iterations = 0
 
         self.id_tyc = None
         self.id_tyc_pad = None
@@ -2136,6 +2137,9 @@ class Process:
             if num_calib_solutions == 0:
                 break
 
+            # Update number of iterations
+            self.num_iterations = iteration
+
             # Calculate total number of calibration stars in all solutions
             num_calib = np.sum(cur_calib_stars)
 
@@ -2221,8 +2225,24 @@ class Process:
         platedb.assign_conf(self.conf)
         platedb.open_connection()
 
-        for calib in self.phot_calib_list:
-            platedb.write_phot_calib(calib, **kwargs)
+        for i, calib in enumerate(self.phot_calib_list):
+            calib_id = platedb.write_phot_calib(calib, **kwargs)
+
+            # For the last iteration, also write calib curves to the database
+            if calib['iteration'] == self.num_iterations:
+                calib_curve = self.phot_calib_curves[i]
+
+                min_mag = np.floor(calib['plate_mag_brightest'] * 10) / 10.
+                max_mag = np.ceil(calib['plate_mag_lim'] * 10) / 10.
+                plate_mags = np.arange(min_mag, max_mag + 0.01, 0.1)
+
+                for m in plate_mags:
+                    curve_element = {'calib_id': calib_id,
+                                     'solution_num': calib['solution_num'],
+                                     'iteration': calib['iteration'],
+                                     'plate_mag': m,
+                                     'natmag': calib_curve(m).item()}
+                    platedb.write_calib_curve(curve_element, **kwargs)
 
         platedb.close_connection()
         self.log.write('Closed database connection')

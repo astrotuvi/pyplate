@@ -830,8 +830,33 @@ class PlateDB:
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING calib_id'
                .format(self.table_name('phot_calib'), col_str, val_str))
+        calib_id = self.db.execute_query(sql, val_tuple)
+        return calib_id
+
+    def write_calib_curve(self, calib_curve, process_id=None, scan_id=None,
+                          plate_id=None, archive_id=None):
+        """
+        Write photometric calibration curve to the database.
+
+        """
+
+        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
+        val_tuple = (process_id, scan_id, plate_id, archive_id)
+
+        # Get phot_calib table columns from database schema
+        phot_calib_curve_table = self.get_table_dict('phot_calib_curve')
+
+        for k in phot_calib_curve_table.keys():
+            if k in calib_curve:
+                col_list.append(k)
+                val_tuple = val_tuple + (calib_curve[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('phot_calib_curve'), col_str, val_str))
         self.db.execute_query(sql, val_tuple)
 
     def write_sources(self, sources, process_id=None, scan_id=None, 

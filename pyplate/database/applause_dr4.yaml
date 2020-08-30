@@ -1625,13 +1625,13 @@
     - name: pgsql_pk
       val: "ALTER TABLE scanner_pattern ADD CONSTRAINT pattern_pky PRIMARY KEY (pattern_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON solution (process_id)"
+      val: "CREATE INDEX process_ind ON scanner_pattern (process_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON solution (scan_id)"
+      val: "CREATE INDEX scan_ind ON scanner_pattern (scan_id)"
     - name: index_3
-      val: "CREATE INDEX plate_ind ON solution (plate_id)"
+      val: "CREATE INDEX plate_ind ON scanner_pattern (plate_id)"
     - name: index_4
-      val: "CREATE INDEX archive_ind ON solution (archive_id)"
+      val: "CREATE INDEX archive_ind ON scanner_pattern (archive_id)"
 
   - name: phot_calib
     order: 14
@@ -1780,16 +1780,85 @@
     - name: index_2
       val: "CREATE INDEX scan_ind ON phot_calib (scan_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON phot_calib (exposure_id)"
-    - name: index_4
       val: "CREATE INDEX plate_ind ON phot_calib (plate_id)"
-    - name: index_5
+    - name: index_4
       val: "CREATE INDEX archive_ind ON phot_calib (archive_id)"
-    - name: index_6
-      val: "CREATE INDEX annularbin_ind ON phot_calib (annular_bin)"
+
+  - name: phot_calib_curve
+    order: 15
+    columns:
+    - name: calibcurve_id
+      order: 1
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
+    - name: calib_id
+      order: 2
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: process_id
+      order: 3
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: scan_id
+      order: 4
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: plate_id
+      order: 5
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: archive_id
+      order: 6
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: solution_num
+      order: 7
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: iteration
+      order: 8
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: plate_mag
+      order: 9
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: natmag
+      order: 10
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: timestamp_insert
+      order: 11
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+    - name: timestamp_update
+      order: 12
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
+    indexes:
+    - name: mysql_pk
+      val: "ALTER TABLE phot_calib_curve ADD CONSTRAINT calibcurve_pky PRIMARY KEY (calibcurve_id);ALTER TABLE phot_calib_curve MODIFY calibcurve_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
+    - name: pgsql_pk
+      val: "ALTER TABLE phot_calib_curve ADD CONSTRAINT calibcurve_pky PRIMARY KEY (calibcurve_id)"
+    - name: index_1
+      val: "CREATE INDEX calib_ind ON phot_calib_curve (calib_id)"
+    - name: index_2
+      val: "CREATE INDEX process_ind ON phot_calib_curve (process_id)"
+    - name: index_3
+      val: "CREATE INDEX scan_ind ON phot_calib_curve (scan_id)"
+    - name: index_4
+      val: "CREATE INDEX plate_ind ON phot_calib_curve (plate_id)"
+    - name: index_5
+      val: "CREATE INDEX archive_ind ON phot_calib_curve (archive_id)"
 
   - name: process
-    order: 15
+    order: 16
     columns:
     - name: process_id
       order: 1
@@ -1927,7 +1996,7 @@
       val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
-    order: 16
+    order: 17
     columns:
     - name: processlog_id
       mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
