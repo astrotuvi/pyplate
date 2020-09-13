@@ -1271,8 +1271,16 @@ class SolveProcess:
         # Keep 1000 stars in brightness order, skip the brightest
         # Use only sources from annular bins 1-6
 
-        indclean = np.where((self.sources['flag_clean'] == 1) &
-                            (self.sources['annular_bin'] <= 6))[0]
+        # Check if artifacts have been classified.
+        # If yes, then select sources that are classified as true sources.
+        # If not, then rely only on flag_clean.
+        if np.isnan(self.sources['model_prediction']).sum() == 0:
+            bclean = ((self.sources['flag_clean'] == 1) &
+                      (self.sources['model_prediction'] > 0.9))
+        else:
+            bclean = self.sources['flag_clean'] == 1
+
+        indclean = np.where(bclean & (self.sources['annular_bin'] <= 6))[0]
         sb = skip_bright
         indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+num_keep]
         indsel = indclean[indsort]
@@ -1907,8 +1915,17 @@ class SolveProcess:
         t.write(fn_out, format='fits', overwrite=True)
 
         # Take clean sources from annular bins 1-9
-        mask_bins = ((self.sources['annular_bin'] <= 9) &
-                     (self.sources['flag_clean'] == 1))
+
+        # Check if artifacts have been classified.
+        # If yes, then select sources that are classified as true sources.
+        # If not, then rely only on flag_clean.
+        if np.isnan(self.sources['model_prediction']).sum() == 0:
+            bclean = ((self.sources['flag_clean'] == 1) &
+                      (self.sources['model_prediction'] > 0.9))
+        else:
+            bclean = self.sources['flag_clean'] == 1
+
+        mask_bins = bclean & (self.sources['annular_bin'] <= 9)
 
         if mask_bins.sum() <= 10:
             self.log.write('Too few clean sources in annular bins 1--9: '
