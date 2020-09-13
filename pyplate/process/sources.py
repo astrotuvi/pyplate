@@ -517,7 +517,7 @@ class SourceTable(Table):
             y_source = self['y_source']
             self['y_source'] = (y_source - plate_solution.pattern_y(y_source))
         elif plate_solution.pattern_ratio < 2./3.:
-            x_image = self['x_source']
+            x_source = self['x_source']
             self['x_source'] = (x_source - plate_solution.pattern_x(x_source))
 
     def crossmatch_gaia(self, plate_solution=None, star_catalog=None):
