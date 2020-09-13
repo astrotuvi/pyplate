@@ -1497,7 +1497,7 @@ class Process:
                                num_true_sources=num_true_sources)
         self.log.write('Classified {:d} sources as true sources '
                        '(prediction > 0.9)'
-                       .format(num_artifacts), level=4, event=0)
+                       .format(num_true_sources), level=4, event=0)
         self.log.write('Classified {:d} sources as artifacts (prediction < 0.1)'
                        .format(num_artifacts), level=4, event=0)
 
