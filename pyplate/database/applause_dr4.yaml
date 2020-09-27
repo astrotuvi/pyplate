@@ -65,7 +65,7 @@
     - name: plate_num_orig
       order: 4
       mysql_datatype: "CHAR(10)"
-      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
+      pgsql_datatype: "character(10) COLLATE ucs_basic"
     - name: wfpdb_id
       order: 5
       mysql_datatype: "CHAR(15)"
@@ -201,7 +201,7 @@
     - name: sky_conditions
       order: 38
       mysql_datatype: "VARCHAR(80)"
-      pgsql_datatype: "character varying(255) COLLATE ucs_basic"
+      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
     - name: observer
       order: 39
       mysql_datatype: "VARCHAR(80)"
@@ -523,12 +523,12 @@
       pgsql_datatype: "integer NOT NULL"
     - name: filename_scan
       order: 4
-      mysql_datatype: "VARCHAR(80)"
-      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
+      mysql_datatype: "VARCHAR(255)"
+      pgsql_datatype: "character varying(255) COLLATE ucs_basic"
     - name: filename_wedge
       order: 5
-      mysql_datatype: "VARCHAR(80)"
-      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
+      mysql_datatype: "VARCHAR(255)"
+      pgsql_datatype: "character varying(255) COLLATE ucs_basic"
     - name: naxis1
       order: 6
       mysql_datatype: "SMALLINT UNSIGNED"
@@ -658,8 +658,8 @@
       pgsql_datatype: "smallint"
     - name: filename
       order: 5
-      mysql_datatype: "VARCHAR(80)"
-      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
+      mysql_datatype: "VARCHAR(255)"
+      pgsql_datatype: "character varying(255) COLLATE ucs_basic"
     - name: file_format
       order: 6
       mysql_datatype: "VARCHAR(80)"
@@ -784,8 +784,8 @@
       pgsql_datatype: "smallint"
     - name: filename
       order: 7
-      mysql_datatype: "VARCHAR(80)"
-      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
+      mysql_datatype: "VARCHAR(255)"
+      pgsql_datatype: "character varying(255) COLLATE ucs_basic"
     - name: file_format
       order: 8
       mysql_datatype: "VARCHAR(80)"
@@ -1878,8 +1878,8 @@
       pgsql_datatype: "integer"
     - name: filename
       order: 5
-      mysql_datatype: "VARCHAR(80)"
-      pgsql_datatype: "character varying(80) COLLATE ucs_basic"
+      mysql_datatype: "VARCHAR(255)"
+      pgsql_datatype: "character varying(255) COLLATE ucs_basic"
     - name: hostname
       order: 6
       mysql_datatype: "VARCHAR(80)"
