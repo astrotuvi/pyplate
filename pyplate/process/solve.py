@@ -1064,65 +1064,103 @@ class SolveProcess:
         lab, cnt = np.unique(labels[labels>-1], return_counts=True)
 
         # Group cluster sizes
-        c, cc = np.unique(cnt, return_counts=True)
+        #c, cc = np.unique(cnt, return_counts=True)
 
         # Sort by difference between cluster size and numexp
-        ind_sort = np.argsort(np.abs(c-numexp))
+        #ind_sort = np.argsort(np.abs(c-numexp))
 
         # Accept most probable cluster size (label count)
-        count_prob = c[ind_sort[0]]
-        num_accepted_clusters = cc[ind_sort[0]]
-        self.log.write('Use clusters with {:d} members'
-                       .format(count_prob), level=4, double_newline=False)
-        self.log.write('Such clusters appear {:d} times'
-                       .format(num_accepted_clusters), level=4,
-                       double_newline=False)
+        #count_prob = c[ind_sort[0]]
+        #num_accepted_clusters = cc[ind_sort[0]]
+        #self.log.write('Use clusters with {:d} members'
+        #               .format(count_prob), level=4, double_newline=False)
+        #self.log.write('Such clusters appear {:d} times'
+        #               .format(num_accepted_clusters), level=4,
+        #               double_newline=False)
 
         # Select labels that have the accepted cluster size
-        labels_sel = lab[cnt == count_prob]
+        #labels_sel = lab[cnt == count_prob]
+        labels_sel = lab[np.abs(cnt - numexp) < 0.1 * numexp]
         label_mask = np.isin(labels, labels_sel)
+        num_accepted_clusters = len(labels_sel)
+
+        if num_accepted_clusters < 5:
+            self.log.write('Not enough source clusters found (<5)!')
+            return None
+        else:
+            self.log.write('Use {:d} source clusters'
+                           .format(num_accepted_clusters), level=4,
+                           double_newline=False)
 
         # Create array for source coordinates relative to cluster center
         xy = coords_select.copy()
         xy_mean = np.zeros((len(labels_sel), 2))
-        pattern_angle = np.zeros(len(labels_sel))
-        pattern_scale = np.zeros(len(labels_sel)) + 1.
+
+        # Create arrays for nearest-neighbour distances
+        nnd_min = np.zeros(len(labels_sel))
+        nnd_max = np.zeros(len(labels_sel))
 
         for i,k in enumerate(labels_sel):
             class_member_mask = (labels == k)
-            xy_mean[i,0] = np.mean(xy[class_member_mask,0])
-            xy_mean[i,1] = np.mean(xy[class_member_mask,1])
+            #xy_mean[i,0] = np.mean(xy[class_member_mask,0])
+            #xy_mean[i,1] = np.mean(xy[class_member_mask,1])
+
+            # Calculate mean x and y of a cluster by averaging the coordinates
+            # of its extreme members
+            xy_mean[i,0] = (np.min(xy[class_member_mask,0]) +
+                            np.max(xy[class_member_mask,0])) / 2.
+            xy_mean[i,1] = (np.min(xy[class_member_mask,1]) +
+                            np.max(xy[class_member_mask,1])) / 2.
+
+            xyi = xy[class_member_mask]
+            kdt_xyi = KDT(xyi)
+            ds_xyi,_ = kdt_xyi.query(xyi, k=2)
+            nnd_min[i] = ds_xyi[:,1].min()
+            nnd_max[i] = ds_xyi[:,1].max()
+
+        # Exclude clusters with outlying (min_nnd, max_nnd) values
+        iqr_nnd_min = np.subtract(*np.percentile(nnd_min, [75, 25]))
+        iqr_nnd_max = np.subtract(*np.percentile(nnd_max, [75, 25]))
+        m = ((nnd_min > np.percentile(nnd_min, 25) - 1.5 * iqr_nnd_min) &
+             (nnd_min < np.percentile(nnd_min, 75) + 1.5 * iqr_nnd_min) &
+             (nnd_max > np.percentile(nnd_max, 25) - 1.5 * iqr_nnd_max) &
+             (nnd_max < np.percentile(nnd_max, 75) + 1.5 * iqr_nnd_max))
+
+        pattern_angle = np.zeros(m.sum())
+        pattern_scale = np.zeros(m.sum()) + 1.
 
         # Analyse scale and rotation only if number of clusters is
         # above threshold
-        if num_accepted_clusters > 10:
+        if num_accepted_clusters > 10 and numexp < 10:
             scale_rot = True
 
             # Find cluster nearest to image center
             im_center = np.array(((self.imwidth + 1.) / 2.,
                                   (self.imheight + 1.) / 2.))
-            dist_center = np.linalg.norm(xy_mean-im_center, axis=1)
+            dist_center = np.linalg.norm(xy_mean[m] - im_center, axis=1)
             ind_nearest = dist_center.argmin()
 
             # Find scale and rotation relative to the cluster closest to
             # image center
-            class_member_mask = (labels == labels_sel[ind_nearest])
+            class_member_mask = (labels == labels_sel[m][ind_nearest])
             xy0 = xy[class_member_mask]
+            xy00 = xy[class_member_mask] - xy_mean[m][ind_nearest]
 
-            for i,k in enumerate(labels_sel):
+            for i,k in enumerate(labels_sel[m]):
                 class_member_mask = (labels == k)
 
                 if i != ind_nearest:
-                    pattern_scale[i],pattern_angle[i],_ = \
-                            self._get_scale_rotation(xy[class_member_mask], xy0)
+                    xyi = xy[class_member_mask] - xy_mean[m][i]
+                    res = self._get_scale_rotation(xyi, xy00)
+                    pattern_scale[i],pattern_angle[i],_ = res
 
             # Fit 2D plane
             angle_mask = np.abs(pattern_angle) < 10
-            A_angle = np.c_[xy_mean[angle_mask,0], xy_mean[angle_mask,1],
+            A_angle = np.c_[xy_mean[m][angle_mask,0], xy_mean[m][angle_mask,1],
                             np.ones(angle_mask.sum())]
             C_angle,_,_,_ = lstsq(A_angle, pattern_angle[angle_mask])
-            A_scale = np.c_[xy_mean[:,0], xy_mean[:,1],
-                            np.ones(xy_mean.shape[0])]
+            A_scale = np.c_[xy_mean[m][:,0], xy_mean[m][:,1],
+                            np.ones(xy_mean[m].shape[0])]
             C_scale,_,_,_ = lstsq(A_scale, pattern_scale)
         else:
             scale_rot = False
@@ -1142,6 +1180,7 @@ class SolveProcess:
                          C_scale[1] * xy_mean[i,1] + C_scale[2])
                 xy[class_member_mask] = xy[class_member_mask].dot(scale*rot)
 
+        label_mask = np.isin(labels, labels_sel[m])
         xy_local = xy[label_mask]
 
         # Analyse clustering on xy_local
@@ -1169,7 +1208,7 @@ class SolveProcess:
             xy_mean_exp[i,0] = np.mean(xy_exp[:,0])
             xy_mean_exp[i,1] = np.mean(xy_exp[:,1])
 
-        # Check wether exposure pattern in horizontal or vertical
+        # Check whether exposure pattern is horizontal or vertical
         exp_pattern_ratio = ((xy_mean_exp[:,1].max() - xy_mean_exp[:,1].min()) /
                              (xy_mean_exp[:,0].max() - xy_mean_exp[:,0].min()))
 
@@ -1274,7 +1313,7 @@ class SolveProcess:
         # Check if artifacts have been classified.
         # If yes, then select sources that are classified as true sources.
         # If not, then rely only on flag_clean.
-        if np.isnan(self.sources['model_prediction']).sum() == 0:
+        if np.isnan(self.sources['model_prediction']).sum() == 0 and numexp < 2:
             bclean = ((self.sources['flag_clean'] == 1) &
                       (self.sources['model_prediction'] > 0.9))
         else:
@@ -1472,6 +1511,8 @@ class SolveProcess:
             t['dy1'] = y1[indmask] - y0[indmask]
             t['dx2'] = x2[indmask] - x0[indmask]
             t['dy2'] = y2[indmask] - y0[indmask]
+            t['label'] = labels
+            t['clump'] = clumpmask
             basefn_solution = '{}-{:02d}'.format(self.basefn, self.num_solutions+1)
             fn_out = os.path.join(self.scratch_dir, '{}_dxy.fits'.format(basefn_solution))
             t.write(fn_out, format='fits', overwrite=True)
@@ -1530,6 +1571,7 @@ class SolveProcess:
         cmd += ' --corr {}'.format(fn_corr)
         cmd += ' --overwrite'
         cmd += ' --pixel-error 3'
+        cmd += ' --uniformize 100'
 
         if self.num_solutions > 0:
             scale0 = self.solutions[0]['pixel_scale']
