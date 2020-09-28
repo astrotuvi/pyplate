@@ -1542,7 +1542,9 @@ class Process:
 
         # Apply scanner pattern to source coordinates
         if self.plate_solved:
-            self.sources.apply_scanner_pattern(self.plate_solution)
+            if self.plate_solution.pattern_ratio is not None:
+                self.sources.apply_scanner_pattern(self.plate_solution)
+
             self.db_update_process(solved=1,
                                    num_solutions=plate_solution.num_solutions,
                                    pattern_ratio=plate_solution.pattern_ratio)
@@ -1579,8 +1581,9 @@ class Process:
             for solution in self.plate_solution.solutions:
                 platedb.write_solution(solution, **kw)
 
-            for row in self.plate_solution.pattern_table:
-                platedb.write_scanner_pattern(row, **kw)
+            if self.plate_solution.pattern_table is not None:
+                for row in self.plate_solution.pattern_table:
+                    platedb.write_scanner_pattern(row, **kw)
             
         platedb.close_connection()
         self.log.write('Closed database connection')

@@ -1366,11 +1366,13 @@ class SolveProcess:
                                                                     brute_force=brute_force)
 
             if solution is None:
-                if brute_force:
+                if brute_force or self.num_solutions > 0:
                     break
                 else:
                     brute_force = True
                     continue
+            else:
+                brute_force = False
 
             solution['solution_num'] = self.num_solutions + 1
             self.solutions.append(solution)
@@ -1994,6 +1996,13 @@ class SolveProcess:
 
         # Crossmatch sources and reference stars
         ind_plate, ind_ref, _ = crossmatch_cartesian(coords_plate, coords_ref)
+
+        if len(ind_plate) < 10:
+            self.log.write('Too few crossmatches between sources and reference '
+                           'stars: {:d}'.format(len(ind_plate)),
+                           level=2, event=32)
+            return
+
         ind_sources = ind_sources[ind_plate]
         coords_wobble = coords_plate[ind_plate]
 
