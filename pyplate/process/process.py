@@ -2003,7 +2003,7 @@ class Process:
 
         """
 
-        self.log.to_db(3, 'Calibrating photometry', event=70)
+        self.log.write('Calibrating photometry', event=70, level=3)
 
         # Initialise photometry process
         photproc = PhotometryProcess(self.filename, archive_id=self.archive_id)
@@ -2042,7 +2042,7 @@ class Process:
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=1)
 
             if not photproc.phot_calibrated:
-                break
+                continue
 
             # Retrieve calibration curve
             phot_calib_curves.append(photproc.calib_curve)
@@ -2051,7 +2051,7 @@ class Process:
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=2)
 
             if not photproc.phot_calibrated:
-                break
+                continue
 
             # Retrieve calibration curve
             phot_calib_curves.append(photproc.calib_curve)
@@ -2064,6 +2064,14 @@ class Process:
             estlim = photproc.calib_curve(plate_mag_lim).item()
             est_faint_limit.append(estlim)
 
+        # If photometric calibration failed for all solutions, then give up
+        if len(phot_calib_curves) == 0:
+            num_gaia_dr2=self.sources.num_crossmatch_gaia
+            self.db_update_process(num_gaia_dr2=num_gaia_dr2, calibrated=0)
+            self.log.write('Photometric calibration failed for all solutions',
+                           event=74, level=2)
+            return
+
         # Calculate mean color term and max faint limit over all solutions
         mean_color_term = np.array(prelim_color_term).mean()
         max_cur_faint_limit = np.array(cur_faint_limit).max()
@@ -2071,7 +2079,8 @@ class Process:
 
         self.log.write('Current faint limit {:.3f}, '
                        'estimated faint limit {:.3f}'
-                       .format(max_cur_faint_limit, est_faint_limit))
+                       .format(max_cur_faint_limit, est_faint_limit),
+                       event=74, level=4)
 
         # Magnitude range for catalog query
         if est_faint_limit < max_cur_faint_limit + 2.:
@@ -2118,7 +2127,7 @@ class Process:
                                                    iteration=iteration)
 
                 if not photproc.phot_calibrated:
-                    break
+                    continue
 
                 num_calib_solutions += 1
                 phot_calib_curves.append(photproc.calib_curve)
@@ -2157,7 +2166,8 @@ class Process:
                            'estimated faint limit {:.3f}, '
                            'catalog limit {:.3f}'
                            .format(max_cur_faint_limit, est_faint_limit,
-                                   cur_catalog_limit))
+                                   cur_catalog_limit),
+                           event=75, level=4)
 
             # New magnitude range for catalog query
             if est_faint_limit < max_cur_faint_limit + 2.:
@@ -2181,6 +2191,8 @@ class Process:
 
         if num_calib_solutions == 0:
             self.db_update_process(num_gaia_dr2=num_gaia_dr2, calibrated=0)
+            self.log.write('Photometric calibration failed for all solutions',
+                           event=75, level=2)
         else:
             self.phot_calib_list = photproc.phot_calib_list
             self.phot_calib_curves = phot_calib_curves

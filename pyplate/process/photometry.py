@@ -405,7 +405,7 @@ class PhotometryProcess:
                        double_newline=False, level=4, event=72)
 
         if num_calstars < 10:
-            self.log.write('Determininging color term: too few stars!',
+            self.log.write('Determining color term: too few stars!',
                            level=2, event=72)
             return None
 
@@ -656,7 +656,6 @@ class PhotometryProcess:
         assert (solution_num is None or 
                 (solution_num > 0 and solution_num <= num_solutions))
 
-        self.log.to_db(3, 'Calibrating photometry', event=70)
         self.log.write('Photometric calibration: solution {:d}, iteration {:d}'
                        .format(solution_num, iteration), level=3, event=70)
 
@@ -770,7 +769,7 @@ class PhotometryProcess:
         # calibration
         if 'color_term' not in self.phot_calib:
             self.log.write('Cannot continue photometric calibration without '
-                           'color term', level=2, event=71)
+                           'color term', level=2, event=72)
             return
 
         cterm = self.phot_calib['color_term']
