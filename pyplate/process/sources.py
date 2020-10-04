@@ -536,6 +536,9 @@ class SourceTable(Table):
         from .solve import PlateSolution
         from .catalog import StarCatalog
 
+        self.log.write('Crossmatching sources with Gaia objects',
+                       level=3, event=44)
+
         assert isinstance(plate_solution, PlateSolution)
         assert plate_solution.num_solutions > 0
         assert isinstance(star_catalog, StarCatalog)
@@ -549,7 +552,7 @@ class SourceTable(Table):
         num_gaia = len(star_catalog)
 
         self.log.write('Number of Gaia stars: {:d}'.format(num_gaia), 
-                       level=4, event=0)
+                       level=4, event=44)
 
         # Calculate RA and Dec for the plate epoch
         ra_ref = (star_catalog['ra']

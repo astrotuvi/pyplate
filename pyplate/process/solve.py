@@ -435,9 +435,6 @@ class AstrometricSolution(OrderedDict):
 
         """
 
-        self.log.write('Calculating plate-solution related parameters',
-                       level=4, event=31)
-
         if self['header_wcs'] is None:
             self.log.write('No solution found, cannot calculate '
                            'solution-related parameters',
@@ -572,7 +569,7 @@ class AstrometricSolution(OrderedDict):
             rotation_angle = None
             plate_mirrored = None
             self.log.write('Could not calculate plate rotation angle',
-                           level=2, event=32)
+                           level=2, event=33)
 
         self['rotation_angle'] = rotation_angle * u.deg
         self['plate_mirrored'] = plate_mirrored
@@ -1268,8 +1265,6 @@ class SolveProcess:
 
         """
 
-        self.log.write('Solving astrometry', level=3, event=30)
-
         if plate_epoch is None:
             plate_epoch = self.plate_epoch
             plate_year = self.plate_year
@@ -1281,6 +1276,16 @@ class SolveProcess:
             except ValueError:
                 plate_year = self.plate_year
 
+        # Log Astrometry.net and SCAMP versions
+        anet_ver = (sp.check_output([self.solve_field_path, '-h']).strip()
+                    .decode('utf-8').split('\n')[4])
+        scamp_ver = (sp.check_output([self.scamp_path, '-v']).strip()
+                     .decode('utf-8'))
+        self.log.write('Using Astrometry.net {}'.format(anet_ver),
+                       level=4, event=30)
+        self.log.write('Using {}'.format(scamp_ver), level=4, event=30)
+
+        # Log plate epoch
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch),
                        level=4, event=30)
 
@@ -1432,12 +1437,22 @@ class SolveProcess:
         except Exception:
             num_remain_exp = 1
 
+        self.log.write('Number of remaining solutions: {:d}'
+                       .format(num_remain_exp), level=4, event=31)
+
+        if brute_force:
+            self.log.write('Using brute force to find solution',
+                           level=4, event=31)
+
         # If sources have been numbered according to exposures,
         # then select sources that match the current exposure number
         if (self.exp_numbers is not None
             and len(self.exp_numbers) > 4
             and self.exp_numbers.max() > self.num_solutions
             and brute_force == False):
+            self.log.write('Selecting sources that match the exposure number '
+                           '{:d}'.format(self.num_solutions+1),
+                           level=4, event=31)
             indmask = (self.exp_numbers == self.num_solutions+1)
             use_sources = self.astrom_sources[indmask]
             num_use_sources = indmask.sum()
@@ -1446,6 +1461,8 @@ class SolveProcess:
         # select sources that have two nearest neighbours within 90-degree
         # angle
         elif num_remain_exp > 2 and brute_force == False:
+            self.log.write('Selecting sources that have two nearest neighbours '
+                           'within 90-degree angle', level=4, event=31)
             coords = np.empty((num_astrom_sources, 2))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
@@ -1634,7 +1651,8 @@ class SolveProcess:
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
-            self.log.write('Astrometry solved', level=4, event=31)
+            self.log.write('Astrometry solved (solution {:d})'
+                           .format(self.num_solutions+1), level=4, event=31)
             #self.db_update_process(solved=1)
         else:
             if self.num_solutions > 0:
@@ -1654,6 +1672,10 @@ class SolveProcess:
         header_wcs.set('NAXIS2', self.imheight, after='NAXIS1')
 
         # Create AstrometricSolution instance and calculate parameters
+        self.log.write('Solution {:d}: calculating parameters for '
+                       'initial solution'.format(self.num_solutions+1),
+                       level=4, event=31)
+
         solution = AstrometricSolution()
         solution.assign_conf(self.conf)
         solution.populate()
@@ -1674,6 +1696,9 @@ class SolveProcess:
         astref_table = self.get_reference_stars_for_solution(solution)
 
         # Improve solution with SCAMP
+        self.log.write('Solution {:d}: improving solution and recalculating '
+                       'parameters'.format(self.num_solutions+1),
+                       level=4, event=31)
 
         # Create scampref file
         numref = len(astref_table)
@@ -1701,7 +1726,7 @@ class SolveProcess:
         cmd += ' -H {:f}'.format(self.imheight)
         cmd += ' -N 20'
         cmd += ' -o {}'.format(fn_tan)
-        self.log.write('Subprocess: {}'.format(cmd))
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
         sp.call(cmd, shell=True, stdout=self.log.handle,
                 stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -1759,7 +1784,7 @@ class SolveProcess:
         cmd += ' -XML_NAME {}'.format(fn_xml)
         cmd += ' -VERBOSE_TYPE LOG'
         cmd += ' -CHECKPLOT_TYPE NONE'
-        self.log.write('Subprocess: {}'.format(cmd))
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
         sp.call(cmd, shell=True, stdout=self.log.handle,
                 stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -2099,7 +2124,7 @@ class SolveProcess:
             cmd += ' -XML_NAME {}'.format(fn_xml)
             cmd += ' -VERBOSE_TYPE LOG'
             cmd += ' -CHECKPLOT_TYPE NONE'
-            self.log.write('Subprocess: {}'.format(cmd))
+            self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
             sp.call(cmd, shell=True, stdout=self.log.handle,
                     stderr=self.log.handle, cwd=self.scratch_dir)
 

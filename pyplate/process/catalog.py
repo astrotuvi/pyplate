@@ -113,7 +113,7 @@ class StarCatalog(Table):
 
         if self.log is not None:
             self.log.write('Gaia TAP query: {}'.format(tap_query),
-                           level=4, event=0)
+                           level=4, event=41)
 
         tap_result = tap_service.run_async(tap_query, queue='2h')
         tab = tap_result.to_table()
@@ -147,7 +147,7 @@ class StarCatalog(Table):
 
         if self.log is not None:
             self.log.write('Gaia SQL query: {}'.format(sql_query),
-                           level=4, event=0)
+                           level=4, event=42)
 
         gaiadb = PlateDB()
         gaiadb.assign_conf(self.conf, section=self.db_section)
@@ -326,6 +326,9 @@ class StarCatalog(Table):
 
         """
 
+        self.log.write('Appending data from Gaia query result tables',
+                       level=3, event=43)
+
         assert isinstance(gaia_tables, list)
 
         # Loop through Gaia files
@@ -348,7 +351,7 @@ class StarCatalog(Table):
                 self.columns = gaia_table.columns
             elif len(gaia_table) == 0:
                 self.log.write('Gaia query result table is empty!',
-                               level=4, event=0)
+                               level=4, event=43)
             else:
                 # Find rows in the Gaia table that we do not have yet
                 d = setdiff(gaia_table, self, keys=['source_id'])

@@ -750,7 +750,8 @@ class Process:
         """
 
         self.log.write('Extracting sources from image', level=3, event=20)
-        sex_ver = sp.check_output([self.sextractor_path, '-v']).strip()
+        sex_ver = (sp.check_output([self.sextractor_path, '-v']).strip()
+                   .decode('utf-8'))
         self.log.write('Using {}'.format(sex_ver), level=4, event=20)
 
         if threshold_sigma is None:
@@ -1096,7 +1097,8 @@ class Process:
                 not os.path.exists(os.path.join(self.scratch_dir, 
                                                 self.basefn + '_psfex.psf'))):
                 self.log.write('Running PSFEx', level=3, event=24)
-                psfex_ver = sp.check_output([self.psfex_path, '-v']).strip()
+                psfex_ver = (sp.check_output([self.psfex_path, '-v']).strip()
+                             .decode('utf-8'))
                 self.log.write('Using {}'.format(psfex_ver), level=4, event=24)
 
                 #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
@@ -1440,9 +1442,11 @@ class Process:
 
         """
 
+        self.log.write('Classifying artifacts', level=3, event=29)
+
         if not have_keras:
             self.log.write('Missing dependency (keras) for artifact '
-                           'classification!', level=2, event=0)
+                           'classification!', level=2, event=29)
             return
 
         # Read model
@@ -1497,9 +1501,9 @@ class Process:
                                num_true_sources=num_true_sources)
         self.log.write('Classified {:d} sources as true sources '
                        '(prediction > 0.9)'
-                       .format(num_true_sources), level=4, event=0)
+                       .format(num_true_sources), level=4, event=29)
         self.log.write('Classified {:d} sources as artifacts (prediction < 0.1)'
-                       .format(num_artifacts), level=4, event=0)
+                       .format(num_artifacts), level=4, event=29)
 
     def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
         """
@@ -1623,9 +1627,11 @@ class Process:
 
         """
 
+        self.log.write('Getting reference catalogs', level=3, event=40)
+
         if not self.plate_solved:
             self.log.write('Cannot query external catalog due to missing '
-                           'astrometric solutions!', level=2, event=0)
+                           'astrometric solutions!', level=2, event=40)
             return
 
         # Initialise star_catalog
