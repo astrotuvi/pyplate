@@ -1999,30 +1999,43 @@
     order: 17
     columns:
     - name: processlog_id
+      order: 1
       mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
       pgsql_datatype: "serial"
     - name: process_id
+      order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer NOT NULL"
     - name: timestamp_log
+      order: 3
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: scan_id
+      order: 4
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: plate_id
+      order: 5
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: archive_id
+      order: 6
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: level
+      order: 7
       mysql_datatype: "TINYINT"
       pgsql_datatype: "smallint"
     - name: event
+      order: 8
       mysql_datatype: "SMALLINT"
       pgsql_datatype: "smallint"
+    - name: solution_num
+      order: 9
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
     - name: message
+      order: 10
       mysql_datatype: "TEXT"
       pgsql_datatype: "text COLLATE ucs_basic"
 

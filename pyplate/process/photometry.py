@@ -402,11 +402,12 @@ class PhotometryProcess:
 
         self.log.write('Determining color term: {:d} stars'
                        ''.format(num_calstars),
-                       double_newline=False, level=4, event=72)
+                       double_newline=False, level=4, event=72,
+                       solution_num=solution_num)
 
         if num_calstars < 10:
             self.log.write('Determining color term: too few stars!',
-                           level=2, event=72)
+                           level=2, event=72, solution_num=solution_num)
             return None
 
         _,uind1 = np.unique(cat_mag1, return_index=True)
@@ -427,12 +428,13 @@ class PhotometryProcess:
 
         self.log.write('Determining color term: {:d} stars after discarding '
                        'faint sources'.format(num_nofaint),
-                       double_newline=False, level=4, event=72)
+                       double_newline=False, level=4, event=72,
+                       solution_num=solution_num)
 
         if num_nofaint < 10:
             self.log.write('Determining color term: too few stars after '
                            'discarding faint sources!',
-                           level=2, event=72)
+                           level=2, event=72, solution_num=solution_num)
             return None
 
         frac = 0.2
@@ -471,7 +473,8 @@ class PhotometryProcess:
             ]))
 
         if max(stdev_list) < 0.01:
-            self.log.write('Color term fit failed!', level=2, event=72)
+            self.log.write('Color term fit failed!', level=2, event=72,
+                           solution_num=solution_num)
             return None
 
         cf = np.polyfit(cterm_list, stdev_list, 4)
@@ -485,7 +488,7 @@ class PhotometryProcess:
                                             (cterm_extr < 3.5))][0]
         except IndexError:
             self.log.write('Color term outside of allowed range!',
-                           level=2, event=72)
+                           level=2, event=72, solution_num=solution_num)
             return None
 
         # Eliminate outliers (over 1 mag + sigma clip)
@@ -534,7 +537,8 @@ class PhotometryProcess:
         stdev_list = np.array(stdev_list)
 
         if max(stdev_list) < 0.01:
-            self.log.write('Color term fit failed!', level=2, event=72)
+            self.log.write('Color term fit failed!', level=2, event=72,
+                           solution_num=solution_num)
             return None
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2,
@@ -551,7 +555,8 @@ class PhotometryProcess:
         num_stars_iter2 = len(mag_diff)
 
         if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
-            self.log.write('Color term fit failed!', level=2, event=72)
+            self.log.write('Color term fit failed!', level=2, event=72,
+                           solution_num=solution_num)
             return None
 
         # Iteration 3
@@ -600,17 +605,17 @@ class PhotometryProcess:
         if cf[0] < 0 or cterm < -2 or cterm > 3:
             if cf[0] < 0:
                 self.log.write('Color term fit not reliable!',
-                               level=2, event=72)
+                               level=2, event=72, solution_num=solution_num)
             else:
                 self.log.write('Color term outside of allowed range '
                                '({:.3f})!'.format(cterm),
-                               level=2, event=72)
+                               level=2, event=72, solution_num=solution_num)
 
             if cterm_min < -2 or cterm_min > 3:
                 self.log.write('Color term from previous iteration '
                                'outside of allowed range ({:.3f})!'
                                ''.format(cterm_min),
-                               level=2, event=72)
+                               level=2, event=72, solution_num=solution_num)
                 return None
             else:
                 cterm = cterm_min
@@ -623,7 +628,7 @@ class PhotometryProcess:
                 iteration = 2
 
             self.log.write('Taking color term from previous iteration',
-                           level=4, event=72)
+                           level=4, event=72, solution_num=solution_num)
 
         # Create dictionary for calibration results, if not exists
         if self.phot_calib is None:
@@ -643,7 +648,7 @@ class PhotometryProcess:
 
         self.log.write('Plate color term (solution {:d}): {:.3f} ({:.3f})'
                        .format(solution_num, cterm, cterm_err),
-                       level=4, event=72)
+                       level=4, event=72, solution_num=solution_num)
 
     def calibrate_photometry_gaia(self, solution_num=None, iteration=1):
         """
@@ -657,7 +662,8 @@ class PhotometryProcess:
                 (solution_num > 0 and solution_num <= num_solutions))
 
         self.log.write('Photometric calibration: solution {:d}, iteration {:d}'
-                       .format(solution_num, iteration), level=3, event=70)
+                       .format(solution_num, iteration), level=3, event=70,
+                       solution_num=solution_num)
 
         # Initialise the flag value
         self.phot_calibrated = False
@@ -671,7 +677,7 @@ class PhotometryProcess:
                 and 'test plate' not in pmethod):
                 self.log.write('Cannot calibrate photometry due to unsupported'
                                'observation method ({:s})'.format(pmethod),
-                               level=2, event=70)
+                               level=2, event=70, solution_num=solution_num)
                 #self.db_update_process(calibrated=0)
                 return
 
@@ -681,7 +687,8 @@ class PhotometryProcess:
         # Create output directory, if missing
         if self.write_phot_dir and not os.path.isdir(self.write_phot_dir):
             self.log.write('Creating output directory {}'
-                           .format(self.write_phot_dir), level=4, event=70)
+                           .format(self.write_phot_dir), level=4, event=70,
+                           solution_num=solution_num)
             os.makedirs(self.write_phot_dir)
 
         if self.write_phot_dir:
@@ -703,7 +710,7 @@ class PhotometryProcess:
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
-                       level=3, event=71)
+                       level=3, event=71, solution_num=solution_num)
 
         if solution_num is None:
             solution_num = 1
@@ -737,17 +744,18 @@ class PhotometryProcess:
 
         if num_calstars == 0:
             self.log.write('No stars for photometric calibration',
-                           level=2, event=71)
+                           level=2, event=71, solution_num=solution_num)
             #self.db_update_process(calibrated=0)
             return
 
         self.log.write('Found {:d} calibration-star candidates with '
                        'Gaia magnitudes on the plate'
-                       .format(num_calstars), level=4, event=71)
+                       .format(num_calstars), level=4, event=71,
+                       solution_num=solution_num)
 
         if num_calstars < 10:
             self.log.write('Too few calibration stars on the plate!',
-                           level=2, event=71)
+                           level=2, event=71, solution_num=solution_num)
             #self.db_update_process(calibrated=0)
             return
 
@@ -755,11 +763,11 @@ class PhotometryProcess:
 
         if iteration == 1:
             self.log.write('Determining color term using annular bins 1-3', 
-                           level=3, event=72)
+                           level=3, event=72, solution_num=solution_num)
             cterm_mask = cal_mask & (self.sources['annular_bin'] <= 3)
         else:
             self.log.write('Determining color term using annular bins 1-8', 
-                           level=3, event=72)
+                           level=3, event=72, solution_num=solution_num)
             cterm_mask = cal_mask & (self.sources['annular_bin'] <= 8)
 
         self.evaluate_color_term(self.sources[cterm_mask],
@@ -769,7 +777,8 @@ class PhotometryProcess:
         # calibration
         if 'color_term' not in self.phot_calib:
             self.log.write('Cannot continue photometric calibration without '
-                           'color term', level=2, event=72)
+                           'color term', level=2, event=72,
+                           solution_num=solution_num)
             return
 
         cterm = self.phot_calib['color_term']
@@ -779,7 +788,7 @@ class PhotometryProcess:
 
         # Use stars in all annular bins
         self.log.write('Photometric calibration using annular bins 1-9', 
-                       level=3, event=73)
+                       level=3, event=73, solution_num=solution_num)
 
         # Select stars with unique plate mag values
         plate_mag = self.sources['mag_auto'][cal_mask].data
@@ -790,12 +799,13 @@ class PhotometryProcess:
         num_cal_u = len(plate_mag_u)
 
         self.log.write('{:d} stars with unique magnitude'
-                       .format(num_cal_u), 
-                       double_newline=False, level=4, event=73)
+                       .format(num_cal_u), double_newline=False,
+                       level=4, event=73, solution_num=solution_num)
 
         if num_cal_u < 10:
             self.log.write('Too few stars with unique magnitude!',
-                           double_newline=False, level=2, event=73)
+                           double_newline=False, level=2, event=73,
+                           solution_num=solution_num)
             #self.db_update_process(calibrated=0)
             return
 
@@ -1011,40 +1021,38 @@ class PhotometryProcess:
                     ind_outliers = np.unique(ind_outliers)
                     ind_good = np.setdiff1d(np.arange(len(plate_mag_u)),
                                             ind_outliers)
-                    self.log.write('{:d} faint stars '
-                                   'eliminated as outliers'
+                    self.log.write('{:d} faint stars eliminated as outliers'
                                    .format(len(ind_faintout)),
                                    double_newline=False,
-                                   level=4, event=73)
+                                   level=4, event=73, solution_num=solution_num)
 
-                self.log.write('Outlier elimination '
-                               'stopped due to a long gap in '
-                               'magnitudes!',
-                                double_newline=False,
-                               level=2, event=73)
+                self.log.write('Outlier elimination stopped due to a long gap '
+                               'in magnitudes!', double_newline=False,
+                               level=2, event=73, solution_num=solution_num)
                 break
 
             if len(ind_good) < 10:
                 self.log.write('Outlier elimination stopped '
                                'due to insufficient number of stars left!',
-                                double_newline=False, level=2, event=73)
+                               double_newline=False, level=2, event=73,
+                               solution_num=solution_num)
                 break
 
         num_outliers = len(ind_outliers)
-        self.log.write('{:d} outliers eliminated'
-                       ''.format(num_outliers), 
-                       double_newline=False, level=4, event=73)
+        self.log.write('{:d} outliers eliminated'.format(num_outliers),
+                       double_newline=False, level=4, event=73,
+                       solution_num=solution_num)
         ind_good = np.setdiff1d(np.arange(len(plate_mag_u)), 
                                 ind_outliers)
-        self.log.write('{:d} stars after outlier '
-                       'elimination'.format(len(ind_good)), 
-                       double_newline=False, level=4, event=73)
+        self.log.write('{:d} stars after outlier elimination'
+                       .format(len(ind_good)), double_newline=False,
+                       level=4, event=73, solution_num=solution_num)
 
         if len(ind_good) < 10:
-            self.log.write('Too few calibration '
-                           'stars ({:d}) after outlier elimination!'
-                           .format(len(ind_good)), 
-                           double_newline=False, level=2, event=73)
+            self.log.write('Too few calibration stars ({:d}) after outlier '
+                           'elimination!'.format(len(ind_good)),
+                           double_newline=False, level=2, event=73,
+                           solution_num=solution_num)
             #self.db_update_process(calibrated=0)
             return
 
@@ -1061,10 +1069,9 @@ class PhotometryProcess:
         ind_valid = np.where(plate_mag_u[ind_good] <= plate_mag_lim)[0]
         num_valid = len(ind_valid)
 
-        self.log.write('{:d} calibration stars '
-                       'brighter than limiting magnitude'
-                       .format(num_valid), 
-                       double_newline=False, level=4, event=73)
+        self.log.write('{:d} calibration stars brighter than limiting magnitude'
+                       .format(num_valid), double_newline=False, level=4,
+                       event=73, solution_num=solution_num)
 
         #valid_cal_mask = np.zeros_like(cal_u_mask)
         #valid_cal_mask[np.where(cal_u_mask)[0][ind_good[ind_valid]]] = True
@@ -1270,7 +1277,7 @@ class PhotometryProcess:
 
         self.log.write('Applying photometric calibration to sources '
                        'in annular bins 1-9',
-                       level=3, event=74)
+                       level=3, event=74, solution_num=solution_num)
 
         # Correct magnitudes for positional effects
         if s_corr is not None:
@@ -1375,7 +1382,7 @@ class PhotometryProcess:
                            'bright limit {:.3f}, faint limit {:.3f}'
                            .format(solution_num, iteration, brightlim,
                                    faintlim),
-                           level=4, event=73)
+                           level=4, event=73, solution_num=solution_num)
 
             #self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
             #                       mag_range=mag_range, num_calib=num_calib, 

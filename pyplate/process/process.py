@@ -115,7 +115,7 @@ class ProcessLog:
             self.handle = sys.stdout
 
     def write(self, message, timestamp=True, double_newline=True, 
-              level=None, event=None):
+              level=None, event=None, solution_num=None):
         """
         Write a message to the log file and optionally to the database.
 
@@ -127,10 +127,16 @@ class ProcessLog:
             Write timestamp with the message (default True)
         double_newline : bool
             Add two newline characters after the message (default True)
+        solution_num : int
+            Astrometric solution number
 
         """
 
         log_message = '{}'.format(message)
+
+        if solution_num:
+            log_message = 'Solution {:d} +++ {}'.format(solution_num,
+                                                        log_message)
 
         if timestamp:
             log_message = '***** {} ***** {}'.format(str(dt.datetime.now()), 
@@ -142,9 +148,9 @@ class ProcessLog:
         self.handle.write('{}\n'.format(log_message))
 
         if level is not None:
-            self.to_db(level, message, event=event)
+            self.to_db(level, message, event=event, solution_num=solution_num)
 
-    def to_db(self, level, message, event=None):
+    def to_db(self, level, message, event=None, solution_num=None):
         """
         Write a log message to the database.
 
@@ -156,11 +162,14 @@ class ProcessLog:
             Message to be written to the log file
         event : int
             Event code (default None)
+        solution_num : int
+            Astrometric solution number
 
         """
 
         if self.platedb is not None and self.process_id is not None:
             self.platedb.write_processlog(level, message, event=event,
+                                          solution_num=solution_num,
                                           process_id=self.process_id,
                                           scan_id=self.scan_id, 
                                           plate_id=self.plate_id, 

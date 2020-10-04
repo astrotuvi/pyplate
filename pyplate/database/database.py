@@ -1059,17 +1059,18 @@ class PlateDB:
         val_tuple = (duration, completed, process_id)
         self.db.execute_query(sql, val_tuple)
 
-    def write_processlog(self, level, message, event=None, process_id=None,
-                         scan_id=None, plate_id=None, archive_id=None):
+    def write_processlog(self, level, message, event=None, solution_num=None,
+                         process_id=None, scan_id=None, plate_id=None,
+                         archive_id=None):
         """
         Write plate solve process log message to the database.
 
         """
 
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id',
-                    'level', 'event', 'message']
+                    'level', 'event', 'solution_num', 'message']
         val_tuple = (process_id, scan_id, plate_id, archive_id,
-                     level, event, message)
+                     level, event, solution_num, message)
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO {} ({}) VALUES ({})'
