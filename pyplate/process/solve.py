@@ -672,6 +672,7 @@ class SolveProcess:
         self.max_model_sources = 10000
         self.sip = 3
         self.skip_bright = 10
+        self.allow_brute_force = False
         self.distort = 3
         self.subfield_distort = 1
         self.max_recursion_depth = 5
@@ -846,7 +847,8 @@ class SolveProcess:
             except configparser.Error:
                 pass
 
-        for attr in ['use_filter', 'use_psf', 'circular_film']:
+        for attr in ['use_filter', 'use_psf', 'circular_film',
+                     'allow_brute_force']:
             try:
                 setattr(self, attr, conf.getboolean('Solve', attr))
             except ValueError:
@@ -1371,7 +1373,8 @@ class SolveProcess:
                                                                     brute_force=brute_force)
 
             if solution is None:
-                if brute_force or self.num_solutions > 0:
+                if (brute_force or self.num_solutions > 0 or
+                    not self.allow_brute_force):
                     break
                 else:
                     brute_force = True
@@ -1385,12 +1388,13 @@ class SolveProcess:
             self.num_solutions = len(self.solutions)
 
         # Improve astrometric solutions (two iterations)
-        self.improve_astrometric_solutions(distort=3)
-        self.improve_astrometric_solutions()
+        if self.plate_solved:
+            self.improve_astrometric_solutions(distort=3)
+            self.improve_astrometric_solutions()
 
-        # Calculate mean pixel scale across all solutions
-        pixscales = u.Quantity([sol['pixel_scale'] for sol in self.solutions])
-        self.mean_pixscale = pixscales.mean()
+            # Calculate mean pixel scale across all solutions
+            pixscales = u.Quantity([sol['pixel_scale'] for sol in self.solutions])
+            self.mean_pixscale = pixscales.mean()
 
         # Create PlateSolution instance
         plate_solution = PlateSolution()
