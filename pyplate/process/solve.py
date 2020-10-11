@@ -1403,7 +1403,8 @@ class SolveProcess:
             setattr(plate_solution, attr, getattr(self, attr))
 
         # Calculate solutions centroid
-        plate_solution.calculate_centroid()
+        if self.plate_solved:
+            plate_solution.calculate_centroid()
 
         # Return
         return plate_solution
