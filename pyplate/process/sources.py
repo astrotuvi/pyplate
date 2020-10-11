@@ -539,8 +539,19 @@ class SourceTable(Table):
         self.log.write('Crossmatching sources with Gaia objects',
                        level=3, event=44)
 
+        if plate_solution is None or plate_solution.num_solutions == 0:
+            self.log.write('Cannot crossmatch sources with Gaia objects '
+                           'due to missing astrometric solutions!',
+                           level=2, event=44)
+            return
+
+        if star_catalog is None:
+            self.log.write('Cannot crossmatch sources with Gaia objects '
+                           'due to missing Gaia catalog data!',
+                           level=2, event=44)
+            return
+
         assert isinstance(plate_solution, PlateSolution)
-        assert plate_solution.num_solutions > 0
         assert isinstance(star_catalog, StarCatalog)
 
         # Take parameters from plate_solution
