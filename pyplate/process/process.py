@@ -2083,7 +2083,7 @@ class Process:
             est_faint_limit.append(estlim)
 
         # If photometric calibration failed for all solutions, then give up
-        if len(phot_calib_curves) == 0:
+        if len(phot_calib_curves) == 0 or len(cur_faint_limit) == 0:
             num_gaia_dr2=self.sources.num_crossmatch_gaia
             self.db_update_process(num_gaia_dr2=num_gaia_dr2, calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
