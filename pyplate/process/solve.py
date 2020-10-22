@@ -1808,6 +1808,11 @@ class SolveProcess:
         header_wcs.set('IMAGEH', self.imheight)
         header_wcs.extend(header_scamp)
 
+        # Fix SCAMP header if TPV projection is not specified
+        if 'PV1_5' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
+            header_wcs.set('CTYPE1', 'RA---TPV')
+            header_wcs.set('CTYPE2', 'DEC--TPV')
+
         # Read SCAMP XML output
         fn_xml = os.path.join(self.scratch_dir, fn_xml)
         warnings.filterwarnings('ignore', message='.*W42.*',
@@ -2150,6 +2155,11 @@ class SolveProcess:
             header_wcs.set('IMAGEW', self.imwidth)
             header_wcs.set('IMAGEH', self.imheight)
             header_wcs.extend(header_scamp)
+
+            # Fix SCAMP header if TPV projection is not specified
+            if 'PV1_5' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
+                header_wcs.set('CTYPE1', 'RA---TPV')
+                header_wcs.set('CTYPE2', 'DEC--TPV')
 
             # Read SCAMP XML output
             fn_xml = os.path.join(self.scratch_dir, fn_xml)
