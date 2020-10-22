@@ -650,25 +650,34 @@ class SourceTable(Table):
 
         mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
         mtrx_keys = np.array([a for a in mtrx.keys()])
-        k_plate = mtrx_keys[:,0]
-        k_ref = mtrx_keys[:,1]
-        dist = np.fromiter(mtrx.values(), dtype=float) * u.pixel
 
-        # Construct neighbors table
-        nbs = Table()
-        nbs['source_num'] = self['source_num'][k_plate]
-        nbs['gaia_id'] = star_catalog['source_id'][index_ref[k_ref]]
-        nbs['dist'] = dist
-        nbs['solution_num'] = sol_ref[k_ref]
-        nbs['gaia_x'] = xy_ref[k_ref,0]
-        nbs['gaia_y'] = xy_ref[k_ref,1]
-        self.neighbors_gaia = nbs
+        # Check if there are neighbors at all
+        if len(mtrx_keys) > 0:
+            k_plate = mtrx_keys[:,0]
+            k_ref = mtrx_keys[:,1]
+            dist = np.fromiter(mtrx.values(), dtype=float) * u.pixel
 
-        # Calculate neighbor counts
-        source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
-        mask = np.isin(self['source_num'], source_num)
-        ind_mask = np.where(mask)[0]
-        self['gaiadr2_neighbors'][ind_mask] = cnt
+            # Construct neighbors table
+            nbs = Table()
+            nbs['source_num'] = self['source_num'][k_plate]
+            nbs['gaia_id'] = star_catalog['source_id'][index_ref[k_ref]]
+            nbs['dist'] = dist
+            nbs['solution_num'] = sol_ref[k_ref]
+            nbs['gaia_x'] = xy_ref[k_ref,0]
+            nbs['gaia_y'] = xy_ref[k_ref,1]
+            self.neighbors_gaia = nbs
+
+            # Calculate neighbor counts
+            source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
+            mask = np.isin(self['source_num'], source_num)
+            ind_mask = np.where(mask)[0]
+            self['gaiadr2_neighbors'][ind_mask] = cnt
+        else:
+            # Create empty neighbors table
+            nbs = Table(names=('source_num', 'gaia_id', 'dist', 'solution_num',
+                               'gaia_x', 'gaia_y'),
+                        dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8'))
+            self.neighbors_gaia = nbs
 
     def process_source_coordinates(self):
         """
