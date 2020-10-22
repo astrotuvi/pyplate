@@ -1813,20 +1813,23 @@ class SolveProcess:
         warnings.filterwarnings('ignore', message='.*W42.*',
                                 category=votable.exceptions.VOTableSpecWarning)
         scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
-        solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
-        solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
-        solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(u.arcsec)
-        solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(u.arcsec)
-        scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
-        solution['scamp_sigma_1'] = scamp_sigmas[0]
-        solution['scamp_sigma_2'] = scamp_sigmas[1]
-        solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
-        solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+        scamp_ndeg = scamp_stats['NDeg_Reference'][0]
 
-        # Store SCAMP solution and recalculate parameters
-        solution['header_scamp'] = header_scamp
-        solution['header_wcs'] = header_wcs
-        solution.calculate_parameters()
+        if scamp_ndeg > 5:
+            solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
+            solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
+            solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(u.arcsec)
+            solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(u.arcsec)
+            scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
+            solution['scamp_sigma_1'] = scamp_sigmas[0]
+            solution['scamp_sigma_2'] = scamp_sigmas[1]
+            solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
+            solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+
+            # Store SCAMP solution and recalculate parameters
+            solution['header_scamp'] = header_scamp
+            solution['header_wcs'] = header_wcs
+            solution.calculate_parameters()
 
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
@@ -2153,16 +2156,19 @@ class SolveProcess:
             warnings.filterwarnings('ignore', message='.*W42.*',
                                     category=votable.exceptions.VOTableSpecWarning)
             scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
-            scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
-            self.solutions[i]['scamp_sigma_1'] = scamp_sigmas[0]
-            self.solutions[i]['scamp_sigma_2'] = scamp_sigmas[1]
-            self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
-            self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+            scamp_ndeg = scamp_stats['NDeg_Reference'][0]
 
-            # Store improved solution
-            self.solutions[i]['header_scamp'] = header_scamp
-            self.solutions[i]['header_wcs'] = header_wcs
-            self.solutions[i].calculate_parameters()
+            if scamp_ndeg > 5:
+                scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
+                self.solutions[i]['scamp_sigma_1'] = scamp_sigmas[0]
+                self.solutions[i]['scamp_sigma_2'] = scamp_sigmas[1]
+                self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
+                self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+
+                # Store improved solution
+                self.solutions[i]['header_scamp'] = header_scamp
+                self.solutions[i]['header_wcs'] = header_wcs
+                self.solutions[i].calculate_parameters()
 
             # Crossmatch sources with rerefence stars
             w = wcs.WCS(header_wcs)
