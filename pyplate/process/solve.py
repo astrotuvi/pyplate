@@ -438,7 +438,7 @@ class AstrometricSolution(OrderedDict):
         if self['header_wcs'] is None:
             self.log.write('No solution found, cannot calculate '
                            'solution-related parameters',
-                           level=2, event=33)
+                           level=2, event=34)
             return
 
         self.wcs = wcs.WCS(self['header_wcs'])
@@ -569,7 +569,7 @@ class AstrometricSolution(OrderedDict):
             rotation_angle = None
             plate_mirrored = None
             self.log.write('Could not calculate plate rotation angle',
-                           level=2, event=33)
+                           level=2, event=34)
 
         self['rotation_angle'] = rotation_angle * u.deg
         self['plate_mirrored'] = plate_mirrored
@@ -1033,6 +1033,8 @@ class SolveProcess:
 
         """
 
+        self.log.write('Finding multi-exposure pattern', level=3, event=31)
+
         n, dim = coords.shape
         assert dim == 2
 
@@ -1057,7 +1059,7 @@ class SolveProcess:
         labels = db.labels_
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         self.log.write('Found {:d} source clusters'.format(num_clusters),
-                       level=4, double_newline=False)
+                       level=4, event=31, double_newline=False)
 
         # Find cluster sizes (label counts)
         lab, cnt = np.unique(labels[labels>-1], return_counts=True)
@@ -1084,11 +1086,12 @@ class SolveProcess:
         num_accepted_clusters = len(labels_sel)
 
         if num_accepted_clusters < 5:
-            self.log.write('Not enough source clusters found (<5)!')
+            self.log.write('Not enough source clusters found (<5)!',
+                           level=2, event=31)
             return None
         else:
             self.log.write('Use {:d} source clusters'
-                           .format(num_accepted_clusters), level=4,
+                           .format(num_accepted_clusters), level=4, event=31,
                            double_newline=False)
 
         # Create array for source coordinates relative to cluster center
@@ -1197,7 +1200,13 @@ class SolveProcess:
         exp_labels = db.labels_
         num_exp_clusters = len(set(exp_labels)) - (1 if -1 in exp_labels else 0)
         self.log.write('Number of clusters within source pattern: {:d}'
-                       .format(num_exp_clusters), level=4, double_newline=False)
+                       .format(num_exp_clusters), level=4, event=31,
+                       double_newline=False)
+
+        if num_exp_clusters == 0:
+            self.log.write('Finding multi-exposure pattern failed!',
+                           level=2, event=31)
+            return None
 
         # Find cluster centers and sort them
         xy_mean_exp = np.zeros((num_exp_clusters, 2))
@@ -1243,10 +1252,12 @@ class SolveProcess:
                 exp_num[ind] = np.arange(1, num_exp_clusters+1)
 
         num_found = len(xy_found)
-        self.log.write('Found {:d} patterns'.format(num_found))
+        self.log.write('Found {:d} patterns'.format(num_found),
+                       level=4, event=31)
 
         if num_found < 10:
-            self.log.write('Not enough patterns found (<10)!')
+            self.log.write('Not enough patterns found (<10)!',
+                           level=2, event=31)
             exp_num = None
 
         return exp_num
@@ -1427,7 +1438,7 @@ class SolveProcess:
 
         """
 
-        self.log.write('Looking for an astrometric solution', level=3, event=31)
+        self.log.write('Looking for an astrometric solution', level=3, event=32)
 
         if ref_year is None:
             ref_year = self.plate_year
@@ -1443,11 +1454,11 @@ class SolveProcess:
             num_remain_exp = 1
 
         self.log.write('Number of remaining solutions: {:d}'
-                       .format(num_remain_exp), level=4, event=31)
+                       .format(num_remain_exp), level=4, event=32)
 
         if brute_force:
             self.log.write('Using brute force to find solution',
-                           level=4, event=31)
+                           level=4, event=32)
 
         # Current solution number
         solution_num = self.num_solutions + 1
@@ -1460,7 +1471,7 @@ class SolveProcess:
             and brute_force == False):
             self.log.write('Selecting sources that match the exposure number '
                            '{:d}'.format(solution_num),
-                           level=4, event=31)
+                           level=4, event=32)
             indmask = (self.exp_numbers == solution_num)
             use_sources = self.astrom_sources[indmask]
             num_use_sources = indmask.sum()
@@ -1470,7 +1481,7 @@ class SolveProcess:
         # angle
         elif num_remain_exp > 2 and brute_force == False:
             self.log.write('Selecting sources that have two nearest neighbours '
-                           'within 90-degree angle', level=4, event=31)
+                           'within 90-degree angle', level=4, event=32)
             coords = np.empty((num_astrom_sources, 2))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
@@ -1632,7 +1643,7 @@ class SolveProcess:
         else:
             cmd += ' --no-tweak'
 
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
         sp.call(cmd, shell=True, stdout=self.log.handle,
                 stderr=self.log.handle, cwd=self.scratch_dir)
         self.log.write('', timestamp=False, double_newline=False)
@@ -1650,9 +1661,9 @@ class SolveProcess:
             # without tweaking (plane TAN projection)
             if sip > 0 and wcshead['CTYPE1'] == 'RA---TAN':
                 self.log.write('Repeating astrometric solving without SIP distortions',
-                               level=4, event=31)
+                               level=4, event=32)
                 self.log.write('Subprocess: {}'.format(cmd_no_tweak),
-                               level=5, event=31)
+                               level=5, event=32)
                 sp.call(cmd_no_tweak, shell=True, stdout=self.log.handle,
                         stderr=self.log.handle, cwd=self.scratch_dir)
                 self.log.write('', timestamp=False, double_newline=False)
@@ -1660,16 +1671,16 @@ class SolveProcess:
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
             self.log.write('Astrometry solved (solution {:d})'
-                           .format(solution_num), level=4, event=31,
+                           .format(solution_num), level=4, event=32,
                            solution_num=solution_num)
             #self.db_update_process(solved=1)
         else:
             if self.num_solutions > 0:
                 self.log.write('Could not find additional astrometric solutions',
-                               level=4, event=31)
+                               level=4, event=32)
             else:
                 self.log.write('Could not solve astrometry for the plate',
-                               level=2, event=31)
+                               level=2, event=32)
                 #self.db_update_process(solved=0)
             return None, None
 
@@ -1682,7 +1693,7 @@ class SolveProcess:
 
         # Create AstrometricSolution instance and calculate parameters
         self.log.write('Calculating parameters for the initial solution',
-                       level=4, event=31, solution_num=solution_num)
+                       level=4, event=32, solution_num=solution_num)
 
         solution = AstrometricSolution()
         solution.assign_conf(self.conf)
@@ -1705,7 +1716,7 @@ class SolveProcess:
 
         # Improve solution with SCAMP
         self.log.write('Improving solution and recalculating parameters',
-                       level=4, event=31, solution_num=solution_num)
+                       level=4, event=32, solution_num=solution_num)
 
         # Create scampref file
         numref = len(astref_table)
@@ -1733,7 +1744,7 @@ class SolveProcess:
         cmd += ' -H {:f}'.format(self.imheight)
         cmd += ' -N 20'
         cmd += ' -o {}'.format(fn_tan)
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
         sp.call(cmd, shell=True, stdout=self.log.handle,
                 stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -1791,7 +1802,7 @@ class SolveProcess:
         cmd += ' -XML_NAME {}'.format(fn_xml)
         cmd += ' -VERBOSE_TYPE LOG'
         cmd += ' -CHECKPLOT_TYPE NONE'
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=31)
+        self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
         sp.call(cmd, shell=True, stdout=self.log.handle,
                 stderr=self.log.handle, cwd=self.scratch_dir)
 
@@ -1926,10 +1937,11 @@ class SolveProcess:
 
         """
 
-        self.log.write('Improving astrometric solutions', level=3, event=32)
+        self.log.write('Improving astrometric solutions', level=3, event=33)
 
         if self.num_solutions < 1:
-            self.log.write('No astrometric solutions to improve!', level=2, event=32)
+            self.log.write('No astrometric solutions to improve!',
+                           level=2, event=33)
             return
 
         if distort is None:
@@ -1969,7 +1981,7 @@ class SolveProcess:
 
         if len(coords_ref) <= 10:
             self.log.write('Too few astrometric reference stars: '
-                           '{:d}'.format(len(coords_ref)), level=2, event=32)
+                           '{:d}'.format(len(coords_ref)), level=2, event=33)
             return
 
         # Exclude reference stars that have close neighbours either
@@ -1982,11 +1994,11 @@ class SolveProcess:
         num_excluded = (ds[:,1] <= 5).sum()
         self.log.write('Excluded {:d} reference stars due to close neighbours, '
                        '{:d} stars remained.'
-                       ''.format(num_excluded, num_isolated), level=4, event=32)
+                       ''.format(num_excluded, num_isolated), level=4, event=33)
 
         if num_isolated <= 10:
             self.log.write('Too few isolated astrometric reference stars: '
-                           '{:d}'.format(num_isolated), level=2, event=32)
+                           '{:d}'.format(num_isolated), level=2, event=33)
             return
 
         coords_ref = coords_ref[mask_isolated]
@@ -2013,7 +2025,7 @@ class SolveProcess:
 
         if mask_bins.sum() <= 10:
             self.log.write('Too few clean sources in annular bins 1--9: '
-                           '{:d}'.format(num_isolated), level=2, event=32)
+                           '{:d}'.format(num_isolated), level=2, event=33)
             return
 
         coords_plate = np.vstack((self.sources[mask_bins]['x_source'],
@@ -2028,7 +2040,7 @@ class SolveProcess:
 
         if num_isolated <= 10:
             self.log.write('Too few isolated sources in annular bins 1--9: '
-                           '{:d}'.format(num_isolated), level=2, event=32)
+                           '{:d}'.format(num_isolated), level=2, event=33)
             return
 
         coords_plate = coords_plate[mask_isolated]
@@ -2040,7 +2052,7 @@ class SolveProcess:
         if len(ind_plate) < 10:
             self.log.write('Too few crossmatches between sources and reference '
                            'stars: {:d}'.format(len(ind_plate)),
-                           level=2, event=32)
+                           level=2, event=33)
             return
 
         ind_sources = ind_sources[ind_plate]
@@ -2056,7 +2068,7 @@ class SolveProcess:
         self.pattern_ratio = pattern_ratio
 
         self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
-                       '{:.3f}'.format(pattern_ratio), level=4, event=32)
+                       '{:.3f}'.format(pattern_ratio), level=4, event=33)
 
         # Calculate scanner pattern and output to a table
         xx = np.arange(0, self.imwidth + 1, 50)
@@ -2139,7 +2151,7 @@ class SolveProcess:
             cmd += ' -XML_NAME {}'.format(fn_xml)
             cmd += ' -VERBOSE_TYPE LOG'
             cmd += ' -CHECKPLOT_TYPE NONE'
-            self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
+            self.log.write('Subprocess: {}'.format(cmd), level=5, event=33)
             sp.call(cmd, shell=True, stdout=self.log.handle,
                     stderr=self.log.handle, cwd=self.scratch_dir)
 
