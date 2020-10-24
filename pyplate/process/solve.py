@@ -1601,7 +1601,6 @@ class SolveProcess:
             t['dx2'] = x2[indmask] - x0[indmask]
             t['dy2'] = y2[indmask] - y0[indmask]
             t['label'] = labels
-            t['clump'] = clumpmask
             basefn_solution = '{}-{:02d}'.format(self.basefn, solution_seq)
             fn_out = os.path.join(self.scratch_dir, '{}_dxy.fits'.format(basefn_solution))
             t.write(fn_out, format='fits', overwrite=True)
