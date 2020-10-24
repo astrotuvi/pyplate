@@ -1594,6 +1594,9 @@ class Process:
             for solution in self.plate_solution.solutions:
                 platedb.write_solution(solution, **kw)
 
+            for solution in self.plate_solution.duplicate_solutions:
+                platedb.write_solution(solution, **kw)
+
             if self.plate_solution.pattern_table is not None:
                 for row in self.plate_solution.pattern_table:
                     platedb.write_scanner_pattern(row, **kw)

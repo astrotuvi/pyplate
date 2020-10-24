@@ -145,8 +145,10 @@ class PlateSolution:
         self.wcshead = None
         self.wcs_plate = None
         self.solutions = None
+        self.duplicate_solutions = None
         self.exp_numbers = None
         self.num_solutions = 0
+        self.num_duplicate_solutions = 0
         self.num_iterations = 0
         self.pattern_x = None
         self.pattern_y = None
@@ -708,8 +710,10 @@ class SolveProcess:
         self.wcshead = None
         self.wcs_plate = None
         self.solutions = None
+        self.duplicate_solutions = None
         self.exp_numbers = None
         self.num_solutions = 0
+        self.num_duplicate_solutions = 0
         self.num_iterations = 0
         self.pattern_x = None
         self.pattern_y = None
@@ -1348,7 +1352,9 @@ class SolveProcess:
 
         self.astrom_sources = self.sources[indsel]
         self.solutions = []
+        self.duplicate_solutions = []
         self.num_solutions = 0
+        self.num_duplicate_solutions = 0
 
         try:
             numexp = self.platemeta['numexp']
@@ -1393,10 +1399,54 @@ class SolveProcess:
             else:
                 brute_force = False
 
-            solution['solution_num'] = self.num_solutions + 1
-            self.solutions.append(solution)
-            self.astref_tables.append(astref_table)
-            self.num_solutions = len(self.solutions)
+            unique_solution = True
+
+            # If this is not the first solution, check if we got a unique
+            # solution
+            if self.num_solutions > 0:
+                sol_ra = np.array([sol['raj2000'] for sol in self.solutions])
+                sol_dec = np.array([sol['dej2000'] for sol in self.solutions])
+                c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
+                c_cur = SkyCoord(solution['raj2000'] * u.deg,
+                                 solution['dej2000'] * u.deg, frame='icrs')
+                min_sep = c_cur.separation(c_sol).min()
+
+                if min_sep > 1. * u.deg:
+                    sep_str = '{:.2f} degrees'.format(min_sep.deg)
+                elif min_sep > 1. * u.arcmin:
+                    sep_str = '{:.2f} arcmin'.format(min_sep.arcmin)
+                else:
+                    sep_str = '{:.2f} arcsec'.format(min_sep.arcsec)
+
+                self.log.write('Current solution is separated from the '
+                               'nearest solution by {}'.format(sep_str),
+                               level=4, event=32)
+
+                if min_sep < 10. * u.arcsec:
+                    unique_solution = False
+                    unique_num = c_cur.separation(c_sol).argmin() + 1
+
+            if unique_solution:
+                solution['solution_num'] = self.num_solutions + 1
+                self.solutions.append(solution)
+                self.astref_tables.append(astref_table)
+                self.num_solutions = len(self.solutions)
+
+                self.log.write('Current solution is unique; assigned number '
+                               '{:d}'.format(solution['solution_num']),
+                               level=4, event=32,
+                               solution_num=solution['solution_num'])
+            else:
+                solution['solution_num'] = -self.num_duplicate_solutions - 1
+                solution['unique_num'] = unique_num
+                self.duplicate_solutions.append(solution)
+                self.num_duplicate_solutions = len(self.duplicate_solutions)
+
+                self.log.write('Current solution is a duplicate of '
+                               'solution {:d}; assigned number {:d}'
+                               .format(unique_num, solution['solution_num']),
+                               level=4, event=32,
+                               solution_num=solution['solution_num'])
 
         # Improve astrometric solutions (two iterations)
         if self.plate_solved:
@@ -1413,6 +1463,7 @@ class SolveProcess:
         # Assign solutions and parameters to PlateSolution instance
         for attr in ['imwidth', 'imheight', 'plate_solved',
                      'num_solutions', 'solutions', 'num_iterations',
+                     'num_duplicate_solutions', 'duplicate_solutions',
                      'pattern_x', 'pattern_y', 'pattern_ratio',
                      'pattern_table', 'mean_pixscale']:
             setattr(plate_solution, attr, getattr(self, attr))
@@ -1460,8 +1511,8 @@ class SolveProcess:
             self.log.write('Using brute force to find solution',
                            level=4, event=32)
 
-        # Current solution number
-        solution_num = self.num_solutions + 1
+        # Current solution sequence number
+        solution_seq = self.num_solutions + self.num_duplicate_solutions + 1
 
         # If sources have been numbered according to exposures,
         # then select sources that match the current exposure number
@@ -1470,9 +1521,9 @@ class SolveProcess:
             and self.exp_numbers.max() > self.num_solutions
             and brute_force == False):
             self.log.write('Selecting sources that match the exposure number '
-                           '{:d}'.format(solution_num),
+                           '{:d}'.format(solution_seq),
                            level=4, event=32)
-            indmask = (self.exp_numbers == solution_num)
+            indmask = (self.exp_numbers == solution_seq)
             use_sources = self.astrom_sources[indmask]
             num_use_sources = indmask.sum()
 
@@ -1551,7 +1602,7 @@ class SolveProcess:
             t['dy2'] = y2[indmask] - y0[indmask]
             t['label'] = labels
             t['clump'] = clumpmask
-            basefn_solution = '{}-{:02d}'.format(self.basefn, solution_num)
+            basefn_solution = '{}-{:02d}'.format(self.basefn, solution_seq)
             fn_out = os.path.join(self.scratch_dir, '{}_dxy.fits'.format(basefn_solution))
             t.write(fn_out, format='fits', overwrite=True)
         else:
@@ -1559,7 +1610,7 @@ class SolveProcess:
             num_use_sources = num_astrom_sources
 
         # Prepare filenames
-        basefn_solution = '{}-{:02d}'.format(self.basefn, solution_num)
+        basefn_solution = '{}-{:02d}'.format(self.basefn, solution_seq)
         fn_xy = '{}.xy'.format(basefn_solution)
         fn_match = '{}.match'.format(basefn_solution)
         fn_corr = '{}.corr'.format(basefn_solution)
@@ -1670,9 +1721,8 @@ class SolveProcess:
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
-            self.log.write('Astrometry solved (solution {:d})'
-                           .format(solution_num), level=4, event=32,
-                           solution_num=solution_num)
+            self.log.write('Astrometric solution found (sequence number {:d})'
+                           .format(solution_seq), level=4, event=32)
             #self.db_update_process(solved=1)
         else:
             if self.num_solutions > 0:
@@ -1692,8 +1742,9 @@ class SolveProcess:
         header_wcs.set('NAXIS2', self.imheight, after='NAXIS1')
 
         # Create AstrometricSolution instance and calculate parameters
-        self.log.write('Calculating parameters for the initial solution',
-                       level=4, event=32, solution_num=solution_num)
+        self.log.write('Calculating parameters for the initial solution '
+                       '(sequence number {:d})'.format(solution_seq),
+                       level=4, event=32)
 
         solution = AstrometricSolution()
         solution.assign_conf(self.conf)
@@ -1715,8 +1766,9 @@ class SolveProcess:
         astref_table = self.get_reference_stars_for_solution(solution)
 
         # Improve solution with SCAMP
-        self.log.write('Improving solution and recalculating parameters',
-                       level=4, event=32, solution_num=solution_num)
+        self.log.write('Improving solution and recalculating parameters '
+                       '(sequence number {:d})'.format(solution_seq),
+                       level=4, event=32)
 
         # Create scampref file
         numref = len(astref_table)
