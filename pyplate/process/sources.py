@@ -601,9 +601,15 @@ class SourceTable(Table):
                                    np.arange(num_gaia)[mask_sol][mask_inside]))
 
         # Calculate mean astrometric error
-        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in solutions])
-        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in solutions])
-        mean_scamp_sigma = np.sqrt(sigma1.mean()**2 + sigma2.mean()**2)
+        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in solutions
+                             if sol['scamp_sigma_1'] is not None])
+        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in solutions
+                             if sol['scamp_sigma_2'] is not None])
+
+        if len(sigma1) > 0 and len(sigma2) > 0:
+            mean_scamp_sigma = np.sqrt(sigma1.mean()**2 + sigma2.mean()**2)
+        else:
+            mean_scamp_sigma = 2. * u.arcsec
 
         # Crossmatch sources and Gaia stars
         coords_plate = np.vstack((self['x_source'], self['y_source'])).T
