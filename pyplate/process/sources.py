@@ -620,6 +620,9 @@ class SourceTable(Table):
         #    tolerance = ((2 * u.arcsec / mean_pixscale)
         #                 .to(u.pixel).value)
 
+        self.log.write('Crossmatching source coordinates with reference-star '
+                       'coordinates the tolerance of {:.2f} pixels'
+                       .format(tolerance), level=4, event=44)
         ind_plate, ind_ref, ds = crossmatch_cartesian(coords_plate, xy_ref, 
                                                       tolerance=tolerance)
         dist_arcsec = (ds * u.pixel * mean_pixscale).to(u.arcsec).value
@@ -654,6 +657,9 @@ class SourceTable(Table):
         if (20. * mean_scamp_sigma) < 5 * u.arcsec:
             max_distance = (5 * u.arcsec / mean_pixscale).to(u.pixel).value
 
+        self.log.write('Find all neighbors for sources within the radius of '
+                       '{:.2f} pixels)'.format(max_distance),
+                       level=4, event=44)
         mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
         mtrx_keys = np.array([a for a in mtrx.keys()])
 
