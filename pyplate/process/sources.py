@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
-from astropy.table import Table, Column, MaskedColumn, vstack
+from astropy.table import Table, Column, MaskedColumn, vstack, join
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
 from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
@@ -676,12 +676,22 @@ class SourceTable(Table):
             # Construct neighbors table
             nbs = Table()
             nbs['source_num'] = self['source_num'][k_plate]
-            nbs['gaia_id'] = star_catalog['source_id'][index_ref[k_ref]]
+            nbs['gaiadr2_id'] = star_catalog['source_id'][index_ref[k_ref]]
             nbs['dist'] = dist
             nbs['solution_num'] = sol_ref[k_ref]
-            nbs['gaia_x'] = xy_ref[k_ref,0]
-            nbs['gaia_y'] = xy_ref[k_ref,1]
-            self.neighbors_gaia = nbs
+            nbs['x_gaia'] = xy_ref[k_ref,0]
+            nbs['y_gaia'] = xy_ref[k_ref,1]
+
+            # Create the flag_xmatch column by joining the neighbors table
+            # with the source table
+            tab = Table()
+            tab['source_num'] = self['source_num']
+            tab['gaiadr2_id'] = self['gaiadr2_id'].filled(0)
+            tab['flag_xmatch'] = np.int8(1)
+            jtab = join(nbs, tab, keys=('source_num', 'gaiadr2_id'),
+                        join_type='left')
+            jtab['flag_xmatch'] = jtab['flag_xmatch'].filled(0)
+            self.neighbors_gaia = jtab
 
             # Calculate neighbor counts
             source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
@@ -690,9 +700,10 @@ class SourceTable(Table):
             self['gaiadr2_neighbors'][ind_mask] = cnt
         else:
             # Create empty neighbors table
-            nbs = Table(names=('source_num', 'gaia_id', 'dist', 'solution_num',
-                               'gaia_x', 'gaia_y'),
-                        dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8'))
+            nbs = Table(names=('source_num', 'gaiadr2_id', 'dist',
+                               'solution_num', 'x_gaia', 'y_gaia',
+                               'flag_xmatch'),
+                        dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8', 'i1'))
             self.neighbors_gaia = nbs
 
     def process_source_coordinates(self):
