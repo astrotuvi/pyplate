@@ -449,7 +449,7 @@ class PhotometryProcess:
         mag_err_u = mag_err_u[ind_nofaint]
 
         # Iteration 1
-        cterm_list = np.arange(29) * 0.25 - 3.
+        cterm_list = np.arange(33) * 0.25 - 3.
         stdev_list = []
 
         for cterm in cterm_list:
@@ -473,7 +473,11 @@ class PhotometryProcess:
             ]))
 
         if max(stdev_list) < 0.01:
-            self.log.write('Color term fit failed!', level=2, event=72,
+            self.log.write('Color term fit failed! '
+                           '(iteration 1, num_stars = {:d}, '
+                           'max_stdev = {:.3f})'
+                           .format(len(mag_diff), max(stdev_list)),
+                           level=2, event=72,
                            solution_num=solution_num)
             return None
 
@@ -485,7 +489,7 @@ class PhotometryProcess:
 
         try:
             cterm_min = cterm_extr[np.where((der2 > 0) & (cterm_extr > -2.5) &
-                                            (cterm_extr < 3.5))][0]
+                                            (cterm_extr < 4.5))][0]
         except IndexError:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72, solution_num=solution_num)
@@ -504,7 +508,7 @@ class PhotometryProcess:
         ind_good = ind1[ind_good1]
 
         # Iteration 2
-        cterm_list = np.arange(29) * 0.25 - 3.
+        cterm_list = np.arange(33) * 0.25 - 3.
         stdev_list = []
 
         frac = 0.2
@@ -537,8 +541,11 @@ class PhotometryProcess:
         stdev_list = np.array(stdev_list)
 
         if max(stdev_list) < 0.01:
-            self.log.write('Color term fit failed!', level=2, event=72,
-                           solution_num=solution_num)
+            self.log.write('Color term fit failed! '
+                           '(iteration 2, num_stars = {:d}, '
+                           'max_stdev = {:.3f})'
+                           .format(len(mag_diff), max(stdev_list)),
+                           level=2, event=72, solution_num=solution_num)
             return None
 
         cf, cov = np.polyfit(cterm_list, stdev_list, 2,
@@ -554,9 +561,12 @@ class PhotometryProcess:
         cterm_maxval_iter2 = np.max(cterm_list)
         num_stars_iter2 = len(mag_diff)
 
-        if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 1:
-            self.log.write('Color term fit failed!', level=2, event=72,
-                           solution_num=solution_num)
+        if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 2:
+            self.log.write('Color term fit failed! '
+                           '(iteration 2, num_stars = {:d}, cf[0] = {:f}, '
+                           'min_stdev = {:.3f})'
+                           .format(len(mag_diff), cf[0], min(stdev_list)),
+                           level=2, event=72, solution_num=solution_num)
             return None
 
         # Iteration 3
@@ -602,7 +612,7 @@ class PhotometryProcess:
         num_stars = len(mag_diff)
         iteration = 3
 
-        if cf[0] < 0 or cterm < -2 or cterm > 3:
+        if cf[0] < 0 or cterm < -2 or cterm > 4:
             if cf[0] < 0:
                 self.log.write('Color term fit not reliable!',
                                level=2, event=72, solution_num=solution_num)
@@ -611,7 +621,7 @@ class PhotometryProcess:
                                '({:.3f})!'.format(cterm),
                                level=2, event=72, solution_num=solution_num)
 
-            if cterm_min < -2 or cterm_min > 3:
+            if cterm_min < -2 or cterm_min > 4:
                 self.log.write('Color term from previous iteration '
                                'outside of allowed range ({:.3f})!'
                                ''.format(cterm_min),
