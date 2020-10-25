@@ -1421,8 +1421,87 @@
     - name: index_20
       val: "CREATE INDEX ucac4_ind ON source_calib (ucac4_id)"
 
-  - name: solution
+  - name: source_xmatch
     order: 12
+    columns:
+    - name: source_id
+      order: 1
+      mysql_datatype: "BIGINT UNSIGNED NOT NULL"
+      pgsql_datatype: "bigint not null"
+    - name: process_id
+      order: 2
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: scan_id
+      order: 3
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: plate_id
+      order: 4
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: archive_id
+      order: 5
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: dist
+      order: 6
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: solution_num
+      order: 7
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: gaiadr2_id
+      order: 8
+      mysql_datatype: "BIGINT"
+      pgsql_datatype: "bigint"
+    - name: x_gaia
+      order: 9
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: y_gaia
+      order: 10
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: flag_xmatch
+      order: 11
+      mysql_datatype: "TINYINT"
+      pgsql_datatype: "smallint"
+    - name: timestamp_insert
+      order: 12
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+    - name: timestamp_update
+      order: 13
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
+    indexes:
+    - name: mysql_pk
+      val: "ALTER TABLE source_xmatch ADD CONSTRAINT source_xmatch_pky PRIMARY KEY (source_id, gaiadr2_id)"
+    - name: pgsql_pk
+      val: "ALTER TABLE source_xmatch ADD CONSTRAINT source_xmatch_pky PRIMARY KEY (source_id, gaiadr2_id)"
+    - name: index_1
+      val: "CREATE INDEX source_ind ON source_xmatch (source_id)"
+    - name: index_2
+      val: "CREATE INDEX process_ind ON source_xmatch (process_id)"
+    - name: index_3
+      val: "CREATE INDEX scan_ind ON source_xmatch (scan_id)"
+    - name: index_4
+      val: "CREATE INDEX plate_ind ON source_xmatch (plate_id)"
+    - name: index_5
+      val: "CREATE INDEX archive_ind ON source_xmatch (archive_id)"
+    - name: index_6
+      val: "CREATE INDEX gaiadr2_id_ind ON source_xmatch (gaiadr2_id)"
+
+  - name: solution
+    order: 13
     columns:
     - name: solution_id
       order: 1
@@ -1567,7 +1646,7 @@
       val: "CREATE INDEX dej2000_ind ON solution (dej2000)"
 
   - name: scanner_pattern
-    order: 13
+    order: 14
     columns:
     - name: pattern_id
       order: 1
@@ -1634,7 +1713,7 @@
       val: "CREATE INDEX archive_ind ON scanner_pattern (archive_id)"
 
   - name: phot_calib
-    order: 14
+    order: 15
     columns:
     - name: calib_id
       order: 1
@@ -1785,7 +1864,7 @@
       val: "CREATE INDEX archive_ind ON phot_calib (archive_id)"
 
   - name: phot_calib_curve
-    order: 15
+    order: 16
     columns:
     - name: calibcurve_id
       order: 1
@@ -1858,7 +1937,7 @@
       val: "CREATE INDEX archive_ind ON phot_calib_curve (archive_id)"
 
   - name: process
-    order: 16
+    order: 17
     columns:
     - name: process_id
       order: 1
@@ -1996,7 +2075,7 @@
       val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
-    order: 17
+    order: 18
     columns:
     - name: processlog_id
       order: 1

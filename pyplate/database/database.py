@@ -992,6 +992,80 @@ class PlateDB:
             self.db.executemany_query(sql_source, source_data)
             self.db.executemany_query(sql_source_calib, source_calib_data)
 
+    def write_source_xmatches(self, xmatches, process_id=None, scan_id=None,
+                              plate_id=None, archive_id=None, write_csv=None):
+        """
+        Write source crossmatch data to the database.
+
+        """
+
+        # Open CSV files for writing
+        if write_csv:
+            fn_source_xmatch_csv = '{:05d}_source_xmatch.csv'.format(process_id)
+            fn_source_xmatch_csv = os.path.join(self.write_db_source_xmatch_dir, 
+                                               fn_source_xmatch_csv)
+            source_xmatch_csv = open(fn_source_xmatch_csv, 'wb')
+            source_xmatch_writer = csvWriter(source_xmatch_csv, delimiter=',',
+                                             quotechar='"', 
+                                             quoting=csv.QUOTE_MINIMAL)
+
+        # Prepare query for the source_xmatch table
+        col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
+                    'archive_id']
+
+        # Get source table columns from database schema
+        source_xmatch_table = self.get_table_dict('source_xmatch')
+
+        for k in source_xmatch_table.keys():
+            if k in xmatches.columns:
+                col_list.append(k)
+
+        source_xmatch_columns = col_list
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql_source_xmatch = ('INSERT INTO {} ({}) VALUES ({})'
+                             .format(self.table_name('source_xmatch'), col_str,
+                                     val_str))
+
+        # Write header rows to CSV files
+        if write_csv:
+            source_xmatch_writer.writerow(source_xmatch_columns)
+
+        # Prepare data and execute queries
+        source_xmatch_data = []
+
+        for i, xmatch in enumerate(xmatches):
+            # Insert 1000 rows simultaneously
+            if not write_csv and i > 0 and i%1000 == 0:
+                self.db.executemany_query(sql_source_xmatch, source_xmatch_data)
+                source_xmatch_data = []
+
+            # Prepare source_xmatch data
+            source_id = process_id * 10000000 + xmatch['source_num']
+            val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
+
+            for k in source_xmatch_columns:
+                if k in xmatches.columns:
+                    try:
+                        xmatch_val = (xmatch[k] if np.isfinite(xmatch[k])
+                                      else None)
+                    except TypeError:
+                        xmatch_val = xmatch[k]
+
+                    val_tuple = val_tuple + (xmatch_val, )
+
+            if write_csv:
+                source_xmatch_writer.writerow(val_tuple)
+            else:
+                source_xmatch_data.append(val_tuple)
+
+        if write_csv:
+            # Close CSV file
+            source_xmatch_csv.close()
+        else:
+            # Insert remaining rows
+            self.db.executemany_query(sql_source_xmatch, source_xmatch_data)
+
     def write_process_start(self, scan_id=None, plate_id=None, 
                             archive_id=None, filename=None, use_psf=None):
         """

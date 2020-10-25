@@ -209,6 +209,7 @@ class Process:
         self.write_source_dir = ''
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
+        self.write_db_source_xmatch_dir = ''
         self.write_phot_dir = ''
         self.write_wcs_dir = ''
         self.write_log_dir = ''
@@ -391,7 +392,8 @@ class Process:
         for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir', 
                      'work_dir', 'write_log_dir', 'write_phot_dir',
                      'write_source_dir', 'write_wcs_dir',
-                     'write_db_source_dir', 'write_db_source_calib_dir']:
+                     'write_db_source_dir', 'write_db_source_calib_dir',
+                     'write_db_source_xmatch_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except configparser.Error:
@@ -2316,6 +2318,13 @@ class Process:
                                .format(self.write_db_source_calib_dir),
                                level=4, event=80)
                 os.makedirs(self.write_db_source_calib_dir)
+
+            if (self.write_db_source_xmatch_dir and
+                not os.path.isdir(self.write_db_source_xmatch_dir)):
+                self.log.write('Creating output directory {}'
+                               .format(self.write_db_source_xmatch_dir),
+                               level=4, event=80)
+                os.makedirs(self.write_db_source_xmatch_dir)
         else:
             # Open database connection
             self.log.write('Open database connection for writing to the '
@@ -2331,6 +2340,8 @@ class Process:
                       'archive_id': self.archive_id,
                       'write_csv': write_csv}
             platedb.write_sources(self.sources, **kwargs)
+            platedb.write_source_xmatches(self.sources.neighbors_gaia,
+                                          **kwargs)
         else:
             self.log.write('Cannot write source data due to missing '
                            'plate identification number(s).',
