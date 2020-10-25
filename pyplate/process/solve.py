@@ -484,14 +484,16 @@ class AstrometricSolution(OrderedDict):
         scp_on_plate = False
 
         if self['ncp_close']:
-            ncp_pix = self.wcs.all_world2pix([[self['raj2000'],90.]], 1)
+            ncp_pix = self.wcs.all_world2pix([[self['raj2000'],90.]], 1,
+                                             quiet=True)
 
             if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth
                 and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
                 ncp_on_plate = True
 
         if self['scp_close']:
-            scp_pix = self.wcs.all_world2pix([[self['raj2000'],-90.]], 1)
+            scp_pix = self.wcs.all_world2pix([[self['raj2000'],-90.]], 1,
+                                             quiet=True)
 
             if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth
                 and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
@@ -1902,7 +1904,8 @@ class SolveProcess:
         # stars that matched
 
         w = solution.wcs
-        xr,yr = w.all_world2pix(astref_table['ra'], astref_table['dec'], 1)
+        xr,yr = w.all_world2pix(astref_table['ra'], astref_table['dec'], 1,
+                                quiet=True)
         coords_ref = np.vstack((xr, yr)).T
         coords_plate = np.vstack((self.astrom_sources['x_source'],
                                   self.astrom_sources['y_source'])).T
@@ -2014,7 +2017,7 @@ class SolveProcess:
             if len(astref_table) > 0:
                 w = wcs.WCS(solution['header_wcs'])
                 xr,yr = w.all_world2pix(astref_table['ra'],
-                                        astref_table['dec'], 1)
+                                        astref_table['dec'], 1, quiet=True)
                 xy_ref = np.vstack((xr, yr)).T
 
                 # Include only isolated reference stars
@@ -2303,7 +2306,8 @@ class SolveProcess:
 
             # Check which stars fall inside image area
             w = wcs.WCS(solution['header_wcs'])
-            xr,yr = w.all_world2pix(ra_ref[mask_dist], dec_ref[mask_dist], 1)
+            xr,yr = w.all_world2pix(ra_ref[mask_dist], dec_ref[mask_dist], 1,
+                                    quiet=True)
             mask_inside = ((xr > 0) & (xr < self.imwidth) &
                            (yr > 0) & (yr < self.imheight))
             ind_ref = ind[mask_inside]
@@ -2354,7 +2358,8 @@ class SolveProcess:
 
             # Check which stars fall inside image area
             w = wcs.WCS(solution['header_wcs'])
-            xr,yr = w.all_world2pix(ra_tyc[mask_dist], dec_tyc[mask_dist], 1)
+            xr,yr = w.all_world2pix(ra_tyc[mask_dist], dec_tyc[mask_dist], 1,
+                                    quiet=True)
             mask_inside = ((xr > 0) & (xr < self.imwidth) &
                            (yr > 0) & (yr < self.imheight))
             ind_ref = ind[mask_inside]
