@@ -2018,7 +2018,9 @@ class SolveProcess:
                 w = wcs.WCS(solution['header_wcs'])
                 xr,yr = w.all_world2pix(astref_table['ra'],
                                         astref_table['dec'], 1, quiet=True)
-                xy_ref = np.vstack((xr, yr)).T
+                mask_inside = ((xr > 0.5) & (xr < self.imwidth) &
+                               (yr > 0.5) & (yr < self.imheight))
+                xy_ref = np.vstack((xr[mask_inside], yr[mask_inside])).T
 
                 # Include only isolated reference stars
                 kdt = KDT(xy_ref)

@@ -2205,8 +2205,10 @@ class Process:
                 new_max_mag = est_faint_limit + 1.
             else:
                 new_max_mag = ((max_cur_faint_limit
-                                + max([est_faint_limit, max_catalog_mag])) / 2.
+                                + min([est_faint_limit, max_catalog_mag])) / 2.
                                + 1.)
+                # Do not go fainter by more than 2 mag
+                new_max_mag = min(new_max_mag, cur_catalog_limit + 2.)
 
             # If new max mag is brighter than current catalog limit, then
             # stop iterations
