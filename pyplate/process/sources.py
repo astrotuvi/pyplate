@@ -281,6 +281,7 @@ class SourceTable(Table):
         self.pattern_y = None
         self.pattern_ratio = None
         self.num_crossmatch_gaia = None
+        self.neighbors_gaia = None
 
     def populate(self, num_sources=0):
         """

@@ -299,7 +299,6 @@ class Process:
         self.scampref = None
         self.scampcat = None
         self.gaia_files = None
-        self.neighbors_gaia = None
         self.phot_cterm_list = []
         self.phot_calib_list = []
         self.phot_calibrated = False
@@ -2350,8 +2349,10 @@ class Process:
                       'archive_id': self.archive_id,
                       'write_csv': write_csv}
             platedb.write_sources(self.sources, **kwargs)
-            platedb.write_source_xmatches(self.sources.neighbors_gaia,
-                                          **kwargs)
+
+            if self.sources.neighbors_gaia is not None:
+                platedb.write_source_xmatches(self.sources.neighbors_gaia,
+                                              **kwargs)
         else:
             self.log.write('Cannot write source data due to missing '
                            'plate identification number(s).',
