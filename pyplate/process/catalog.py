@@ -157,7 +157,11 @@ class StarCatalog(Table):
         cols = [col.strip() for col in
                 sql_query.split('FROM')[0].split('SELECT')[1].split(',')]
         dtype = ['i8'] + ['f8'] * (len(cols) - 1)
-        tab = Table(rows=res, names=cols, dtype=dtype)
+
+        if len(res) > 0:
+            tab = Table(rows=res, names=cols, dtype=dtype)
+        else:
+            tab = Table(names=cols, dtype=dtype)
 
         gaiadb.close_connection()
 
