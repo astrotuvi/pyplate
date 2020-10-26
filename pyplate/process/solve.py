@@ -111,9 +111,9 @@ def new_scampref():
     return hdulist
 
 
-def valid_wcs_header(header, naxis1, naxis2):
+def valid_wcs_header(header, imwidth, imheight):
     """
-    Validate WCS header.
+    Validate WCS header based on FOV and image ratios.
 
     """
 
