@@ -123,7 +123,7 @@ def valid_wcs_header(header, imwidth, imheight):
                                    [imwidth, (imheight+1.)/2.],
                                    [(imwidth + 1.)/2., 1.],
                                    [(imwidth + 1.)/2., imheight]])
-    edge_midpoints = self.wcs.all_pix2world(pix_edge_midpoints, 1)
+    edge_midpoints = w.all_pix2world(pix_edge_midpoints, 1)
 
     c1 = SkyCoord(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1],
                   unit=(u.deg, u.deg))
