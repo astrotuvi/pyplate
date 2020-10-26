@@ -111,6 +111,42 @@ def new_scampref():
     return hdulist
 
 
+def valid_wcs_header(header, naxis1, naxis2):
+    """
+    Validate WCS header.
+
+    """
+
+    w = wcs.WCS(header)
+
+    pix_edge_midpoints = np.array([[1., (imheight+1.)/2.],
+                                   [imwidth, (imheight+1.)/2.],
+                                   [(imwidth + 1.)/2., 1.],
+                                   [(imwidth + 1.)/2., imheight]])
+    edge_midpoints = self.wcs.all_pix2world(pix_edge_midpoints, 1)
+
+    c1 = SkyCoord(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1],
+                  unit=(u.deg, u.deg))
+    c2 = SkyCoord(ra=edge_midpoints[1,0], dec=edge_midpoints[1,1],
+                  unit=(u.deg, u.deg))
+    c3 = SkyCoord(ra=edge_midpoints[2,0], dec=edge_midpoints[2,1],
+                  unit=(u.deg, u.deg))
+    c4 = SkyCoord(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
+                  unit=(u.deg, u.deg))
+    fov1 = c1.separation(c2).to(u.deg).value
+    fov2 = c3.separation(c4).to(u.deg).value
+
+    if fov1 < 1e-3 or fov2 < 1e-3:
+        return False
+
+    ratio = (fov1 / fov2) / (np.float(imwidth) / np.float(imheight))
+
+    if ratio > 0.95 and ratio 1.05:
+        return True
+    else:
+        return False
+
+
 class PlateSolution:
     """
     Plate solution class for multiple astrometric solutions and parameters
@@ -1903,8 +1939,12 @@ class SolveProcess:
 
                 # Store SCAMP solution and recalculate parameters
                 solution['header_scamp'] = header_scamp
-                solution['header_wcs'] = header_wcs
-                solution.calculate_parameters()
+
+                if valid_wcs_header(header_wcs, self.imwidth, self.imheight):
+                    solution['header_wcs'] = header_wcs
+                    solution.calculate_parameters()
+                else:
+                    self.log.write('SCAMP WCS not valid!', level=2, event=32)
 
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
@@ -2251,8 +2291,14 @@ class SolveProcess:
 
                 # Store improved solution
                 self.solutions[i]['header_scamp'] = header_scamp
-                self.solutions[i]['header_wcs'] = header_wcs
-                self.solutions[i].calculate_parameters()
+
+                if valid_wcs_header(header_wcs, self.imwidth, self.imheight):
+                    self.solutions[i]['header_wcs'] = header_wcs
+                    self.solutions[i].calculate_parameters()
+                else:
+                    self.log.write('SCAMP WCS for solution {:d} not valid!'
+                                   .format(i+1),
+                                   level=2, event=33, solution_num=i+1)
 
             # Crossmatch sources with rerefence stars
             w = wcs.WCS(header_wcs)
