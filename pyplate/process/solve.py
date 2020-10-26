@@ -1862,43 +1862,49 @@ class SolveProcess:
         # Read SCAMP solution
         fn_scamphead = os.path.join(self.scratch_dir,
                                     '{}.head'.format(basefn_solution))
-        header_scamp = fits.Header.fromfile(fn_scamphead, sep='\n',
-                                            endcard=False, padding=False)
-        header_wcs = fits.PrimaryHDU().header
-        header_wcs.set('NAXIS', 2)
-        header_wcs.set('NAXIS1', self.imwidth)
-        header_wcs.set('NAXIS2', self.imheight)
-        header_wcs.set('IMAGEW', self.imwidth)
-        header_wcs.set('IMAGEH', self.imheight)
-        header_wcs.extend(header_scamp)
+        try:
+            header_scamp = fits.Header.fromfile(fn_scamphead, sep='\n',
+                                                endcard=False, padding=False)
+        except FileNotFoundError:
+            header_scamp = None
 
-        # Fix SCAMP header if TPV projection is not specified
-        if 'PV1_5' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
-            header_wcs.set('CTYPE1', 'RA---TPV')
-            header_wcs.set('CTYPE2', 'DEC--TPV')
+        if header_scamp is not None:
+            header_wcs = fits.PrimaryHDU().header
+            header_wcs.set('NAXIS', 2)
+            header_wcs.set('NAXIS1', self.imwidth)
+            header_wcs.set('NAXIS2', self.imheight)
+            header_wcs.set('IMAGEW', self.imwidth)
+            header_wcs.set('IMAGEH', self.imheight)
+            header_wcs.extend(header_scamp)
 
-        # Read SCAMP XML output
-        fn_xml = os.path.join(self.scratch_dir, fn_xml)
-        warnings.filterwarnings('ignore', message='.*W42.*',
-                                category=votable.exceptions.VOTableSpecWarning)
-        scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
-        scamp_ndeg = scamp_stats['NDeg_Reference'][0]
+            # Fix SCAMP header if TPV projection is not specified
+            if 'PV1_5' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
+                header_wcs.set('CTYPE1', 'RA---TPV')
+                header_wcs.set('CTYPE2', 'DEC--TPV')
 
-        if scamp_ndeg > 5:
-            solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
-            solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
-            solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(u.arcsec)
-            solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(u.arcsec)
-            scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
-            solution['scamp_sigma_1'] = scamp_sigmas[0]
-            solution['scamp_sigma_2'] = scamp_sigmas[1]
-            solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
-            solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+            # Read SCAMP XML output
+            fn_xml = os.path.join(self.scratch_dir, fn_xml)
+            warnings.filterwarnings('ignore', message='.*W42.*',
+                                    category=votable.exceptions.VOTableSpecWarning)
+            scamp_stats = votable.parse_single_table(fn_xml,
+                                                     pedantic=False).to_table()
+            scamp_ndeg = scamp_stats['NDeg_Reference'][0]
 
-            # Store SCAMP solution and recalculate parameters
-            solution['header_scamp'] = header_scamp
-            solution['header_wcs'] = header_wcs
-            solution.calculate_parameters()
+            if scamp_ndeg > 5:
+                solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
+                solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
+                solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(u.arcsec)
+                solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(u.arcsec)
+                scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
+                solution['scamp_sigma_1'] = scamp_sigmas[0]
+                solution['scamp_sigma_2'] = scamp_sigmas[1]
+                solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
+                solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+
+                # Store SCAMP solution and recalculate parameters
+                solution['header_scamp'] = header_scamp
+                solution['header_wcs'] = header_wcs
+                solution.calculate_parameters()
 
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched

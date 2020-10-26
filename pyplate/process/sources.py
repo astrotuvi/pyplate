@@ -590,9 +590,17 @@ class SourceTable(Table):
                 mask_sol = np.full(num_gaia, True)
 
             w = wcs.WCS(solution['header_wcs'])
-            xr,yr = w.all_world2pix(ra_ref[mask_sol], dec_ref[mask_sol], 1)
-            mask_inside = ((xr > 0) & (xr < plate_solution.imwidth) & 
-                           (yr > 0) & (yr < plate_solution.imheight))
+
+            try:
+                xr,yr = w.all_world2pix(ra_ref[mask_sol], dec_ref[mask_sol], 1)
+            except wcs.NoConvergence as e:
+                self.log.write('Failed to convert sky coordinates to '
+                               'pixel coordinates for solution {:d}: {}'
+                               .format(i + 1, e))
+                continue
+
+            mask_inside = ((xr > 0.5) & (xr < plate_solution.imwidth) &
+                           (yr > 0.5) & (yr < plate_solution.imheight))
             num_inside = mask_inside.sum()
             xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
             xy_ref = np.vstack((xy_ref, xyr))
