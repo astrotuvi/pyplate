@@ -141,7 +141,7 @@ def valid_wcs_header(header, naxis1, naxis2):
 
     ratio = (fov1 / fov2) / (np.float(imwidth) / np.float(imheight))
 
-    if ratio > 0.95 and ratio 1.05:
+    if ratio > 0.95 and ratio < 1.05:
         return True
     else:
         return False
