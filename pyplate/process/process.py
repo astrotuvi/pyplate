@@ -17,6 +17,7 @@ from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
 from astropy.time import Time
 from astropy.stats import sigma_clip
+from scipy import __version__ as scipy_version
 from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
 from scipy.ndimage.filters import generic_filter
 from scipy.linalg import lstsq
@@ -63,6 +64,7 @@ except ImportError:
     have_healpy = False
 
 try:
+    from statsmodels import __version__ as statsmodels_version
     import statsmodels.api as sm
     have_statsmodels = True
 except ImportError:
@@ -548,6 +550,12 @@ class Process:
                        level=4, event=10)
         self.log.write('Using NumPy version {}'.format(np.__version__), 
                        level=4, event=10)
+        self.log.write('Using SciPy version {}'.format(scipy_version),
+                       level=4, event=10)
+
+        if have_statsmodels:
+            self.log.write('Using statsmodels version {}'
+                           .format(statsmodels_version), level=4, event=10)
 
         # Check if FITS file exists
         if not os.path.exists(self.fn_fits):
