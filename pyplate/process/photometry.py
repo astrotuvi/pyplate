@@ -1341,6 +1341,8 @@ class PhotometryProcess:
 
         if brange.sum() > 0:
             self.sources['phot_plate_flags'][ind] = 2
+            self.sources['natmagerr'][ind] = s_rmse(plate_mag_lim)
+            self.sources['natmagerr_plate'][ind] = s_rmse(plate_mag_lim)
 
         # Select stars with known external photometry
         bgaia = (sol_mask &
