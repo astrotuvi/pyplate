@@ -202,6 +202,7 @@ class Process:
         self.scan_id = None
         self.plate_id = None
         self.conf = None
+        self.active = False
 
         self.fits_dir = ''
         self.index_dir = ''
@@ -560,6 +561,7 @@ class Process:
         if not os.path.exists(self.fn_fits):
             self.log.write('FITS file does not exist: {}'.format(self.fn_fits), 
                            level=1, event=10)
+            self.finish(completed=0)
             return
 
         # Read FITS header
@@ -573,7 +575,14 @@ class Process:
                 self.log.write('Could not read FITS file {}'
                                .format(self.fn_fits), 
                                level=1, event=10)
+                self.finish(completed=0)
                 return
+
+        if self.plate_header['NAXIS'] != 2:
+            self.log.write('Incompatible FITS file: NAXIS != 2',
+                           level=1, event=10)
+            self.finish(completed=0)
+            return
 
         self.imwidth = self.plate_header['NAXIS1']
         self.imheight = self.plate_header['NAXIS2']
@@ -611,7 +620,10 @@ class Process:
             if not os.path.isdir(self.scratch_dir):
                 raise
 
-    def finish(self):
+        # Declare process active
+        self.active = True
+
+    def finish(self, completed=1):
         """
         Finish plate process.
 
@@ -629,7 +641,7 @@ class Process:
             shutil.rmtree(self.scratch_dir)
 
         # Write process end to the database
-        self.db_process_end(completed=1)
+        self.db_process_end(completed=completed)
 
         # Close database connection used for logging
         if self.log.platedb is not None:
@@ -638,6 +650,9 @@ class Process:
 
         # Close log file
         self.log.close()
+
+        # Deactivate process
+        self.active = False
 
     def db_process_start(self):
         """

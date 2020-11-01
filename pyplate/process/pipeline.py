@@ -151,6 +151,10 @@ class PlatePipeline:
 
         proc.setup()
 
+        # If there was a problem during process setup, finish processing
+        if proc.active == False:
+            return
+
         if self.invert_image:
             proc.invert_plate()
 
