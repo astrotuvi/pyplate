@@ -1918,72 +1918,76 @@
       order: 15
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: num_candidate_stars
+    - name: num_gaia_dr2
       order: 16
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: num_calib_stars
+    - name: num_candidate_stars
       order: 17
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: num_bright_stars
+    - name: num_calib_stars
       order: 18
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: num_outliers
+    - name: num_bright_stars
       order: 19
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: bright_limit
+    - name: num_outliers
       order: 20
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: faint_limit
+      mysql_datatype: "INT UNSIGNED"
+      pgsql_datatype: "integer"
+    - name: bright_limit
       order: 21
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: mag_range
+    - name: faint_limit
       order: 22
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: rmse_min
+    - name: mag_range
       order: 23
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: rmse_median
+    - name: rmse_min
       order: 24
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: rmse_max
+    - name: rmse_median
       order: 25
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: plate_mag_brightest
+    - name: rmse_max
       order: 26
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: plate_mag_density02
+    - name: plate_mag_brightest
       order: 27
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: plate_mag_brightcut
+    - name: plate_mag_density02
       order: 28
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: plate_mag_maxden
+    - name: plate_mag_brightcut
       order: 29
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: plate_mag_lim
+    - name: plate_mag_maxden
       order: 30
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: timestamp_insert
+    - name: plate_mag_lim
       order: 31
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: timestamp_insert
+      order: 32
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 32
+      order: 33
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
 
