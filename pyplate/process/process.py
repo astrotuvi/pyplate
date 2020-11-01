@@ -1636,7 +1636,7 @@ class Process:
             self.log.write('Writing WCS output file {}'.format(fn_header),
                            level=4, event=36)
             header = self.plate_solution.header_wcs
-            header.tofile(fn_wcshead, overwrite=True)
+            header.tofile(fn_header, overwrite=True)
 
     def query_star_catalog(self, mag_range=[0,15], color_term=None):
         """
