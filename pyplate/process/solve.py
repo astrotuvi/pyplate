@@ -117,7 +117,10 @@ def valid_wcs_header(header, imwidth, imheight):
 
     """
 
-    w = wcs.WCS(header)
+    try:
+        w = wcs.WCS(header)
+    except wcs._wcs.InvalidTransformError:
+        return False
 
     pix_edge_midpoints = np.array([[1., (imheight+1.)/2.],
                                    [imwidth, (imheight+1.)/2.],
@@ -164,7 +167,12 @@ class PlateSolution:
         self.imwidth = None
         self.imheight = None
         self.plate_solved = False
-        self.mean_pixscale = None
+        self.mean_pixel_scale = None
+        self.min_pixel_scale = None
+        self.max_pixel_scale = None
+        self.mean_fov1 = None
+        self.mean_fov2 = None
+        self.source_density = None
         self.num_sources = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
@@ -177,9 +185,7 @@ class PlateSolution:
         self.ncp_on_plate = None
         self.scp_on_plate = None
 
-        self.wcs_header = None
-        self.wcshead = None
-        self.wcs_plate = None
+        self.header_wcs = None
         self.solutions = None
         self.duplicate_solutions = None
         self.exp_numbers = None
@@ -190,6 +196,12 @@ class PlateSolution:
         self.pattern_y = None
         self.pattern_ratio = None
         self.pattern_table = None
+
+        self.centroid = None
+        self.ra_centroid = None
+        self.dec_centroid = None
+        self.radius = None
+        self.max_separation = None
 
     def assign_conf(self, conf):
         """
@@ -247,10 +259,10 @@ class PlateSolution:
                            level=2, event=36)
             return
 
-        self.wcs_header = self.solutions[0].get_header()
+        self.header_wcs = self.solutions[0].get_header()
 
         if self.num_solutions > 1:
-            self.wcs_header.insert(0, ('WCSNAME', 'Solution_1'))
+            self.header_wcs.insert(0, ('WCSNAME', 'Solution_1'))
 
         # Add additional solutions.
         # If there are more than 27 solutions, add the extra solutions
@@ -260,15 +272,15 @@ class PlateSolution:
                 suffix = chr(ord('A') + i)
                 sep = (' WCS {} (solution {:d})'.format(suffix, i+2)
                        .rjust(72, '.'))
-                self.wcs_header.append(('', sep), end=True)
+                self.header_wcs.append(('', sep), end=True)
                 wcsname_card = ('WCSNAME{}'.format(suffix),
                                 'Solution_{:d}'.format(i+2))
-                self.wcs_header.append(wcsname_card, end=True)
+                self.header_wcs.append(wcsname_card, end=True)
             else:
                 sep = ' WCS (solution {:d})'.format(i+2).rjust(72, '.')
-                self.wcs_header.append(('', sep), end=True)
+                self.header_wcs.append(('', sep), end=True)
                 wcsname_card = ('', 'WCSNAME = \'Solution_{:d}\''.format(i+2))
-                self.wcs_header.append(wcsname_card, end=True)
+                self.header_wcs.append(wcsname_card, end=True)
 
             # For alternate WCS, append only WCS keywords
             for c in solution.get_header().cards:
@@ -287,7 +299,7 @@ class PlateSolution:
                         else:
                             newcard = fits.Card('', c.image.strip())
 
-                        self.wcs_header.append(newcard, end=True)
+                        self.header_wcs.append(newcard, end=True)
 
     def output_wcs_header(self):
         """
@@ -362,8 +374,10 @@ class PlateSolution:
         centroid = c1.directional_offset_by(pos_angle, radius)
 
         self.centroid = centroid
+        self.ra_centroid = centroid.ra.deg
+        self.dec_centroid = centroid.dec.deg
         self.radius = radius
-        self.max_sep = max_sep
+        self.max_separation = max_sep
 
 
 class AstrometricSolution(OrderedDict):
@@ -728,7 +742,12 @@ class SolveProcess:
         self.imwidth = None
         self.imheight = None
         self.plate_solved = False
-        self.mean_pixscale = None
+        self.mean_pixel_scale = None
+        self.min_pixel_scale = None
+        self.max_pixel_scale = None
+        self.mean_fov1 = None
+        self.mean_fov2 = None
+        self.source_density = None
         self.num_sources = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
@@ -744,9 +763,6 @@ class SolveProcess:
         self.sources = None
         self.scampref = None
         self.scampcat = None
-        self.wcs_header = None
-        self.wcshead = None
-        self.wcs_plate = None
         self.solutions = None
         self.duplicate_solutions = None
         self.exp_numbers = None
@@ -966,7 +982,7 @@ class SolveProcess:
 
         # All input arrays must have the same length
         assert len(coords_image) == len(coords_ref), 'coords_image and coords_ref must have the same length'
-        assert len(coords_image) > 10, 'Number of sources must be larger than 10'
+        assert len(coords_image) >= 10, 'Number of sources must be at least 10'
 
         # Prepare 1-dimensional arrays
         x_image = coords_image[:,0]
@@ -1491,9 +1507,17 @@ class SolveProcess:
             self.improve_astrometric_solutions(distort=3)
             self.improve_astrometric_solutions()
 
-            # Calculate mean pixel scale across all solutions
+            # Calculate mean pixel scale and FOV across all solutions
             pixscales = u.Quantity([sol['pixel_scale'] for sol in self.solutions])
-            self.mean_pixscale = pixscales.mean()
+            self.mean_pixel_scale = pixscales.mean()
+            self.min_pixel_scale = pixscales.min()
+            self.max_pixel_scale = pixscales.max()
+            fov1 = u.Quantity([sol['fov1'] for sol in self.solutions])
+            fov2 = u.Quantity([sol['fov2'] for sol in self.solutions])
+            self.mean_fov1 = fov1.mean()
+            self.mean_fov2 = fov2.mean()
+            dens = u.Quantity([sol['source_density'] for sol in self.solutions])
+            self.source_density = dens.mean()
 
         # Create PlateSolution instance
         plate_solution = PlateSolution()
@@ -1503,7 +1527,9 @@ class SolveProcess:
                      'num_solutions', 'solutions', 'num_iterations',
                      'num_duplicate_solutions', 'duplicate_solutions',
                      'pattern_x', 'pattern_y', 'pattern_ratio',
-                     'pattern_table', 'mean_pixscale']:
+                     'pattern_table', 'mean_pixel_scale',
+                     'min_pixel_scale', 'max_pixel_scale',
+                     'mean_fov1', 'mean_fov2', 'source_density']:
             setattr(plate_solution, attr, getattr(self, attr))
 
         # Calculate solutions centroid
@@ -2167,7 +2193,9 @@ class SolveProcess:
         nsrc = len(coords_dewobbled)
         self.pattern_x = pattern_x
         self.pattern_y = pattern_y
-        self.pattern_ratio = pattern_ratio
+
+        if np.isfinite(pattern_ratio):
+            self.pattern_ratio = pattern_ratio
 
         self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
                        '{:.3f}'.format(pattern_ratio), level=4, event=33)
@@ -2301,31 +2329,31 @@ class SolveProcess:
                                    level=2, event=33, solution_num=i+1)
 
             # Crossmatch sources with rerefence stars
-            w = wcs.WCS(header_wcs)
-            xr,yr = w.wcs_world2pix(astref_table['ra'],
-                                    astref_table['dec'], 1)
+            #w = wcs.WCS(header_wcs)
+            #xr,yr = w.wcs_world2pix(astref_table['ra'],
+            #                        astref_table['dec'], 1)
 
-            coords_ref_sol = np.vstack((xr, yr)).T
-            coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
+            #coords_ref_sol = np.vstack((xr, yr)).T
+            #coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
 
-            kdt = KDT(coords_ref_sol)
-            ds,ind_ref = kdt.query(coords_dewobbled, k=1)
-            mask_xmatch = ds <= 5
-            ind_plate = np.arange(len(coords_dewobbled))
+            #kdt = KDT(coords_ref_sol)
+            #ds,ind_ref = kdt.query(coords_dewobbled, k=1)
+            #mask_xmatch = ds <= 5
+            #ind_plate = np.arange(len(coords_dewobbled))
 
             # Output crossmatched stars for debugging
-            t = Table()
-            t['x_source'] = coords_wobble[ind_plate[mask_xmatch]][:,0]
-            t['y_source'] = coords_wobble[ind_plate[mask_xmatch]][:,1]
-            t['x_dewobbled'] = coords_dewobbled[ind_plate[mask_xmatch]][:,0]
-            t['y_dewobbled'] = coords_dewobbled[ind_plate[mask_xmatch]][:,1]
-            t['x_ref'] = xr[ind_ref[mask_xmatch]]
-            t['y_ref'] = yr[ind_ref[mask_xmatch]]
-            t['dist'] = ds[mask_xmatch]
-            fn_out = os.path.join(self.scratch_dir,
-                                  '{}_xmatch2_{:d}.fits'.format(basefn_solution,
-                                                                self.num_iterations+1))
-            t.write(fn_out, format='fits', overwrite=True)
+            #t = Table()
+            #t['x_source'] = coords_wobble[ind_plate[mask_xmatch]][:,0]
+            #t['y_source'] = coords_wobble[ind_plate[mask_xmatch]][:,1]
+            #t['x_dewobbled'] = coords_dewobbled[ind_plate[mask_xmatch]][:,0]
+            #t['y_dewobbled'] = coords_dewobbled[ind_plate[mask_xmatch]][:,1]
+            #t['x_ref'] = xr[ind_ref[mask_xmatch]]
+            #t['y_ref'] = yr[ind_ref[mask_xmatch]]
+            #t['dist'] = ds[mask_xmatch]
+            #fn_out = os.path.join(self.scratch_dir,
+            #                      '{}_xmatch2_{:d}.fits'.format(basefn_solution,
+            #                                                    self.num_iterations+1))
+            #t.write(fn_out, format='fits', overwrite=True)
 
         # Increase iteration count
         self.num_iterations += 1

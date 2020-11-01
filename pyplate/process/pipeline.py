@@ -173,7 +173,7 @@ class PlatePipeline:
             if proc.plate_solved:
                 proc.log.write('Updating FITS header with the WCS', 
                                level=3, event=37)
-                h.insert_wcs(proc.plate_solution.wcs_header)
+                h.insert_wcs(proc.plate_solution.header_wcs)
 
             if self.output_header_file:
                 proc.log.write('Writing FITS header to a file', 

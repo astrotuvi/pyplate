@@ -1500,10 +1500,10 @@
     - name: index_6
       val: "CREATE INDEX gaiadr2_id_ind ON source_xmatch (gaiadr2_id)"
 
-  - name: solution
+  - name: solution_set
     order: 13
     columns:
-    - name: solution_id
+    - name: solutionset_id
       order: 1
       mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
       pgsql_datatype: "serial"
@@ -1523,35 +1523,35 @@
       order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: solution_num
+    - name: num_solutions
       order: 6
       mysql_datatype: "SMALLINT UNSIGNED"
       pgsql_datatype: "smallint"
-    - name: raj2000
+    - name: num_duplicate_solutions
       order: 7
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: dej2000
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: pattern_ratio
       order: 8
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: raj2000_hms
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: mean_pixel_scale
       order: 9
-      mysql_datatype: "CHAR(11)"
-      pgsql_datatype: "character(11) COLLATE ucs_basic"
-    - name: dej2000_dms
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: min_pixel_scale
       order: 10
-      mysql_datatype: "CHAR(11)"
-      pgsql_datatype: "character(11) COLLATE ucs_basic"
-    - name: fov1
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: max_pixel_scale
       order: 11
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: fov2
+    - name: mean_fov1
       order: 12
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: pixel_scale
+    - name: mean_fov2
       order: 13
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
@@ -1559,64 +1559,163 @@
       order: 14
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: cd1_1
+    - name: max_separation
       order: 15
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: cd1_2
-      order: 16
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: cd2_1
-      order: 17
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: cd2_2
-      order: 18
-      mysql_datatype: "DOUBLE"
-      pgsql_datatype: "double precision"
-    - name: rotation_angle
-      order: 19
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: plate_mirrored
-      order: 20
-      mysql_datatype: "TINYINT(1)"
-      pgsql_datatype: "smallint"
-    - name: ncp_on_plate
-      order: 21
-      mysql_datatype: "TINYINT(1)"
-      pgsql_datatype: "smallint"
-    - name: scp_on_plate
-      order: 22
-      mysql_datatype: "TINYINT(1)"
-      pgsql_datatype: "smallint"
-    - name: stc_box
-      order: 23
-      mysql_datatype: "VARCHAR(100)"
-      pgsql_datatype: "character varying(100) COLLATE ucs_basic"
-    - name: stc_polygon
-      order: 24
-      mysql_datatype: "VARCHAR(200)"
-      pgsql_datatype: "character varying(200) COLLATE ucs_basic"
     - name: header_wcs
-      order: 25
-      mysql_datatype: "TEXT"
-      pgsql_datatype: "text COLLATE ucs_basic"
-    - name: header_anet
-      order: 26
-      mysql_datatype: "TEXT"
-      pgsql_datatype: "text COLLATE ucs_basic"
-    - name: header_scamp
-      order: 27
+      order: 16
       mysql_datatype: "TEXT"
       pgsql_datatype: "text COLLATE ucs_basic"
     - name: timestamp_insert
-      order: 28
+      order: 17
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
+      order: 18
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
+    indexes:
+    - name: mysql_pk
+      val: "ALTER TABLE solution_set ADD CONSTRAINT solutionset_pky PRIMARY KEY (solutionset_id);ALTER TABLE solution_set MODIFY solutionset_id INT UNSIGNED NOT NULL AUTO_INCREMENT"
+    - name: pgsql_pk
+      val: "ALTER TABLE solution_set ADD CONSTRAINT solutionset_pky PRIMARY KEY (solutionset_id)"
+    - name: index_1
+      val: "CREATE INDEX process_ind ON solution_set (process_id)"
+    - name: index_2
+      val: "CREATE INDEX scan_ind ON solution_set (scan_id)"
+    - name: index_3
+      val: "CREATE INDEX plate_ind ON solution_set (plate_id)"
+    - name: index_4
+      val: "CREATE INDEX archive_ind ON solution_set (archive_id)"
+
+  - name: solution
+    order: 14
+    columns:
+    - name: solution_id
+      order: 1
+      mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
+      pgsql_datatype: "serial"
+    - name: solutionset_id
+      order: 2
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: process_id
+      order: 3
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: scan_id
+      order: 4
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: plate_id
+      order: 5
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: archive_id
+      order: 6
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: solution_num
+      order: 7
+      mysql_datatype: "SMALLINT"
+      pgsql_datatype: "smallint"
+    - name: raj2000
+      order: 8
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: dej2000
+      order: 9
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: raj2000_hms
+      order: 10
+      mysql_datatype: "CHAR(11)"
+      pgsql_datatype: "character(11) COLLATE ucs_basic"
+    - name: dej2000_dms
+      order: 11
+      mysql_datatype: "CHAR(11)"
+      pgsql_datatype: "character(11) COLLATE ucs_basic"
+    - name: fov1
+      order: 12
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: fov2
+      order: 13
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: pixel_scale
+      order: 14
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: source_density
+      order: 15
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: cd1_1
+      order: 16
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: cd1_2
+      order: 17
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: cd2_1
+      order: 18
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: cd2_2
+      order: 19
+      mysql_datatype: "DOUBLE"
+      pgsql_datatype: "double precision"
+    - name: rotation_angle
+      order: 20
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: plate_mirrored
+      order: 21
+      mysql_datatype: "TINYINT(1)"
+      pgsql_datatype: "smallint"
+    - name: ncp_on_plate
+      order: 22
+      mysql_datatype: "TINYINT(1)"
+      pgsql_datatype: "smallint"
+    - name: scp_on_plate
+      order: 23
+      mysql_datatype: "TINYINT(1)"
+      pgsql_datatype: "smallint"
+    - name: stc_box
+      order: 24
+      mysql_datatype: "VARCHAR(100)"
+      pgsql_datatype: "character varying(100) COLLATE ucs_basic"
+    - name: stc_polygon
+      order: 25
+      mysql_datatype: "VARCHAR(200)"
+      pgsql_datatype: "character varying(200) COLLATE ucs_basic"
+    - name: header_wcs
+      order: 26
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: header_anet
+      order: 27
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: header_scamp
+      order: 28
+      mysql_datatype: "TEXT"
+      pgsql_datatype: "text COLLATE ucs_basic"
+    - name: timestamp_insert
       order: 29
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+    - name: timestamp_update
+      order: 30
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
       
@@ -1646,50 +1745,54 @@
       val: "CREATE INDEX dej2000_ind ON solution (dej2000)"
 
   - name: scanner_pattern
-    order: 14
+    order: 15
     columns:
     - name: pattern_id
       order: 1
       mysql_datatype: "INT UNSIGNED NOT NULL PRIMARY KEY AUTO_INCREMENT"
       pgsql_datatype: "serial"
-    - name: process_id
+    - name: solutionset_id
       order: 2
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: scan_id
+    - name: process_id
       order: 3
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: plate_id
+    - name: scan_id
       order: 4
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: archive_id
+    - name: plate_id
       order: 5
       mysql_datatype: "INT UNSIGNED NOT NULL"
       pgsql_datatype: "integer"
-    - name: axis
+    - name: archive_id
       order: 6
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: axis
+      order: 7
       mysql_datatype: "TINYINT(1)"
       pgsql_datatype: "smallint"
     - name: coord
-      order: 7
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: shift
       order: 8
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: extrapolated
+    - name: shift
       order: 9
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: extrapolated
+      order: 10
       mysql_datatype: "TINYINT(1)"
       pgsql_datatype: "smallint"
     - name: timestamp_insert
-      order: 10
+      order: 11
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 11
+      order: 12
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
 
@@ -1713,7 +1816,7 @@
       val: "CREATE INDEX archive_ind ON scanner_pattern (archive_id)"
 
   - name: phot_calib
-    order: 15
+    order: 16
     columns:
     - name: calib_id
       order: 1
@@ -1864,7 +1967,7 @@
       val: "CREATE INDEX archive_ind ON phot_calib (archive_id)"
 
   - name: phot_calib_curve
-    order: 16
+    order: 17
     columns:
     - name: calibcurve_id
       order: 1
@@ -1937,7 +2040,7 @@
       val: "CREATE INDEX archive_ind ON phot_calib_curve (archive_id)"
 
   - name: process
-    order: 17
+    order: 18
     columns:
     - name: process_id
       order: 1
@@ -2075,7 +2178,7 @@
       val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
-    order: 18
+    order: 19
     columns:
     - name: processlog_id
       order: 1

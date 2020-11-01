@@ -558,7 +558,7 @@ class SourceTable(Table):
         # Take parameters from plate_solution
         num_solutions = plate_solution.num_solutions
         solutions = plate_solution.solutions
-        mean_pixscale = plate_solution.mean_pixscale
+        mean_pixscale = plate_solution.mean_pixel_scale
 
         # Number of Gaia stars
         num_gaia = len(star_catalog)

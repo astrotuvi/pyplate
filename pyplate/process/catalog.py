@@ -270,7 +270,7 @@ class StarCatalog(Table):
             # If max angular separation between solutions is less than
             # FOV diagonal, then query Gaia once for all solutions.
             # Otherwise, query Gaia separately for individual solutions.
-            if psol.max_sep < fov_diag:
+            if psol.max_separation < fov_diag:
                 if protocol == 'SQL':
                     tab = self.query_gaia_sql(query_str, psol.centroid,
                                               psol.radius)

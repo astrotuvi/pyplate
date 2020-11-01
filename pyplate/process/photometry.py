@@ -174,9 +174,6 @@ class PhotometryProcess:
 
         self.scampref = None
         self.scampcat = None
-        self.wcs_header = None
-        self.wcshead = None
-        self.wcs_plate = None
         self.solutions = None
         self.exp_numbers = None
         self.num_solutions = 0

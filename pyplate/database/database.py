@@ -744,8 +744,8 @@ class PlateDB:
         logpage_id = self.db.execute_query(sql, val_tuple)
         return logpage_id
 
-    def write_solution(self, solution, process_id=None, scan_id=None, 
-                       plate_id=None, archive_id=None):
+    def write_platesolution(self, platesolution, process_id=None, scan_id=None,
+                            plate_id=None, archive_id=None):
         """
         Write plate solution to the database.
 
@@ -753,6 +753,50 @@ class PlateDB:
 
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
         val_tuple = (process_id, scan_id, plate_id, archive_id)
+
+        # Get solution_set table columns from database schema
+        solutionset_table = self.get_table_dict('solution_set')
+
+        for k in solutionset_table.keys():
+            if hasattr(platesolution, k):
+                col_list.append(k)
+                attr = getattr(platesolution, k)
+
+                if isinstance(attr, u.Quantity):
+                    value = attr.value
+                elif isinstance(attr, fits.Header):
+                    value = attr.tostring(sep='\\n')
+                elif isinstance(attr, bool):
+                    value = int(attr)
+                else:
+                    value = attr
+
+                # Replace nan and inf with None
+                try:
+                    if not np.isfinite(value):
+                        value = None
+                except TypeError:
+                    pass
+
+                val_tuple = val_tuple + (value, )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING solutionset_id'
+               .format(self.table_name('solution_set'), col_str, val_str))
+        solutionset_id = self.db.execute_query(sql, val_tuple)
+        return solutionset_id
+
+    def write_solution(self, solution, solutionset_id=None, process_id=None,
+                       scan_id=None, plate_id=None, archive_id=None):
+        """
+        Write individual astrometric solution to the database.
+
+        """
+
+        col_list = ['solutionset_id', 'process_id', 'scan_id', 'plate_id',
+                    'archive_id']
+        val_tuple = (solutionset_id, process_id, scan_id, plate_id, archive_id)
 
         # Get solution table columns from database schema
         solution_table = self.get_table_dict('solution')
@@ -786,15 +830,16 @@ class PlateDB:
         solution_id = self.db.execute_query(sql, val_tuple)
         return solution_id
 
-    def write_scanner_pattern(self, table_row, process_id=None, scan_id=None,
-                              plate_id=None, archive_id=None):
+    def write_scanner_pattern(self, table_row, solutionset_id, process_id=None,
+                              scan_id=None, plate_id=None, archive_id=None):
         """
         Write scanner pattern to the database.
 
         """
 
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, plate_id, archive_id)
+        col_list = ['solutionset_id', 'process_id', 'scan_id', 'plate_id',
+                    'archive_id']
+        val_tuple = (solutionset_id, process_id, scan_id, plate_id, archive_id)
 
         # Get phot_calib table columns from database schema
         scanner_pattern_table = self.get_table_dict('scanner_pattern')

@@ -1600,6 +1600,9 @@ class Process:
                   'plate_id': self.plate_id,
                   'archive_id': self.archive_id}
 
+            set_id = platedb.write_platesolution(self.plate_solution, **kw)
+            kw['solutionset_id'] = set_id
+
             for solution in self.plate_solution.solutions:
                 platedb.write_solution(solution, **kw)
 
@@ -1628,12 +1631,12 @@ class Process:
                                ''.format(self.write_wcs_dir), level=4, event=36)
                 os.makedirs(self.write_wcs_dir)
 
-            fn_wcshead = '{}.wcs'.format(self.basefn)
-            fn_wcshead = os.path.join(self.write_wcs_dir, fn_wcshead)
-            self.log.write('Writing WCS output file {}'.format(fn_wcshead),
+            fn_header = '{}.wcs'.format(self.basefn)
+            fn_header = os.path.join(self.write_wcs_dir, fn_header)
+            self.log.write('Writing WCS output file {}'.format(fn_header),
                            level=4, event=36)
-            wcshead = self.plate_solution.wcs_header
-            wcshead.tofile(fn_wcshead, overwrite=True)
+            header = self.plate_solution.header_wcs
+            header.tofile(fn_wcshead, overwrite=True)
 
     def query_star_catalog(self, mag_range=[0,15], color_term=None):
         """
