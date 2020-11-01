@@ -404,7 +404,8 @@ class AstrometricSolution(OrderedDict):
                 'header_anet', 'header_scamp', 'header_wcs',
                 'skycoord_corners',
                 'scamp_dscale', 'scamp_dangle', 'scamp_dx', 'scamp_dy',
-                'scamp_sigma_1', 'scamp_sigma_2', 'scamp_chi2', 'scamp_ndeg']
+                'scamp_sigma_1', 'scamp_sigma_2', 'scamp_chi2', 'scamp_ndeg',
+                'scamp_distort', 'scamp_iteration']
 
         for k in keys:
             self[k] = None
@@ -1962,6 +1963,8 @@ class SolveProcess:
                 solution['scamp_sigma_2'] = scamp_sigmas[1]
                 solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
                 solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+                solution['scamp_distort'] = 3
+                solution['scamp_iteration'] = 0
 
                 # Store SCAMP solution and recalculate parameters
                 solution['header_scamp'] = header_scamp
@@ -2316,6 +2319,8 @@ class SolveProcess:
                 self.solutions[i]['scamp_sigma_2'] = scamp_sigmas[1]
                 self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
                 self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
+                self.solutions[i]['scamp_distort'] = distort
+                self.solutions[i]['scamp_iteration'] = self.num_iterations + 1
 
                 # Store improved solution
                 self.solutions[i]['header_scamp'] = header_scamp
