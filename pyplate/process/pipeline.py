@@ -166,7 +166,7 @@ class PlatePipeline:
 
             if self.solve_plate:
                 proc.solve_plate()
-                #proc.sources.process_source_coordinates()
+                proc.sources.process_coordinates()
 
             if self.output_solution_db:
                 proc.output_solution_db()

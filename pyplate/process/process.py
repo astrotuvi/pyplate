@@ -1257,6 +1257,7 @@ class Process:
         # Initialise source table
         self.sources = SourceTable()
         self.sources.populate(num_sources=self.num_sources)
+        self.sources.platemeta = self.platemeta
 
         # Copy values from the SExtractor catalog, xycat
         self.sources.copy_from_sextractor(xycat)
@@ -2054,7 +2055,7 @@ class Process:
         self.log.write('Calibrating photometry', event=70, level=3)
 
         # Initialise photometry process
-        photproc = PhotometryProcess(self.filename, archive_id=self.archive_id)
+        photproc = PhotometryProcess()
 
         # Assign process attributes
         photproc.__dict__.update(self.__dict__)

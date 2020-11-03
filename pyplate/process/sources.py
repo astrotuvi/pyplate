@@ -108,41 +108,27 @@ _source_meta = OrderedDict([
     ('solution_num',        ('i2', '%1d', '')),
     ('raj2000',             ('f8', '%11.7f', '')),
     ('dej2000',             ('f8', '%11.7f', '')),
+    ('raerr',               ('f4', '%7.4f', '')),
+    ('decerr',              ('f4', '%7.4f', '')),
     ('x_sphere',            ('f8', '%10.7f', '')),
     ('y_sphere',            ('f8', '%10.7f', '')),
     ('z_sphere',            ('f8', '%10.7f', '')),
     ('healpix256',          ('i4', '%6d', '')),
-    ('raj2000_wcs',         ('f8', '%11.7f', '')),
-    ('dej2000_wcs',         ('f8', '%11.7f', '')),
-    ('raj2000_sub',         ('f8', '%11.7f', '')),
-    ('dej2000_sub',         ('f8', '%11.7f', '')),
-    ('raerr_sub',           ('f4', '%7.4f', '')),
-    ('decerr_sub',          ('f4', '%7.4f', '')),
-    ('astrom_sub_grid',     ('i2', '%3d', '')),
-    ('astrom_sub_id',       ('i4', '%5d', '')),
     ('nn_dist',             ('f4', '%6.3f', '')),
     ('zenith_angle',        ('f4', '%7.4f', '')),
     ('airmass',             ('f4', '%7.4f', '')),
     ('natmag',              ('f4', '%7.4f', '')),
     ('natmagerr',           ('f4', '%7.4f', '')),
-    ('bmag',                ('f4', '%7.4f', '')),
-    ('bmagerr',             ('f4', '%7.4f', '')),
-    ('vmag',                ('f4', '%7.4f', '')),
-    ('vmagerr',             ('f4', '%7.4f', '')),
+    ('bpmag',               ('f4', '%7.4f', '')),
+    ('bpmagerr',            ('f4', '%7.4f', '')),
+    ('rpmag',               ('f4', '%7.4f', '')),
+    ('rpmagerr',            ('f4', '%7.4f', '')),
     ('natmag_plate',        ('f4', '%7.4f', '')),
-    ('natmagerr_plate',     ('f4', '%7.4f', '')),
-    ('phot_plate_flags',    ('i2', '%1d', '')),
     ('natmag_correction',   ('f4', '%7.4f', '')),
-    ('natmag_sub',          ('f4', '%7.4f', '')),
-    ('natmagerr_sub',       ('f4', '%7.4f', '')),
     ('natmag_residual',     ('f4', '%7.4f', '')),
-    ('phot_sub_grid',       ('i2', '%3d', '')),
-    ('phot_sub_id',         ('i4', '%5d', '')),
-    ('phot_sub_flags',      ('i2', '%1d', '')),
+    ('phot_range_flags',    ('i2', '%1d', '')),
     ('phot_calib_flags',    ('i2', '%1d', '')),
     ('color_term',          ('f4', '%7.4f', '')),
-    ('color_bv',            ('f4', '%7.4f', '')),
-    ('color_bv_err',        ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
     ('match_radius',        ('f4', '%7.3f', '')),
     ('gaiadr2_id',          ('i8', '%d', '')),
@@ -153,38 +139,7 @@ _source_meta = OrderedDict([
     ('gaiadr2_rpmag',       ('f4', '%7.4f', '')),
     ('gaiadr2_bp_rp',       ('f4', '%7.4f', '')),
     ('gaiadr2_dist',        ('f4', '%6.3f', '')),
-    ('gaiadr2_neighbors',   ('i4', '%3d', '')),
-    ('ucac4_id',            ('a10', '%s', '')),
-    ('ucac4_ra',            ('f8', '%11.7f', '')),
-    ('ucac4_dec',           ('f8', '%11.7f', '')),
-    ('ucac4_bmag',          ('f4', '%7.4f', '')),
-    ('ucac4_vmag',          ('f4', '%7.4f', '')),
-    ('ucac4_bmagerr',       ('f4', '%6.4f', '')),
-    ('ucac4_vmagerr',       ('f4', '%6.4f', '')),
-    ('ucac4_dist',          ('f4', '%6.3f', '')),
-    ('ucac4_dist2',         ('f4', '%7.3f', '')),
-    ('ucac4_nn_dist',       ('f4', '%7.3f', '')),
-    ('tycho2_id',           ('a12', '%s', '')),
-    ('tycho2_id_pad',       ('a12', '%s', '')),
-    ('tycho2_ra',           ('f8', '%11.7f', '')),
-    ('tycho2_dec',          ('f8', '%11.7f', '')),
-    ('tycho2_btmag',        ('f4', '%7.4f', '')),
-    ('tycho2_vtmag',        ('f4', '%7.4f', '')),
-    ('tycho2_btmagerr',     ('f4', '%6.4f', '')),
-    ('tycho2_vtmagerr',     ('f4', '%6.4f', '')),
-    ('tycho2_hip',          ('i4', '%6d', '')),
-    ('tycho2_dist',         ('f4', '%6.3f', '')),
-    ('tycho2_dist2',        ('f4', '%7.3f', '')),
-    ('tycho2_nn_dist',      ('f4', '%7.3f', '')),
-    ('apass_ra',            ('f8', '%11.7f', '')),
-    ('apass_dec',           ('f8', '%11.7f', '')),
-    ('apass_bmag',          ('f4', '%7.4f', '')),
-    ('apass_vmag',          ('f4', '%7.4f', '')),
-    ('apass_bmagerr',       ('f4', '%6.4f', '')),
-    ('apass_vmagerr',       ('f4', '%6.4f', '')),
-    ('apass_dist',          ('f4', '%6.3f', '')),
-    ('apass_dist2',         ('f4', '%7.3f', '')),
-    ('apass_nn_dist',       ('f4', '%7.3f', ''))
+    ('gaiadr2_neighbors',   ('i4', '%3d', ''))
 ])
 
 
@@ -306,12 +261,8 @@ class SourceTable(Table):
         self['errtheta_psf'] = np.nan
         self['raj2000'] = np.nan
         self['dej2000'] = np.nan
-        self['raj2000_wcs'] = np.nan
-        self['dej2000_wcs'] = np.nan
-        self['raj2000_sub'] = np.nan
-        self['dej2000_sub'] = np.nan
-        self['raerr_sub'] = np.nan
-        self['decerr_sub'] = np.nan
+        self['raerr'] = np.nan
+        self['decerr'] = np.nan
         self['x_sphere'] = np.nan
         self['y_sphere'] = np.nan
         self['z_sphere'] = np.nan
@@ -326,51 +277,18 @@ class SourceTable(Table):
         self['gaiadr2_bp_rp'] = np.nan
         self['gaiadr2_dist'] = np.nan
         self['gaiadr2_neighbors'] = 0
-        self['ucac4_ra'] = np.nan
-        self['ucac4_dec'] = np.nan
-        self['ucac4_bmag'] = np.nan
-        self['ucac4_vmag'] = np.nan
-        self['ucac4_bmagerr'] = np.nan
-        self['ucac4_vmagerr'] = np.nan
-        self['ucac4_dist'] = np.nan
-        self['ucac4_dist2'] = np.nan
-        self['ucac4_nn_dist'] = np.nan
-        self['tycho2_ra'] = np.nan
-        self['tycho2_dec'] = np.nan
-        self['tycho2_btmag'] = np.nan
-        self['tycho2_vtmag'] = np.nan
-        self['tycho2_btmagerr'] = np.nan
-        self['tycho2_vtmagerr'] = np.nan
-        self['tycho2_dist'] = np.nan
-        self['tycho2_dist2'] = np.nan
-        self['tycho2_nn_dist'] = np.nan
-        self['apass_ra'] = np.nan
-        self['apass_dec'] = np.nan
-        self['apass_bmag'] = np.nan
-        self['apass_vmag'] = np.nan
-        self['apass_bmagerr'] = np.nan
-        self['apass_vmagerr'] = np.nan
-        self['apass_dist'] = np.nan
-        self['apass_dist2'] = np.nan
-        self['apass_nn_dist'] = np.nan
         self['natmag'] = np.nan
         self['natmagerr'] = np.nan
-        self['bmag'] = np.nan
-        self['bmagerr'] = np.nan
-        self['vmag'] = np.nan
-        self['vmagerr'] = np.nan
-        self['natmag_plate'] = np.nan
-        self['natmagerr_plate'] = np.nan
+        self['bpmag'] = np.nan
+        self['bpmagerr'] = np.nan
+        self['rpmag'] = np.nan
+        self['rpmagerr'] = np.nan
         self['natmag_residual'] = np.nan
         self['natmag_correction'] = np.nan
-        self['natmag_sub'] = np.nan
-        self['natmagerr_sub'] = np.nan
         self['color_term'] = np.nan
-        self['color_bv'] = np.nan
         self['cat_natmag'] = np.nan
+        self['phot_range_flags'] = 0
         self['phot_calib_flags'] = 0
-        self['phot_plate_flags'] = 0
-        self['phot_sub_flags'] = 0
 
     def assign_conf(self, conf):
         """
@@ -642,6 +560,7 @@ class SourceTable(Table):
         dist_arcsec = (ds * u.pixel * mean_pixscale).to(u.arcsec).value
         ind_gaia = index_ref[ind_ref]
         self['solution_num'][ind_plate] = sol_ref[ind_ref]
+        self['match_radius'][ind_plate] = tolerance_arcsec
         self['gaiadr2_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
         self['gaiadr2_ra'][ind_plate] = ra_ref[ind_gaia]
         self['gaiadr2_dec'][ind_plate] = dec_ref[ind_gaia]
@@ -719,108 +638,85 @@ class SourceTable(Table):
                         dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8', 'i1'))
             self.neighbors_gaia = nbs
 
-    def process_source_coordinates(self):
+        # Process coordinates again, because solution_num assignments may have changed
+        self.process_coordinates(plate_solution=plate_solution)
+
+    def process_coordinates(self, plate_solution=None):
         """
-        Combine coordinates from the global and recursive solutions.
-        Calculate X, Y, and Z on the unit sphere.
+        Calculate HEALPix numbers, (X, Y, Z) on the unit sphere, nearest
+        neighbor distance, zenith angle, air mass.
+
+        Parameters:
+        -----------
+        plate_solution : :class:`solve.PlateSolution`
+            Plate solution with one or more astrometric solutions
 
         """
 
-        self.log.to_db(3, 'Processing source coordinates', event=60)
+        self.log.write('Processing source coordinates', level=3, event=60)
 
-        self.sources['raj2000'] = self.sources['raj2000_wcs']
-        self.sources['dej2000'] = self.sources['dej2000_wcs']
+        if plate_solution is None or plate_solution.num_solutions == 0:
+            self.log.write('Cannot process source coordinates '
+                           'due to missing astrometric solutions!',
+                           level=2, event=60)
+            return
 
-        ind = np.where(np.isfinite(self.sources['raj2000_sub']) &
-                       np.isfinite(self.sources['dej2000_sub']))
+        # Loop over solutions and transform image coordinates to RA and Dec
+        for i,solution in enumerate(plate_solution.solutions):
+            w = wcs.WCS(solution['header_wcs'])
 
-        if len(ind[0]) > 0:
-            self.sources['raj2000'][ind] = self.sources['raj2000_sub'][ind]
-            self.sources['dej2000'][ind] = self.sources['dej2000_sub'][ind]
+            # If there is only one solution, then transform coordinates of
+            # all sources
+            if plate_solution.num_solutions == 1:
+                m = np.isfinite(self['x_source'])
+            else:
+                m = self['solution_num'] == i + 1
 
-        # Calculate X, Y, and Z on the unit sphere
-        # http://www.sdss3.org/svn/repo/idlutils/tags/v5_5_5/pro/coord/angles_to_xyz.pro
-        phi_rad = np.radians(self.sources['raj2000'])
-        theta_rad = np.radians(90. - self.sources['dej2000'])
-        self.sources['x_sphere'] = np.cos(phi_rad) * np.sin(theta_rad)
-        self.sources['y_sphere'] = np.sin(phi_rad) * np.sin(theta_rad)
-        self.sources['z_sphere'] = np.cos(theta_rad)
+            if m.sum() > 0:
+                ra, dec = w.all_pix2world(self['x_source'][m],
+                                          self['y_source'][m], 1)
+                self['raj2000'][m] = ra
+                self['dej2000'][m] = dec
 
-        if have_healpy:
-            ind = np.where(np.isfinite(self.sources['raj2000']) &
-                           np.isfinite(self.sources['dej2000']))
+                # Assign astrometric errors
+                if (solution['scamp_sigma_1'] is not None
+                    and solution['scamp_sigma_2'] is not None):
+                    self['raerr'][m] = solution['scamp_sigma_1']
+                    self['decerr'][m] = solution['scamp_sigma_2']
 
-            if len(ind[0]) > 0:
-                phi_rad = np.radians(self.sources['raj2000'][ind])
-                theta_rad = np.radians(90. - self.sources['dej2000'][ind])
-                hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
-                self.sources['healpix256'][ind] = hp256.astype(np.int32)
-
-        # Prepare for cross-match with the UCAC4, Tycho-2 and APASS catalogues
-
-        bool_finite = (np.isfinite(self.sources['raj2000']) &
-                       np.isfinite(self.sources['dej2000']))
+        # Check if we have any usable coordinates
+        bool_finite = (np.isfinite(self['raj2000']) &
+                       np.isfinite(self['dej2000']))
         num_finite = bool_finite.sum()
 
         if num_finite == 0:
-            self.log.write('No sources with usable coordinates for '
-                           'cross-matching', 
+            self.log.write('No sources with usable coordinates!',
                            level=2, event=60)
             return
 
         ind_finite = np.where(bool_finite)[0]
-        ra_finite = self.sources['raj2000'][ind_finite]
-        dec_finite = self.sources['dej2000'][ind_finite]
-        coorderr_finite = np.sqrt(self.sources['raerr_sub'][ind_finite]**2 +
-                                  self.sources['decerr_sub'][ind_finite]**2)
-        logarea_finite = np.log10(self.sources['isoarea'][ind_finite])
+        ra_finite = self['raj2000'][ind_finite]
+        dec_finite = self['dej2000'][ind_finite]
 
-        # Assign default coordinate errors to sources with no error estimates 
-        # from sub-fields
-        bool_nanerr = np.isnan(coorderr_finite)
-        num_nanerr = bool_nanerr.sum()
+        # Calculate X, Y, and Z on the unit sphere
+        # http://www.sdss3.org/svn/repo/idlutils/tags/v5_5_5/pro/coord/angles_to_xyz.pro
+        phi_rad = np.radians(self['raj2000'])
+        theta_rad = np.radians(90. - self['dej2000'])
+        self['x_sphere'] = np.cos(phi_rad) * np.sin(theta_rad)
+        self['y_sphere'] = np.sin(phi_rad) * np.sin(theta_rad)
+        self['z_sphere'] = np.cos(theta_rad)
 
-        if num_nanerr > 0:
-            coorderr_finite[np.where(bool_nanerr)] = 20.
-
-        # Combine cross-match criteria
-        if self.crossmatch_radius is not None:
-            self.log.write('Using fixed cross-match radius of {:.2f} arcsec'
-                           ''.format(float(self.crossmatch_radius)), 
-                           level=4, event=60)
-            matchrad_arcsec = float(self.crossmatch_radius)*u.arcsec
-        else:
-            self.log.write('Using scaled cross-match radius of '
-                           '{:.2f} astrometric sigmas'
-                           ''.format(float(self.crossmatch_nsigma)), 
-                           level=4, event=60)
-            matchrad_arcsec = (coorderr_finite * float(self.crossmatch_nsigma)
-                               * u.arcsec)
-
-        if self.crossmatch_nlogarea is not None:
-            self.log.write('Using scaled cross-match radius of '
-                           '{:.2f} times log10(isoarea)'
-                           ''.format(float(self.crossmatch_nlogarea)), 
-                           level=4, event=60)
-            logarea_arcsec = (logarea_finite * u.pixel * self.mean_pixscale
-                              * float(self.crossmatch_nlogarea))
-            matchrad_arcsec = np.maximum(matchrad_arcsec, logarea_arcsec)
-
-        if self.crossmatch_maxradius is not None:
-            self.log.write('Using maximum cross-match radius of {:.2f} arcsec'
-                           ''.format(float(self.crossmatch_maxradius)), 
-                           level=4, event=60)
-            maxradius_arcsec = (float(self.crossmatch_maxradius) 
-                                * u.arcsec)
-            matchrad_arcsec = np.minimum(matchrad_arcsec, maxradius_arcsec)
-
-        self.sources['match_radius'][ind_finite] = matchrad_arcsec
+        if have_healpy:
+            phi_rad = np.radians(self['raj2000'][ind_finite])
+            theta_rad = np.radians(90. - self['dej2000'][ind_finite])
+            hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
+            self['healpix256'][ind_finite] = hp256.astype(np.int32)
 
         # Find nearest neighbours
         coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
         _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
         matchdist = ds2d.to(u.arcsec).value
-        self.sources['nn_dist'][ind_finite] = matchdist.astype(np.float32)
+        self['nn_dist'][ind_finite] = matchdist.astype(np.float32)
 
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
@@ -843,179 +739,12 @@ class SourceTable(Table):
             date_avg = Time(self.platemeta['date_avg'][0], 
                             format='isot', scale='ut1')
             c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
-            self.sources['zenith_angle'] = c_altaz.zen.deg
+            self['zenith_angle'] = c_altaz.zen.deg
             coszt = np.cos(c_altaz.zen)
             airmass = ((1.002432 * coszt**2 + 0.148386 * coszt + 0.0096467) 
                        / (coszt**3 + 0.149864 * coszt**2 + 0.0102963 * coszt 
                           + 0.000303978))
-            self.sources['airmass'] = airmass
-
-        # Match sources with the UCAC4 catalogue
-        self.log.write('Cross-matching sources with the UCAC4 catalogue', 
-                       level=3, event=62)
-
-        if self.ra_ucac is None or self.dec_ucac is None:
-            self.log.write('Missing UCAC4 data', level=2, event=62)
-        else:
-            coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
-            catalog = SkyCoord(self.ra_ucac, self.dec_ucac, unit=(u.deg, u.deg))
-            ind_ucac, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                         nthneighbor=1)
-            ind_plate = np.arange(ind_ucac.size)
-            indmask = ds2d < matchrad_arcsec
-
-            ind_plate = ind_plate[indmask]
-            ind_ucac = ind_ucac[indmask]
-            matchdist = ds2d[indmask].to(u.arcsec).value
-
-            _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                              nthneighbor=2)
-            matchdist2 = ds2d2[indmask].to(u.arcsec).value
-            _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                nthneighbor=2)
-            nndist = nn_ds2d[ind_ucac].to(u.arcsec).value
-
-            num_match = len(ind_plate)
-            self.db_update_process(num_ucac4=num_match)
-
-            if num_match > 0:
-                ind = ind_finite[ind_plate]
-                self.sources['ucac4_id'][ind] = self.id_ucac[ind_ucac]
-                self.sources['ucac4_ra'][ind] = self.ra_ucac[ind_ucac]
-                self.sources['ucac4_dec'][ind] = self.dec_ucac[ind_ucac]
-                self.sources['ucac4_bmag'][ind] = self.bmag_ucac[ind_ucac]
-                self.sources['ucac4_vmag'][ind] = self.vmag_ucac[ind_ucac]
-                self.sources['ucac4_bmagerr'][ind] = self.bmagerr_ucac[ind_ucac]
-                self.sources['ucac4_vmagerr'][ind] = self.vmagerr_ucac[ind_ucac]
-                self.sources['ucac4_dist'][ind] = (matchdist
-                                                   .astype(np.float32))
-                self.sources['ucac4_dist2'][ind] = (matchdist2
-                                                    .astype(np.float32))
-                self.sources['ucac4_nn_dist'][ind] = (nndist
-                                                      .astype(np.float32))
-
-                if self.combined_ucac_apass:
-                    self.sources['apass_ra'][ind] = self.ra_apass[ind_ucac]
-                    self.sources['apass_dec'][ind] = self.dec_apass[ind_ucac]
-                    self.sources['apass_bmag'][ind] = self.bmag_apass[ind_ucac]
-                    self.sources['apass_vmag'][ind] = self.vmag_apass[ind_ucac]
-                    self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_ucac]
-                    self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_ucac]
-
-        # Match sources with the Tycho-2 catalogue
-        if self.use_tycho2_fits:
-            self.log.write('Cross-matching sources with the Tycho-2 catalogue', 
-                           level=3, event=63)
-
-            if self.num_tyc == 0:
-                self.log.write('Missing Tycho-2 data', level=2, event=63)
-            else:
-                coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
-                catalog = SkyCoord(self.ra_tyc, self.dec_tyc, 
-                                   unit=(u.deg, u.deg))
-                ind_tyc, ds2d, ds3d = match_coordinates_sky(coords, catalog,
-                                                            nthneighbor=1)
-                ind_plate = np.arange(ind_tyc.size)
-                indmask = ds2d < matchrad_arcsec
-
-                ind_plate = ind_plate[indmask]
-                ind_tyc = ind_tyc[indmask]
-                matchdist = ds2d[indmask].to(u.arcsec).value
-
-                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                                  nthneighbor=2)
-                matchdist2 = ds2d2[indmask].to(u.arcsec).value
-                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                    nthneighbor=2)
-                nndist = nn_ds2d[ind_tyc].to(u.arcsec).value
-
-                num_match = len(ind_plate)
-                self.db_update_process(num_tycho2=num_match)
-
-                if num_match > 0:
-                    ind = ind_finite[ind_plate]
-                    self.sources['tycho2_id'][ind] = self.id_tyc[ind_tyc]
-                    self.sources['tycho2_id_pad'][ind] = self.id_tyc_pad[ind_tyc]
-                    self.sources['tycho2_ra'][ind] = self.ra_tyc[ind_tyc]
-                    self.sources['tycho2_dec'][ind] = self.dec_tyc[ind_tyc]
-                    self.sources['tycho2_btmag'][ind] = self.btmag_tyc[ind_tyc]
-                    self.sources['tycho2_vtmag'][ind] = self.vtmag_tyc[ind_tyc]
-                    self.sources['tycho2_btmagerr'][ind] = self.btmagerr_tyc[ind_tyc]
-                    self.sources['tycho2_vtmagerr'][ind] = self.vtmagerr_tyc[ind_tyc]
-                    self.sources['tycho2_hip'][ind] = self.hip_tyc[ind_tyc]
-                    self.sources['tycho2_dist'][ind] = (matchdist
-                                                        .astype(np.float32))
-                    self.sources['tycho2_dist2'][ind] = (matchdist2
-                                                         .astype(np.float32))
-                    self.sources['tycho2_nn_dist'][ind] = (nndist
-                                                           .astype(np.float32))
-
-        # Match sources with the APASS catalogue
-        if self.use_apass_db:
-            self.log.write('Cross-matching sources with the APASS catalogue', 
-                           level=3, event=64)
-
-            # Begin cross-match
-            if self.num_apass == 0:
-                self.log.write('Missing APASS data', level=2, event=64)
-            else:
-                if self.combined_ucac_apass:
-                    bool_finite_apass = (np.isfinite(self.ra_apass) &
-                                         np.isfinite(self.dec_apass))
-                    num_finite_apass = bool_finite_apass.sum()
-
-                    if num_finite_apass == 0:
-                        self.log.write('No APASS sources with usable '
-                                       'coordinates for cross-matching', 
-                                       level=2, event=64)
-                        return
-
-                    ind_finite_apass = np.where(bool_finite_apass)[0]
-                    ra_apass = self.ra_apass[ind_finite_apass]
-                    dec_apass = self.dec_apass[ind_finite_apass]
-                else:
-                    ra_apass = self.ra_apass
-                    dec_apass = self.dec_apass
-
-                coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
-                catalog = SkyCoord(ra_apass, dec_apass, unit=(u.deg, u.deg))
-                ind_apass, ds2d, ds3d = match_coordinates_sky(coords, catalog, 
-                                                              nthneighbor=1)
-                ind_plate = np.arange(ind_apass.size)
-                indmask = ds2d < matchrad_arcsec
-
-                ind_plate = ind_plate[indmask]
-                ind_apass = ind_apass[indmask]
-                matchdist = ds2d[indmask].to(u.arcsec).value
-
-                _,ds2d2,_ = match_coordinates_sky(coords, catalog, 
-                                                  nthneighbor=2)
-                matchdist2 = ds2d2[indmask].to(u.arcsec).value
-                _,nn_ds2d,_ = match_coordinates_sky(catalog, catalog, 
-                                                    nthneighbor=2)
-                nndist = nn_ds2d[ind_apass].to(u.arcsec).value
-
-                num_match = len(ind_plate)
-                self.db_update_process(num_apass=num_match)
-                self.log.write('Matched {:d} sources with APASS'.format(num_match))
-
-                if num_match > 0:
-                    ind = ind_finite[ind_plate]
-
-                    if not self.combined_ucac_apass:
-                        self.sources['apass_ra'][ind] = self.ra_apass[ind_apass]
-                        self.sources['apass_dec'][ind] = self.dec_apass[ind_apass]
-                        self.sources['apass_bmag'][ind] = self.bmag_apass[ind_apass]
-                        self.sources['apass_vmag'][ind] = self.vmag_apass[ind_apass]
-                        self.sources['apass_bmagerr'][ind] = self.berr_apass[ind_apass]
-                        self.sources['apass_vmagerr'][ind] = self.verr_apass[ind_apass]
-
-                    self.sources['apass_dist'][ind] = (matchdist
-                                                       .astype(np.float32))
-                    self.sources['apass_dist2'][ind] = (matchdist2
-                                                        .astype(np.float32))
-                    self.sources['apass_nn_dist'][ind] = (nndist
-                                                          .astype(np.float32))
+            self['airmass'] = airmass
 
     def output_csv(self, filename):
         """

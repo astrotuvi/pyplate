@@ -1,56 +1,17 @@
 import os
-import glob
-import shutil
-import sys
 import math
-import datetime as dt
-import subprocess as sp
 import numpy as np
-import warnings
-import xml.etree.ElementTree as ET
-from astropy import __version__ as astropy_version
-from astropy import wcs
-from astropy.io import fits, votable
-from astropy.table import Table, vstack
-from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
-from astropy.coordinates import match_coordinates_sky
-from astropy import units as u
-from astropy.time import Time
+from astropy.table import Table
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
 from scipy.ndimage.filters import generic_filter
-from scipy.linalg import lstsq
 from collections import OrderedDict
-from ..database import PlateDB
 from ..conf import read_conf
-from .._version import __version__
 
 try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
-
-try:
-    from scipy.spatial import cKDTree as KDT
-except ImportError:
-    from scipy.spatial import KDTree as KDT
-
-try:
-    from sklearn.cluster import DBSCAN
-    have_sklearn = True
-except ImportError:
-    have_sklearn = False
-
-try:
-    import MySQLdb
-except ImportError:
-    pass
-
-try:
-    import healpy
-    have_healpy = True
-except ImportError:
-    have_healpy = False
 
 try:
     import statsmodels.api as sm
@@ -69,121 +30,17 @@ class PhotometryProcess:
 
     """
 
-    def __init__(self, filename, archive_id=None):
-        self.filename = os.path.basename(filename)
-        self.archive_id = archive_id
+    def __init__(self):
         self.basefn = ''
-        self.fn_fits = ''
-        self.process_id = None
-        self.scan_id = None
-        self.plate_id = None
-
-        self.fits_dir = ''
-        self.index_dir = ''
-        self.gaia_dir = ''
-        self.tycho2_dir = ''
-        self.work_dir = ''
-        self.write_source_dir = ''
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
         self.write_phot_dir = ''
-        self.write_wcs_dir = ''
-        self.write_log_dir = ''
-
-        self.astref_catalog = None
-        self.photref_catalog = None
-
-        self.use_gaia_fits = False
-        self.use_tycho2_fits = False
-
-        self.use_ucac4_db = False
-        self.ucac4_db_host = 'localhost'
-        self.ucac4_db_user = ''
-        self.ucac4_db_name = ''
-        self.ucac4_db_passwd = ''
-        self.ucac4_db_table = 'ucac4'
-
-        self.use_apass_db = False
-        self.apass_db_host = 'localhost'
-        self.apass_db_user = ''
-        self.apass_db_name = ''
-        self.apass_db_passwd = ''
-        self.apass_db_table = 'apass'
-
-        self.output_db_host = 'localhost'
-        self.output_db_user = ''
-        self.output_db_name = ''
-        self.output_db_passwd = ''
-        self.write_sources_csv = False
-
-        self.sextractor_path = 'sex'
-        self.scamp_path = 'scamp'
-        self.psfex_path = 'psfex'
-        self.solve_field_path = 'solve-field'
-        self.wcs_to_tan_path = 'wcs-to-tan'
-
-        self.timestamp = dt.datetime.now()
-        self.timestamp_str = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
         self.scratch_dir = None
-        self.enable_log = False
         self.log = None
-        self.enable_db_log = False
     
-        self.plate_epoch = 1950
-        self.plate_year = int(self.plate_epoch)
-        self.threshold_sigma = 4.
-        self.use_filter = False
-        self.filter_path = None
-        self.use_psf = False
-        self.psf_threshold_sigma = 20.
-        self.psf_model_sigma = 20.
-        self.min_model_sources = 100
-        self.max_model_sources = 10000
-        self.sip = 3
-        self.skip_bright = 10
-        self.distort = 3
-        self.subfield_distort = 1
-        self.max_recursion_depth = 5
-        self.force_recursion_depth = 0
-        self.circular_film = False
-        self.crossmatch_radius = None
-        self.crossmatch_nsigma = 10.
-        self.crossmatch_nlogarea = 2.
-        self.crossmatch_maxradius = 20.
-
         self.plate_header = None
         self.platemeta = None
-        self.imwidth = None
-        self.imheight = None
-        self.plate_solved = False
-        self.mean_pixscale = None
-        self.num_sources = None
-        self.num_sources_sixbins = None
-        self.rel_area_sixbins = None
-        self.min_ra = None
-        self.max_ra = None
-        self.min_dec = None
-        self.max_dec = None
-        self.ncp_close = None
-        self.scp_close = None
-        self.ncp_on_plate = None
-        self.scp_on_plate = None
 
         self.sources = None
         self.plate_solution = None
-
-        self.scampref = None
-        self.scampcat = None
-        self.solutions = None
-        self.exp_numbers = None
-        self.num_solutions = 0
-        self.num_iterations = 0
-        self.pattern_x = None
-        self.pattern_y = None
-        self.pattern_ratio = None
-        self.astref_tables = []
-        self.gaia_files = None
-        self.neighbors_gaia = None
 
         self.phot_cterm_list = []
         self.phot_calib = None
@@ -192,65 +49,6 @@ class PhotometryProcess:
         self.calib_curve = None
         self.faint_limit = None
         self.bright_limit = None
-
-        self.id_tyc = None
-        self.id_tyc_pad = None
-        self.hip_tyc = None
-        self.ra_tyc = None
-        self.dec_tyc = None
-        self.btmag_tyc = None
-        self.vtmag_tyc = None
-        self.btmagerr_tyc = None
-        self.vtmagerr_tyc = None
-        self.num_tyc = 0
-        
-        self.id_ucac = None
-        self.ra_ucac = None
-        self.dec_ucac = None
-        self.raerr_ucac = None
-        self.decerr_ucac = None
-        self.mag_ucac = None
-        self.bmag_ucac = None
-        self.vmag_ucac = None
-        self.magerr_ucac = None
-        self.bmagerr_ucac = None
-        self.vmagerr_ucac = None
-        self.num_ucac = 0
-        
-        self.ra_apass = None
-        self.dec_apass = None
-        self.bmag_apass = None
-        self.vmag_apass = None
-        self.berr_apass = None
-        self.verr_apass = None
-        self.num_apass = 0
-
-        self.combined_ucac_apass = None
-
-        self.ucac4_columns = OrderedDict([
-            ('ucac4_ra', ('RAJ2000', 'f8')),
-            ('ucac4_dec', ('DEJ2000', 'f8')),
-            ('ucac4_raerr', ('e_RAJ2000', 'i')),
-            ('ucac4_decerr', ('e_DEJ2000', 'i')),
-            ('ucac4_mag', ('amag', 'f8')),
-            ('ucac4_magerr', ('e_amag', 'f8')),
-            ('ucac4_pmra', ('pmRA', 'f8')),
-            ('ucac4_pmdec', ('pmDE', 'f8')),
-            ('ucac4_id', ('UCAC4', 'a10')),
-            ('ucac4_bmag', ('Bmag', 'f8')),
-            ('ucac4_vmag', ('Vmag', 'f8')),
-            ('ucac4_bmagerr', ('e_Bmag', 'f8')),
-            ('ucac4_vmagerr', ('e_Vmag', 'f8'))
-        ])
-
-        self.apass_columns = OrderedDict([
-            ('apass_ra', ('RAdeg', 'f8')),
-            ('apass_dec', ('DEdeg', 'f8')),
-            ('apass_bmag', ('B', 'f8')),
-            ('apass_vmag', ('V', 'f8')),
-            ('apass_bmagerr', ('e_B', 'f8')),
-            ('apass_vmagerr', ('e_V', 'f8'))
-        ])
 
     def assign_conf(self, conf):
         """
@@ -263,112 +61,11 @@ class PhotometryProcess:
             
         self.conf = conf
 
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
-
-        for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
-                     'solve_field_path', 'wcs_to_tan_path']:
-            try:
-                setattr(self, attr, conf.get('Programs', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir', 
-                     'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir',
-                     'write_db_source_dir', 'write_db_source_calib_dir']:
+        for attr in ['write_phot_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except configparser.Error:
                 pass
-
-        if self.write_log_dir:
-            self.enable_log = True
-
-        for attr in ['use_gaia_fits', 'use_tycho2_fits', 
-                     'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log', 'write_sources_csv']:
-            try:
-                setattr(self, attr, conf.getboolean('Database', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
-                     'ucac4_db_passwd', 'ucac4_db_table',
-                     'apass_db_host', 'apass_db_user', 'apass_db_name', 
-                     'apass_db_passwd', 'apass_db_table',
-                     'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
-            try:
-                setattr(self, attr, conf.get('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['use_filter', 'use_psf', 'circular_film']:
-            try:
-                setattr(self, attr, conf.getboolean('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['plate_epoch', 'threshold_sigma', 
-                     'psf_threshold_sigma', 'psf_model_sigma', 
-                     'crossmatch_radius', 'crossmatch_nsigma', 
-                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
-            try:
-                setattr(self, attr, conf.getfloat('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['sip', 'skip_bright', 'distort', 'subfield_distort', 
-                     'max_recursion_depth', 'force_recursion_depth', 
-                     'min_model_sources', 'max_model_sources']:
-            try:
-                setattr(self, attr, conf.getint('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
-            try:
-                setattr(self, attr, conf.get('Solve', attr))
-            except configparser.Error:
-                pass
-
-        # Read UCAC4 and APASS table column names from the dedicated sections,
-        # named after the tables
-        if conf.has_section(self.ucac4_db_table):
-            for attr in self.ucac4_columns.keys():
-                try:
-                    colstr = conf.get(self.ucac4_db_table, attr)
-                    _,typ = self.ucac4_columns[attr]
-                    self.ucac4_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
-
-        if conf.has_section(self.apass_db_table):
-            for attr in self.apass_columns.keys():
-                try:
-                    colstr = conf.get(self.apass_db_table, attr)
-                    _,typ = self.apass_columns[attr]
-                    self.apass_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
 
     def evaluate_color_term(self, sources, solution_num=0):
         """
@@ -685,7 +382,6 @@ class PhotometryProcess:
                 self.log.write('Cannot calibrate photometry due to unsupported'
                                'observation method ({:s})'.format(pmethod),
                                level=2, event=70, solution_num=solution_num)
-                #self.db_update_process(calibrated=0)
                 return
 
         # Create dictionary for calibration results
@@ -705,15 +401,6 @@ class PhotometryProcess:
             fn_caldata = os.path.join(self.write_phot_dir, 
                                       '{}_caldata.txt'.format(self.basefn))
             fcaldata = open(fn_caldata, 'wb')
-            #fn_calcurve = os.path.join(self.write_phot_dir, 
-            #                           '{}_calcurve.txt'.format(self.basefn))
-            #fcalcurve = open(fn_calcurve, 'wb')
-            #fn_cutdata = os.path.join(self.write_phot_dir, 
-            #                          '{}_cutdata.txt'.format(self.basefn))
-            #fcutdata = open(fn_cutdata, 'wb')
-            #fn_cutcurve = os.path.join(self.write_phot_dir, 
-            #                           '{}_cutcurve.txt'.format(self.basefn))
-            #fcutcurve = open(fn_cutcurve, 'wb')
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
@@ -756,7 +443,6 @@ class PhotometryProcess:
         if num_calstars == 0:
             self.log.write('No stars for photometric calibration',
                            level=2, event=71, solution_num=solution_num)
-            #self.db_update_process(calibrated=0)
             return
 
         self.log.write('Found {:d} calibration-star candidates with '
@@ -767,7 +453,6 @@ class PhotometryProcess:
         if num_calstars < 10:
             self.log.write('Too few calibration stars on the plate!',
                            level=2, event=71, solution_num=solution_num)
-            #self.db_update_process(calibrated=0)
             return
 
         # Evaluate color term
@@ -795,8 +480,6 @@ class PhotometryProcess:
         cterm = self.phot_calib['color_term']
         cterm_err = self.phot_calib['color_term_err']
 
-        #self.db_update_process(color_term=cterm)
-
         # Use stars in all annular bins
         self.log.write('Photometric calibration using annular bins 1-9', 
                        level=3, event=73, solution_num=solution_num)
@@ -817,7 +500,6 @@ class PhotometryProcess:
             self.log.write('Too few stars with unique magnitude!',
                            double_newline=False, level=2, event=73,
                            solution_num=solution_num)
-            #self.db_update_process(calibrated=0)
             return
 
         plate_mag_u = self.sources['mag_auto'][ind_calibstar_u].data
@@ -977,17 +659,6 @@ class PhotometryProcess:
             residuals = cat_natmag[ind_cut] - fit_mag
             mag_cut_prev = mag_cut
 
-            #if b == 0 and self.write_phot_dir:
-            #    np.savetxt(fcutdata, np.column_stack((plate_mag_u[ind_cut],
-            #                                          cat_natmag[ind_cut], 
-            #                                          fit_mag, residuals)))
-            #    fcutdata.write('\n\n')
-            #    np.savetxt(fcutdata, np.column_stack((gpmag, gcmag, 
-            #                                          fit_mag[ind_good], residuals[ind_good])))
-            #    fcutdata.write('\n\n')
-            #    np.savetxt(fcutcurve, z)
-            #    fcutcurve.write('\n\n')
-
             ind_outliers = np.array([], dtype=int)
 
             # Mark as outliers those stars that deviate more than 1 mag
@@ -1064,7 +735,6 @@ class PhotometryProcess:
                            'elimination!'.format(len(ind_good)),
                            double_newline=False, level=2, event=73,
                            solution_num=solution_num)
-            #self.db_update_process(calibrated=0)
             return
 
         # Continue with photometric calibration without outliers
@@ -1255,8 +925,6 @@ class PhotometryProcess:
                                                   s(plate_mag_u), 
                                                   cat_natmag-s(plate_mag_u))))
             fcaldata.write('\n\n')
-            #np.savetxt(fcalcurve, z)
-            #fcalcurve.write('\n\n')
 
         # Store calibration statistics
         bright_limit = s(plate_mag_brightest).item()
@@ -1313,9 +981,8 @@ class PhotometryProcess:
                     natmag_corr[i] += smc(mag_auto_sol[i])
 
         # Assign magnitudes and errors
-        self.sources['natmag_plate'][sol_mask] = s(mag_auto_sol)
-        self.sources['natmagerr_plate'][sol_mask] = s_rmse(mag_auto_sol)
         self.sources['natmag'][sol_mask] = s(mag_auto_sol)
+        self.sources['natmag_plate'][sol_mask] = s(mag_auto_sol)
         self.sources['natmagerr'][sol_mask] = s_rmse(mag_auto_sol)
 
         if s_corr is not None:
@@ -1333,17 +1000,15 @@ class PhotometryProcess:
         ind = np.where(sol_mask)[0][brange]
 
         if brange.sum() > 0:
-            self.sources['phot_plate_flags'][ind] = 1
+            self.sources['phot_range_flags'][ind] = 1
             self.sources['natmagerr'][ind] = s_rmse(plate_mag_brightest)
-            self.sources['natmagerr_plate'][ind] = s_rmse(plate_mag_brightest)
 
         brange = (mag_auto_sol > plate_mag_lim)
         ind = np.where(sol_mask)[0][brange]
 
         if brange.sum() > 0:
-            self.sources['phot_plate_flags'][ind] = 2
+            self.sources['phot_range_flags'][ind] = 2
             self.sources['natmagerr'][ind] = s_rmse(plate_mag_lim)
-            self.sources['natmagerr_plate'][ind] = s_rmse(plate_mag_lim)
 
         # Select stars with known external photometry
         bgaia = (sol_mask &
@@ -1351,24 +1016,21 @@ class PhotometryProcess:
                  ~self.sources['gaiadr2_rpmag'].mask)
 
         if bgaia.sum() > 0:
-            b_v = self.sources['gaiadr2_bp_rp'][bgaia]
-            #b_v_err = np.sqrt(self.sources[ind]['apass_bmagerr']**2 +
-            #                  self.sources[ind]['apass_vmagerr']**2)
+            bp_rp = self.sources['gaiadr2_bp_rp'][bgaia]
+            bp_rp_err = 0.
 
-            self.sources['color_bv'][bgaia] = b_v
-            #self.sources['color_bv_err'][ind] = b_v_err
-            self.sources['vmag'][bgaia] = (self.sources['natmag'][bgaia]
-                                           - cterm * b_v)
-            self.sources['bmag'][bgaia] = (self.sources['natmag'][bgaia]
-                                           - (cterm - 1.) * b_v)
-            #vmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-            #                  (cterm_err * b_v)**2 +
-            #                  (cterm * b_v_err)**2)
-            #bmagerr = np.sqrt(self.sources['natmagerr'][ind]**2 + 
-            #                  (cterm_err * b_v)**2 + 
-            #                  ((cterm - 1.) * b_v_err)**2)
-            #self.sources['vmagerr'][ind] = vmagerr
-            #self.sources['bmagerr'][ind] = bmagerr
+            self.sources['rpmag'][bgaia] = (self.sources['natmag'][bgaia]
+                                            - cterm * bp_rp)
+            self.sources['bpmag'][bgaia] = (self.sources['natmag'][bgaia]
+                                            - (cterm - 1.) * bp_rp)
+            rpmagerr = np.sqrt(self.sources['natmagerr'][bgaia]**2 +
+                               (cterm_err * bp_rp)**2 +
+                               (cterm * bp_rp_err)**2)
+            bpmagerr = np.sqrt(self.sources['natmagerr'][bgaia]**2 +
+                               (cterm_err * bp_rp)**2 +
+                               ((cterm - 1.) * bp_rp_err)**2)
+            self.sources['rpmagerr'][bgaia] = rpmagerr
+            self.sources['bpmagerr'][bgaia] = bpmagerr
 
         try:
             brightlim = min([cal['bright_limit']
@@ -1397,14 +1059,5 @@ class PhotometryProcess:
                                    faintlim),
                            level=4, event=73, solution_num=solution_num)
 
-            #self.db_update_process(bright_limit=brightlim, faint_limit=faintlim,
-            #                       mag_range=mag_range, num_calib=num_calib, 
-            #                       calibrated=1)
-        #else:
-            #self.db_update_process(num_calib=0, calibrated=0)
-
         if self.write_phot_dir:
             fcaldata.close()
-            #fcalcurve.close()
-            #fcutdata.close()
-            #fcutcurve.close()

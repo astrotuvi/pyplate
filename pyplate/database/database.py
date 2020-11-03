@@ -1006,19 +1006,10 @@ class PlateDB:
                     except TypeError:
                         source_val = source[k]
 
-                    if 'healpix' in k and source_val < 0:
+                    if 'healpix256' in k and source_val < 0:
                         source_val = None
                         
-                    if 'ucac4_id' in k and source_val == '':
-                        source_val = None
-                        
-                    if 'tycho2_id' in k and source_val == '':
-                        source_val = None
-
-                    if 'tycho2_id_pad' in k and source_val == '':
-                        source_val = None
-
-                    if 'tycho2_hip' in k and source_val < 0:
+                    if 'gaiadr2_id' in k and source_val == 0:
                         source_val = None
                         
                     val_tuple = val_tuple + (source_val, )
