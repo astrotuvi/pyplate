@@ -206,7 +206,11 @@ def crossmatch_cartesian(coords_image, coords_ref, tolerance=None):
     if tolerance is None:
         tolerance = 5.
 
-    kdt = KDT(coords_ref)
+    try:
+        kdt = KDT(coords_ref, balanced_tree=False, compact_nodes=False)
+    except TypeError:
+        kdt = KDT(coords_ref)
+
     ds,ind_ref = kdt.query(coords_image, k=1, distance_upper_bound=tolerance)
     mask_xmatch = ds < tolerance
     ind_image = np.arange(len(coords_image))
