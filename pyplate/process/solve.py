@@ -402,9 +402,11 @@ class AstrometricSolution(OrderedDict):
                 'plate_mirrored', 'ncp_close', 'scp_close',
                 'ncp_on_plate', 'scp_on_plate', 'stc_box', 'stc_polygon',
                 'header_anet', 'header_scamp', 'header_wcs',
-                'skycoord_corners',
+                'skycoord_corners', 'x_centroid', 'y_centroid',
+                'rel_x_centroid', 'rel_y_centroid', 'num_xmatch',
                 'scamp_dscale', 'scamp_dangle', 'scamp_dx', 'scamp_dy',
-                'scamp_sigma_1', 'scamp_sigma_2', 'scamp_chi2', 'scamp_ndeg',
+                'scamp_sigma_1', 'scamp_sigma_2', 'scamp_sigma_mean',
+                'scamp_chi2', 'scamp_ndeg',
                 'scamp_distort', 'scamp_iteration']
 
         for k in keys:
@@ -1961,6 +1963,9 @@ class SolveProcess:
                 scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
                 solution['scamp_sigma_1'] = scamp_sigmas[0]
                 solution['scamp_sigma_2'] = scamp_sigmas[1]
+                scamp_sigma_mean = np.sqrt(scamp_sigmas[0]**2 +
+                                           scamp_sigmas[1]**2)
+                solution['scamp_sigma_mean'] = scamp_sigma_mean
                 solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
                 solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
                 solution['scamp_distort'] = 3
@@ -1989,26 +1994,46 @@ class SolveProcess:
         indmask = ds > 5.
         ind_plate = np.arange(num_astrom_sources)
 
+        # Select crossmatched stars and calculate their centroid
+        mask_xmatch = ds <= 5.
+        matched_sources = self.astrom_sources[ind_plate[mask_xmatch]]
+        solution['x_centroid'] = matched_sources['x_source'].mean()
+        solution['y_centroid'] = matched_sources['y_source'].mean()
+        xcenter = (self.imwidth + 1.) / 2.
+        ycenter = (self.imheight + 1.) / 2.
+        solution['rel_x_centroid'] = ((solution['x_centroid'] - xcenter)
+                                      / self.imwidth)
+        solution['rel_y_centroid'] = ((solution['y_centroid'] - ycenter)
+                                      / self.imheight)
+        solution['num_xmatch'] = mask_xmatch.sum()
+        self.log.write('Centroid of matched sources: {:.2f} {:.2f}, '
+                       'relative centroid: {:.3f} {:.3f}, '
+                       'number of matches: {:d}'
+                       .format(solution['x_centroid'], solution['y_centroid'],
+                               solution['rel_x_centroid'],
+                               solution['rel_y_centroid'],
+                               solution['num_xmatch']),
+                       level=4, event=32)
+
         # Output reference stars for debugging
-        t = Table()
-        t['x_ref'] = xr
-        t['y_ref'] = yr
-        t['ra_ref'] = astref_table['ra']
-        t['dec_ref'] = astref_table['dec']
-        t['mag_ref'] = astref_table['mag']
-        fn_out = os.path.join(self.scratch_dir, '{}_ref.fits'.format(basefn_solution))
-        t.write(fn_out, format='fits', overwrite=True)
+        #t = Table()
+        #t['x_ref'] = xr
+        #t['y_ref'] = yr
+        #t['ra_ref'] = astref_table['ra']
+        #t['dec_ref'] = astref_table['dec']
+        #t['mag_ref'] = astref_table['mag']
+        #fn_out = os.path.join(self.scratch_dir, '{}_ref.fits'.format(basefn_solution))
+        #t.write(fn_out, format='fits', overwrite=True)
 
         # Output crossmatched stars for debugging
-        t = Table()
-        ind_xmatch = ds <= 5.
-        t['x_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['x_source']
-        t['y_source'] = self.astrom_sources[ind_plate[ind_xmatch]]['y_source']
-        t['x_ref'] = xr[ind_ref[ind_xmatch]]
-        t['y_ref'] = yr[ind_ref[ind_xmatch]]
-        t['dist'] = ds[ind_xmatch]
-        fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
-        t.write(fn_out, format='fits', overwrite=True)
+        #t = Table()
+        #t['x_source'] = matched_sources['x_source']
+        #t['y_source'] = matched_sources['y_source']
+        #t['x_ref'] = xr[ind_ref[mask_xmatch]]
+        #t['y_ref'] = yr[ind_ref[mask_xmatch]]
+        #t['dist'] = ds[mask_xmatch]
+        #fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
+        #t.write(fn_out, format='fits', overwrite=True)
 
         # Keep only stars that were not crossmatched
         self.astrom_sources = self.astrom_sources[ind_plate[indmask]]
@@ -2317,6 +2342,9 @@ class SolveProcess:
                 scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
                 self.solutions[i]['scamp_sigma_1'] = scamp_sigmas[0]
                 self.solutions[i]['scamp_sigma_2'] = scamp_sigmas[1]
+                scamp_sigma_mean = np.sqrt(scamp_sigmas[0]**2 +
+                                           scamp_sigmas[1]**2)
+                self.solutions[i]['scamp_sigma_mean'] = scamp_sigma_mean
                 self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
                 self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
                 self.solutions[i]['scamp_distort'] = distort
@@ -2334,17 +2362,50 @@ class SolveProcess:
                                    level=2, event=33, solution_num=i+1)
 
             # Crossmatch sources with rerefence stars
-            #w = wcs.WCS(header_wcs)
-            #xr,yr = w.wcs_world2pix(astref_table['ra'],
-            #                        astref_table['dec'], 1)
+            w = wcs.WCS(header_wcs)
+            xr,yr = w.wcs_world2pix(astref_table['ra'],
+                                    astref_table['dec'], 1)
 
-            #coords_ref_sol = np.vstack((xr, yr)).T
-            #coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
+            coords_ref_sol = np.vstack((xr, yr)).T
+            coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
 
-            #kdt = KDT(coords_ref_sol)
-            #ds,ind_ref = kdt.query(coords_dewobbled, k=1)
-            #mask_xmatch = ds <= 5
-            #ind_plate = np.arange(len(coords_dewobbled))
+            if scamp_ndeg > 5:
+                tolerance = ((5. * scamp_sigma_mean / solution['pixel_scale'])
+                             .to(u.pixel).value)
+            else:
+                tolerance = 5.
+
+            kdt = KDT(coords_ref_sol)
+            ds,ind_ref = kdt.query(coords_dewobbled, k=1)
+            mask_xmatch = ds <= tolerance
+            ind_plate = np.arange(len(coords_dewobbled))
+
+            if mask_xmatch.sum() > 0:
+                # Select crossmatched stars and calculate their centroid
+                matched_sources = coords_dewobbled[ind_plate[mask_xmatch]]
+                x_centroid = matched_sources[:,0].mean()
+                y_centroid = matched_sources[:,1].mean()
+                self.solutions[i]['x_centroid'] = x_centroid
+                self.solutions[i]['y_centroid'] = y_centroid
+                xcenter = (self.imwidth + 1.) / 2.
+                ycenter = (self.imheight + 1.) / 2.
+                self.solutions[i]['rel_x_centroid'] = ((x_centroid - xcenter)
+                                                       / self.imwidth)
+                self.solutions[i]['rel_y_centroid'] = ((y_centroid - ycenter)
+                                                       / self.imheight)
+                self.solutions[i]['num_xmatch'] = mask_xmatch.sum()
+                self.log.write('Centroid of matched sources: {:.2f} {:.2f}, '
+                               'relative centroid: {:.3f} {:.3f}, '
+                               'number of matches: {:d}'
+                               .format(x_centroid, y_centroid,
+                                       self.solutions[i]['rel_x_centroid'],
+                                       self.solutions[i]['rel_y_centroid'],
+                                       self.solutions[i]['num_xmatch']),
+                               level=4, event=33, solution_num=i+1)
+            else:
+                self.log.write('Cannot calculate centroid of solution '
+                               'due to no matched sources!',
+                               level=2, event=33, solution_num=i+1)
 
             # Output crossmatched stars for debugging
             #t = Table()

@@ -1648,28 +1648,52 @@
       order: 34
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: scamp_chi2
+    - name: scamp_sigma_mean
       order: 35
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: scamp_ndeg
+    - name: scamp_chi2
       order: 36
-      mysql_datatype: "INT"
-      pgsql_datatype: "integer"
-    - name: scamp_distort
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: scamp_ndeg
       order: 37
       mysql_datatype: "INT"
       pgsql_datatype: "integer"
-    - name: scamp_iteration
+    - name: scamp_distort
       order: 38
       mysql_datatype: "INT"
       pgsql_datatype: "integer"
-    - name: timestamp_insert
+    - name: scamp_iteration
       order: 39
+      mysql_datatype: "INT"
+      pgsql_datatype: "integer"
+    - name: x_centroid
+      order: 40
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: y_centroid
+      order: 41
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: rel_x_centroid
+      order: 42
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: rel_y_centroid
+      order: 43
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: num_xmatch
+      order: 44
+      mysql_datatype: "INT"
+      pgsql_datatype: "integer"
+    - name: timestamp_insert
+      order: 45
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 40
+      order: 46
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
       
