@@ -2044,104 +2044,112 @@
       order: 5
       mysql_datatype: "VARCHAR(255)"
       pgsql_datatype: "character varying(255) COLLATE ucs_basic"
-    - name: hostname
+    - name: num_exposures
       order: 6
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: plate_epoch
+      order: 7
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: hostname
+      order: 8
       mysql_datatype: "VARCHAR(80)"
       pgsql_datatype: "character varying(80) COLLATE ucs_basic"
     - name: timestamp_start
-      order: 7
+      order: 9
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone default NOW()"
     - name: timestamp_end
-      order: 8
+      order: 10
       mysql_datatype: "TIMESTAMP NULL"
       pgsql_datatype: "timestamp with time zone default null"
     - name: duration
-      order: 9
+      order: 11
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: sky
-      order: 10
+      order: 12
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: sky_sigma
-      order: 11
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: use_psf
-      order: 12
-      mysql_datatype: "TINYINT(1) UNSIGNED"
-      pgsql_datatype: "smallint"
-    - name: threshold
       order: 13
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: num_sources
+    - name: use_psf
       order: 14
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: num_psf_sources
+      mysql_datatype: "TINYINT(1) UNSIGNED"
+      pgsql_datatype: "smallint"
+    - name: threshold
       order: 15
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: num_true_sources
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: num_sources
       order: 16
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: num_artifacts
+    - name: num_psf_sources
       order: 17
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: solved
+    - name: num_true_sources
       order: 18
+      mysql_datatype: "INT UNSIGNED"
+      pgsql_datatype: "integer"
+    - name: num_artifacts
+      order: 19
+      mysql_datatype: "INT UNSIGNED"
+      pgsql_datatype: "integer"
+    - name: solved
+      order: 20
       mysql_datatype: "TINYINT(1) UNSIGNED"
       pgsql_datatype: "smallint"
     - name: num_solutions
-      order: 19
+      order: 21
       mysql_datatype: "SMALLINT UNSIGNED"
       pgsql_datatype: "smallint"
     - name: pattern_ratio
-      order: 20
+      order: 22
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
     - name: num_gaia_dr2
-      order: 21
-      mysql_datatype: "INT UNSIGNED"
-      pgsql_datatype: "integer"
-    - name: num_tycho2
-      order: 22
+      order: 23
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
     - name: color_term
-      order: 23
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: bright_limit
       order: 24
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: faint_limit
+    - name: bright_limit
       order: 25
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: mag_range
+    - name: faint_limit
       order: 26
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: num_calib
+    - name: mag_range
       order: 27
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: num_calib
+      order: 28
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
+    - name: num_iterations
+      order: 29
+      mysql_datatype: "SMALLINT UNSIGNED"
+      pgsql_datatype: "smallint"
     - name: calibrated
-      order: 28
+      order: 30
       mysql_datatype: "TINYINT(1) UNSIGNED"
       pgsql_datatype: "smallint"
     - name: completed
-      order: 29
+      order: 31
       mysql_datatype: "TINYINT(1) UNSIGNED"
       pgsql_datatype: "smallint"
     - name: pyplate_version
-      order: 30
+      order: 32
       mysql_datatype: "VARCHAR(15)"
       pgsql_datatype: "character varying(15) COLLATE ucs_basic"
 

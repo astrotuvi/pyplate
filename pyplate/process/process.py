@@ -609,6 +609,14 @@ class Process:
 
         self.plate_year = int(self.plate_epoch)
 
+        if self.platemeta is not None and 'numexp' in self.platemeta:
+            num_exposures = self.platemeta['numexp']
+        else:
+            num_exposures = None
+
+        self.db_update_process(num_exposures=num_exposures,
+                               plate_epoch=self.plate_epoch)
+
         # Create scratch directory
         self.scratch_dir = os.path.join(self.work_dir, 
                                         '{}_{}'.format(self.basefn,
@@ -2079,6 +2087,7 @@ class Process:
         max_cur_faint_limit = None
         min_cur_bright_limit = None
         num_calib = None
+        self.num_iterations = 0
 
         # Variables to store calibration results
         phot_calib_curves = []
@@ -2090,6 +2099,7 @@ class Process:
         # Carry out photometric calibration for all solutions
         for i in np.arange(1, self.plate_solution.num_solutions+1):
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=1)
+            self.num_iterations = 1
 
             if not photproc.phot_calibrated:
                 continue
@@ -2099,6 +2109,7 @@ class Process:
 
             # Second iteration
             photproc.calibrate_photometry_gaia(solution_num=i, iteration=2)
+            self.num_iterations = 2
 
             if not photproc.phot_calibrated:
                 continue
@@ -2118,7 +2129,9 @@ class Process:
         # If photometric calibration failed for all solutions, then give up
         if len(phot_calib_curves) == 0 or len(cur_faint_limit) == 0:
             num_gaia_dr2=self.sources.num_crossmatch_gaia
-            self.db_update_process(num_gaia_dr2=num_gaia_dr2, calibrated=0)
+            self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+                                   num_iterations=self.num_iterations,
+                                   calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
                            event=74, level=2)
             return
@@ -2260,7 +2273,9 @@ class Process:
         num_gaia_dr2 = self.sources.num_crossmatch_gaia
 
         if num_calib_solutions == 0:
-            self.db_update_process(num_gaia_dr2=num_gaia_dr2, calibrated=0)
+            self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+                                   num_iterations=self.num_iterations,
+                                   calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
                            event=75, level=2)
         else:
@@ -2273,6 +2288,7 @@ class Process:
                                    bright_limit=min_cur_bright_limit,
                                    faint_limit=max_cur_faint_limit,
                                    mag_range=mag_range, num_calib=num_calib,
+                                   num_iterations=self.num_iterations,
                                    calibrated=1)
 
     def output_calibration_db(self):
