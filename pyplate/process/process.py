@@ -2083,6 +2083,7 @@ class Process:
         # Variables to store calibration results
         phot_calib_curves = []
         prelim_color_term = []
+        prelim_cterm_nstars = []
         cur_faint_limit = []
         est_faint_limit = []
 
@@ -2107,6 +2108,7 @@ class Process:
 
             # Collect color term and faint limit from the second iteration
             prelim_color_term.append(photproc.phot_calib['color_term'])
+            prelim_cterm_nstars.append(photproc.phot_calib['cterm_num_stars'])
             cur_faint_limit.append(photproc.phot_calib['faint_limit'])
 
             # Estimate faint limit with the current calibration curve
@@ -2123,9 +2125,16 @@ class Process:
 
         # Calculate mean color term and max faint limit over all solutions
         mean_color_term = np.array(prelim_color_term).mean()
+        weighted_color_term = ((np.array(prelim_color_term) *
+                                np.array(prelim_cterm_nstars)).sum() /
+                               np.array(prelim_cterm_nstars).sum())
         max_cur_faint_limit = np.array(cur_faint_limit).max()
         est_faint_limit = np.array(est_faint_limit).max()
 
+        self.log.write('Mean color term {:.3f}, '
+                       'weighted color term {:.3f}'
+                       .format(mean_color_term, weighted_color_term),
+                       event=74, level=4, double_newline=False)
         self.log.write('Current faint limit {:.3f}, '
                        'estimated faint limit {:.3f}'
                        .format(max_cur_faint_limit, est_faint_limit),
@@ -2146,7 +2155,7 @@ class Process:
         new_mag_range = [0, new_max_mag]
 
         # Set max catalog magnitude dependent on color term
-        max_catalog_mag = 19. + mean_color_term
+        max_catalog_mag = 19. + weighted_color_term
 
         iteration = 3
         num_calib_solutions = 0
@@ -2160,13 +2169,14 @@ class Process:
         while (cur_catalog_limit < max_cur_faint_limit + 0.7
                and cur_catalog_limit < max_catalog_mag):
             self.query_star_catalog(mag_range=new_mag_range,
-                                    color_term=mean_color_term)
+                                    color_term=weighted_color_term)
             cur_catalog_limit = new_mag_range[1]
             self.sources.crossmatch_gaia(self.plate_solution, self.star_catalog)
 
             num_calib_solutions = 0
             cur_calib_stars = []
             cur_color_term = []
+            cur_cterm_nstars = []
             cur_bright_limit = []
             cur_faint_limit = []
             est_faint_limit = []
@@ -2184,6 +2194,7 @@ class Process:
                 # Get current color term, bright and faint limits
                 last_calib = photproc.phot_calib
                 cur_color_term.append(last_calib['color_term'])
+                cur_cterm_nstars.append(last_calib['cterm_num_stars'])
                 cur_bright_limit.append(last_calib['bright_limit'])
                 cur_faint_limit.append(last_calib['faint_limit'])
                 cur_calib_stars.append(last_calib['num_calib_stars'])
@@ -2203,6 +2214,9 @@ class Process:
 
             # Calculate mean value in color-term list
             mean_cur_color_term = np.array(cur_color_term).mean()
+            weighted_cur_color_term = ((np.array(cur_color_term) *
+                                        np.array(cur_cterm_nstars)).sum() /
+                                       np.array(cur_cterm_nstars).sum())
 
             # Find min value in bright-limit list
             min_cur_bright_limit = np.array(cur_bright_limit).min()
@@ -2211,6 +2225,11 @@ class Process:
             max_cur_faint_limit = np.array(cur_faint_limit).max()
             est_faint_limit = np.array(est_faint_limit).max()
 
+            self.log.write('Mean color term {:.3f}, '
+                           'weighted color term {:.3f}'
+                           .format(mean_cur_color_term,
+                                   weighted_cur_color_term),
+                           event=74, level=4, double_newline=False)
             self.log.write('Current faint limit {:.3f}, '
                            'estimated faint limit {:.3f}, '
                            'catalog limit {:.3f}'
