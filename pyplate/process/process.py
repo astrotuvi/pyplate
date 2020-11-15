@@ -137,12 +137,11 @@ class ProcessLog:
         log_message = '{}'.format(message)
 
         if solution_num:
-            log_message = 'Solution {:d} +++ {}'.format(solution_num,
+            log_message = '{{Solution {:d}}} {}'.format(solution_num,
                                                         log_message)
 
         if timestamp:
-            log_message = '***** {} ***** {}'.format(str(dt.datetime.now()), 
-                                                     log_message)
+            log_message = '[{}] {}'.format(str(dt.datetime.now()), log_message)
 
         if double_newline:
             log_message += '\n'
@@ -1543,7 +1542,8 @@ class Process:
                                num_true_sources=num_true_sources)
         self.log.write('Classified {:d} sources as true sources '
                        '(prediction > 0.9)'
-                       .format(num_true_sources), level=4, event=29)
+                       .format(num_true_sources), level=4, event=29,
+                       double_newline=False)
         self.log.write('Classified {:d} sources as artifacts (prediction < 0.1)'
                        .format(num_artifacts), level=4, event=29)
 

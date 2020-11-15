@@ -404,7 +404,8 @@ class PhotometryProcess:
 
         # Select sources for photometric calibration
         self.log.write('Selecting sources for photometric calibration', 
-                       level=3, event=71, solution_num=solution_num)
+                       level=3, event=71, solution_num=solution_num,
+                       double_newline=False)
 
         if solution_num is None:
             solution_num = 1

@@ -486,7 +486,7 @@ class SourceTable(Table):
         num_gaia = len(star_catalog)
 
         self.log.write('Number of Gaia stars: {:d}'.format(num_gaia), 
-                       level=4, event=44)
+                       level=4, event=44, double_newline=False)
 
         # Calculate RA and Dec for the plate epoch
         ra_ref = (star_catalog['ra']
@@ -553,7 +553,8 @@ class SourceTable(Table):
 
         tolerance_arcsec = (5. * mean_scamp_sigma).to(u.arcsec).value
         self.log.write('Crossmatch tolerance: {:.2f} arcsec ({:.2f} pixels)'
-                       .format(tolerance_arcsec, tolerance), level=4, event=44)
+                       .format(tolerance_arcsec, tolerance), level=4, event=44,
+                       double_newline=False)
 
         ind_plate, ind_ref, ds = crossmatch_cartesian(coords_plate, xy_ref, 
                                                       tolerance=tolerance)

@@ -1356,12 +1356,13 @@ class SolveProcess:
         scamp_ver = (sp.check_output([self.scamp_path, '-v']).strip()
                      .decode('utf-8'))
         self.log.write('Using Astrometry.net {}'.format(anet_ver),
-                       level=4, event=30)
-        self.log.write('Using {}'.format(scamp_ver), level=4, event=30)
+                       level=4, event=30, double_newline=False)
+        self.log.write('Using {}'.format(scamp_ver), level=4, event=30,
+                       double_newline=False)
 
         # Log plate epoch
         self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch),
-                       level=4, event=30)
+                       level=4, event=30, double_newline=False)
 
         if sip is None:
             sip = self.sip
@@ -1383,7 +1384,7 @@ class SolveProcess:
         num_keep = min([num_keep, int(100000/numexp)])
 
         self.log.write('Using max {:d} stars for astrometric solving'.format(num_keep),
-                       level=4, event=30)
+                       level=4, event=30, double_newline=False)
 
         # Create another xy list for faster solving
         # Keep 1000 stars in brightness order, skip the brightest
