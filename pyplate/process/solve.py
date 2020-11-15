@@ -2310,6 +2310,23 @@ class SolveProcess:
             # Use crossid radius of 3 pixels and transform it to arcsec scale
             crossid_radius = 3. * u.pixel * solution['pixel_scale']
 
+            # Limit distortion degree based on the number of sources
+            use_distort = distort
+
+            if solution['scamp_ndeg'] is None or solution['scamp_ndeg'] < 100:
+                use_distort = min(distort, 3)
+            elif solution['scamp_ndeg'] < 500:
+                use_distort = min(distort, 5)
+
+            if solution['scamp_ndeg'] is None:
+                ndeg_str = 'unknown'
+            else:
+                ndeg_str = '{:d}'.format(solution['scamp_ndeg'])
+
+            self.log.write('Using distortion degree {:d} (scamp_ndeg: {})'
+                           .format(use_distort, ndeg_str),
+                           level=3, event=33, solution_num=i+1)
+
             # Filename for XML output
             fn_xml = '{}_dewobbled_scamp.xml'.format(basefn_solution)
 
@@ -2327,7 +2344,7 @@ class SolveProcess:
             cmd += ' -MATCH N'
             cmd += ' -CROSSID_RADIUS {:.2f}'.format(crossid_radius
                                                     .to(u.arcsec).value)
-            cmd += ' -DISTORT_DEGREES {:d}'.format(distort)
+            cmd += ' -DISTORT_DEGREES {:d}'.format(use_distort)
             cmd += ' -PROJECTION_TYPE TPV'
             cmd += ' -STABILITY_TYPE EXPOSURE'
             cmd += ' -SOLVE_PHOTOM N'
@@ -2373,7 +2390,7 @@ class SolveProcess:
                 self.solutions[i]['scamp_sigma_mean'] = scamp_sigma_mean
                 self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
                 self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
-                self.solutions[i]['scamp_distort'] = distort
+                self.solutions[i]['scamp_distort'] = use_distort
                 self.solutions[i]['scamp_iteration'] = self.num_iterations + 1
 
                 # Store improved solution
