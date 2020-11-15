@@ -729,7 +729,7 @@ class SolveProcess:
         self.max_model_sources = 10000
         self.sip = 3
         self.skip_bright = 10
-        self.allow_brute_force = False
+        self.allow_force = False
         self.distort = 3
         self.subfield_distort = 1
         self.max_recursion_depth = 5
@@ -909,7 +909,7 @@ class SolveProcess:
                 pass
 
         for attr in ['use_filter', 'use_psf', 'circular_film',
-                     'allow_brute_force']:
+                     'allow_force']:
             try:
                 setattr(self, attr, conf.getboolean('Solve', attr))
             except ValueError:
@@ -1398,7 +1398,7 @@ class SolveProcess:
         else:
             bclean = self.sources['flag_clean'] == 1
 
-        indclean = np.where(bclean & (self.sources['annular_bin'] <= 6))[0]
+        indclean = np.where(bclean & (self.sources['annular_bin'] <= 8))[0]
         sb = skip_bright
         indsort = np.argsort(self.sources[indclean]['mag_auto'])[sb:sb+num_keep]
         indsel = indclean[indsort]
@@ -1439,22 +1439,22 @@ class SolveProcess:
         fn_xy = os.path.join(self.scratch_dir, '{}.xy'.format(self.basefn))
         xycat.write(fn_xy, format='fits', overwrite=True)
 
-        brute_force = False
+        use_force = False
 
         # Repeat finding astrometric solutions until none is found
         while True:
             solution, astref_table = self.find_astrometric_solution(ref_year=plate_year, sip=sip,
-                                                                    brute_force=brute_force)
+                                                                    use_force=use_force)
 
             if solution is None:
-                if (brute_force or self.num_solutions > 0 or
-                    not self.allow_brute_force):
+                if (use_force or self.num_solutions > 0 or
+                    not self.allow_force):
                     break
                 else:
-                    brute_force = True
+                    use_force = True
                     continue
             else:
-                brute_force = False
+                use_force = False
 
             unique_solution = True
 
@@ -1543,7 +1543,7 @@ class SolveProcess:
         return plate_solution
 
     def find_astrometric_solution(self, ref_year=None, sip=None,
-                                  brute_force=False):
+                                  use_force=False):
         """
         Solve astrometry for a list of sources.
 
@@ -1574,9 +1574,8 @@ class SolveProcess:
         self.log.write('Number of remaining solutions: {:d}'
                        .format(num_remain_exp), level=4, event=32)
 
-        if brute_force:
-            self.log.write('Using brute force to find solution',
-                           level=4, event=32)
+        if use_force:
+            self.log.write('Using force to find solution', level=4, event=32)
 
         # Current solution sequence number
         solution_seq = self.num_solutions + self.num_duplicate_solutions + 1
@@ -1586,7 +1585,7 @@ class SolveProcess:
         if (self.exp_numbers is not None
             and len(self.exp_numbers) > 4
             and self.exp_numbers.max() > self.num_solutions
-            and brute_force == False):
+            and use_force == False):
             self.log.write('Selecting sources that match the exposure number '
                            '{:d}'.format(solution_seq),
                            level=4, event=32)
@@ -1597,7 +1596,7 @@ class SolveProcess:
         # If number of remaining exposures is larger than 2, then
         # select sources that have two nearest neighbours within 90-degree
         # angle
-        elif num_remain_exp > 2 and brute_force == False:
+        elif num_remain_exp > 2 and use_force == False:
             self.log.write('Selecting sources that have two nearest neighbours '
                            'within 90-degree angle', level=4, event=32)
             coords = np.empty((num_astrom_sources, 2))
@@ -1669,8 +1668,34 @@ class SolveProcess:
             t['dy2'] = y2[indmask] - y0[indmask]
             t['label'] = labels
             basefn_solution = '{}-{:02d}'.format(self.basefn, solution_seq)
-            fn_out = os.path.join(self.scratch_dir, '{}_dxy.fits'.format(basefn_solution))
+            fn_out = os.path.join(self.scratch_dir,
+                                  '{}_dxy.fits'.format(basefn_solution))
             t.write(fn_out, format='fits', overwrite=True)
+
+        # If use_force is True, then select stars that have been classified
+        # as true sources, regardless of the number of exposures.
+        # Also, narrow the selection to annular bins 1-6.
+        elif use_force == True:
+            if np.isnan(self.astrom_sources['model_prediction']).sum() == 0:
+                btrue = self.astrom_sources['model_prediction'] > 0.9
+
+                # If less than 5 sources are classified as true sources,
+                # use all
+                if btrue.sum() < 5:
+                    btrue = np.full(len(self.astrom_sources), True)
+            else:
+                btrue = np.full(len(self.astrom_sources), True)
+
+            bselect = btrue & (self.astrom_sources['annular_bin'] <= 6)
+
+            # If less than 5 sources remain, select all
+            if bselect.sum() < 5:
+                bselect = np.full(len(self.astrom_sources), True)
+
+            use_sources = self.astrom_sources[bselect]
+            num_use_sources = bselect.sum()
+
+        # In other cases, use all sources
         else:
             use_sources = self.astrom_sources
             num_use_sources = num_astrom_sources
@@ -1743,7 +1768,7 @@ class SolveProcess:
 
         if num_remain_exp > 0:
             # Higher cpu limit for the first solution
-            if brute_force:
+            if use_force:
                 cmd += ' --cpulimit 600'
             elif self.num_solutions == 0:
                 cmd += ' --cpulimit 300'
