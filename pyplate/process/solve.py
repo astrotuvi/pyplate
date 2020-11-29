@@ -1097,21 +1097,21 @@ class SolveProcess:
         self.log.write('Finding multi-exposure pattern', level=3, event=31)
 
         n, dim = coords.shape
-        assert dim == 2
+        assert dim == 3
 
         # Choose optimal clustering parameters
         if numexp > 20:
             eps = dist_peak * 2
             min_samples = 1
-            num_select = 25 * numexp
+            num_select = 50 * numexp
         elif numexp > 10:
             eps = dist_peak * 3
             min_samples = 2
-            num_select = 50 * numexp
+            num_select = 100 * numexp
         else:
             eps = dist_peak * 4
             min_samples = 4
-            num_select = 100 * numexp
+            num_select = 200 * numexp
 
         coords_select = coords[:num_select]
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(coords_select)
@@ -1156,7 +1156,7 @@ class SolveProcess:
                            double_newline=False)
 
         # Create array for source coordinates relative to cluster center
-        xy = coords_select.copy()
+        xy = coords_select.copy()[:,:2]
         xy_mean = np.zeros((len(labels_sel), 2))
 
         # Create arrays for nearest-neighbour distances
@@ -1289,12 +1289,12 @@ class SolveProcess:
 
         # Find locations of pattern and assign sources to exposures
         exp_num = np.zeros(len(coords), dtype=np.int)
-        kdt_coords = KDT(coords)
+        kdt_coords = KDT(coords[:,:2])
         xy_found = np.empty((0, 2))
 
         for i in np.arange(len(coords)):
             # Take a source from list
-            xy_eval = coords[i]
+            xy_eval = coords[i,:2]
 
             # Search for matches
             if scale_rot:
@@ -1378,7 +1378,18 @@ class SolveProcess:
         except Exception:
             numexp = 1
 
-        num_keep = max([num_keep, int(self.num_sources_sixbins * numexp / 100)])
+        # Calculate a factor that takes into account how much the longest
+        # and shortest exposure times differ
+        try:
+            max_exp = np.max(self.platemeta['exptime'])
+            min_exp = np.min(self.platemeta['exptime'])
+            exp_factor = np.log10(max_exp / min_exp) + 1.
+            exp_factor = max(1., exp_factor)
+        except Exception:
+            exp_factor = 1.
+
+        num_keep = max([num_keep, int(self.num_sources_sixbins * numexp *
+                                      exp_factor / 100)])
 
         # Limit number of stars with 100000/numexp
         num_keep = min([num_keep, int(100000/numexp)])
@@ -1420,10 +1431,14 @@ class SolveProcess:
             numexp = 1
 
         if numexp > 4:
-            coords = np.empty((nrows, 2))
+            coords = np.empty((nrows, 3))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
-            dist_peak = self.find_peak_separation(coords)
+            coords[:,2] = 0.
+            dist_peak = self.find_peak_separation(coords[:,:2])
+
+            coords[:,2] = (self.astrom_sources['mag_auto'] * dist_peak * 10.
+                           / exp_factor**2)
             self.exp_numbers = self.find_multiexp_pattern(coords, dist_peak,
                                                           numexp)
 
