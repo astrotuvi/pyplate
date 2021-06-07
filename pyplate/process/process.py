@@ -1265,6 +1265,7 @@ class Process:
         self.sources = SourceTable()
         self.sources.populate(num_sources=self.num_sources)
         self.sources.platemeta = self.platemeta
+        self.sources.log = self.log
 
         # Copy values from the SExtractor catalog, xycat
         self.sources.copy_from_sextractor(xycat)

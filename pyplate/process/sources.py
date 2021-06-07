@@ -190,6 +190,7 @@ class SourceTable(Table):
         self.process_id = None
         self.scan_id = None
         self.plate_id = None
+        self.log = None
 
         self.work_dir = ''
         self.scratch_dir = None
