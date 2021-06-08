@@ -8,6 +8,7 @@ import subprocess as sp
 import numpy as np
 import warnings
 import xml.etree.ElementTree as ET
+import unidecode
 from astropy import __version__ as astropy_version
 from astropy import wcs
 from astropy.io import fits, votable
@@ -1968,9 +1969,16 @@ class SolveProcess:
         # Read SCAMP solution
         fn_scamphead = os.path.join(self.scratch_dir,
                                     '{}.head'.format(basefn_solution))
+
         try:
-            header_scamp = fits.Header.fromfile(fn_scamphead, sep='\n',
-                                                endcard=False, padding=False)
+            with open(fn_scamphead, 'r') as f:
+                scamphead_str = f.read()
+
+            # Get rid of non-ascii characters
+            scamphead_str = unidecode.unidecode(scamphead_str)
+
+            # Create FITS header from string
+            header_scamp = fits.Header.fromstring(scamphead_str, sep='\n')
         except FileNotFoundError:
             header_scamp = None
 
@@ -2374,8 +2382,16 @@ class SolveProcess:
             # Read SCAMP solution
             fn_scamphead = '{}_dewobbled.head'.format(basefn_solution)
             fn_scamphead = os.path.join(self.scratch_dir, fn_scamphead)
-            header_scamp = fits.Header.fromfile(fn_scamphead, sep='\n',
-                                                endcard=False, padding=False)
+
+            with open(fn_scamphead, 'r') as f:
+                scamphead_str = f.read()
+
+            # Get rid of non-ascii characters
+            scamphead_str = unidecode.unidecode(scamphead_str)
+
+            # Create FITS header from string
+            header_scamp = fits.Header.fromstring(scamphead_str, sep='\n')
+
             header_wcs = fits.PrimaryHDU().header
             header_wcs.set('NAXIS', 2)
             header_wcs.set('NAXIS1', self.imwidth)
