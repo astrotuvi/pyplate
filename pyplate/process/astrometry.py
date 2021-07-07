@@ -24,31 +24,31 @@ class AstrometryNetIndex:
 
     def query_gaia(self):
         """
-        Query Gaia DR2 catalogue for bright stars (G < 12) and 
+        Query Gaia EDR3 catalogue for bright stars (G < 12) and 
         store results in a FITS file.
 
         """
 
         from astroquery.gaia import Gaia
 
-        gaiadr2_dir = self.index_dir
+        gaia_dir = self.index_dir
 
         # Query in two parts to overcome the 3-million-row limit
         query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
                  'phot_bp_mean_mag,phot_rp_mean_mag '
-                 'FROM gaiadr2.gaia_source '
+                 'FROM gaiaedr3.gaia_source '
                  'WHERE phot_g_mean_mag<11.5 '
                  'AND astrometric_params_solved=31')
-        fn_tab1 = os.path.join(gaiadr2_dir, 'gaiadr2_pyplate_1.fits')
+        fn_tab1 = os.path.join(gaia_dir, 'gaiaedr3_pyplate_1.fits')
         job = Gaia.launch_job_async(query, output_file=fn_tab1, 
                                     output_format='fits', dump_to_file=True)
 
         query = ('SELECT ra,dec,pmra,pmdec,phot_g_mean_mag,'
                  'phot_bp_mean_mag,phot_rp_mean_mag '
-                 'FROM gaiadr2.gaia_source '
+                 'FROM gaiaedr3.gaia_source '
                  'WHERE phot_g_mean_mag BETWEEN 11.5 AND 12 '
                  'AND astrometric_params_solved=31')
-        fn_tab2 = os.path.join(gaiadr2_dir, 'gaiadr2_pyplate_2.fits')
+        fn_tab2 = os.path.join(gaia_dir, 'gaiaedr3_pyplate_2.fits')
         job = Gaia.launch_job_async(query, output_file=fn_tab2, 
                                     output_format='fits', dump_to_file=True)
 
@@ -56,7 +56,7 @@ class AstrometryNetIndex:
         tab1 = Table.read(fn_tab1)
         tab2 = Table.read(fn_tab2)
         tab = vstack([tab1, tab2], join_type='exact')
-        fn_tab = os.path.join(gaiadr2_dir, 'gaiadr2_pyplate.fits')
+        fn_tab = os.path.join(gaia_dir, 'gaiaedr3_pyplate.fits')
         tab.write(fn_tab, format='fits', overwrite=True)
 
         # Remove partial tables
@@ -140,17 +140,17 @@ class AstrometryNetIndex:
             if sort_by != 'Gmag' and sort_by != 'BPmag' and sort_by != 'RPmag':
                 sort_by = 'Gmag'
 
-            fn_gaia = os.path.join(self.index_dir, 'gaiadr2_pyplate.fits')
+            fn_gaia = os.path.join(self.index_dir, 'gaiaedr3_pyplate.fits')
             gaia_tab = Table.read(fn_gaia)
 
             year_tab = Table()
             year_tab['RA'] = (gaia_tab['ra'] 
-                              + (year - 2015.5 + 0.5)
+                              + (year - 2016.0 + 0.5)
                               * gaia_tab['pmra'] 
                               / np.cos(gaia_tab['dec'] * np.pi / 180.) 
                               / 3600000.)
             year_tab['Dec'] = (gaia_tab['dec']
-                               + (year - 2015.5 + 0.5)
+                               + (year - 2016.0 + 0.5)
                                * gaia_tab['pmdec'] / 3600000.)
 
             if sort_by == 'Gmag':
@@ -161,7 +161,7 @@ class AstrometryNetIndex:
                 year_tab['RPmag'] = gaia_tab['phot_rp_mean_mag']
 
             fn_year = os.path.join(self.index_dir, 
-                                   'gaiadr2_{:d}.fits'.format(year))
+                                   'gaiaedr3_{:d}.fits'.format(year))
             year_tab.write(fn_year, format='fits', overwrite=True)
 
         elif catalog == 'tycho':

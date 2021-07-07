@@ -82,11 +82,11 @@ class PhotometryProcess:
 
         """
 
-        cat_mag1 = sources['gaiadr2_bpmag'].data
-        cat_mag2 = sources['gaiadr2_rpmag'].data
+        cat_mag1 = sources['gaiaedr3_bpmag'].data
+        cat_mag2 = sources['gaiaedr3_rpmag'].data
         plate_mag = sources['mag_auto'].data
         mag_corr = sources['natmag_correction'].data
-        mag_err = sources['natmagerr'].data
+        mag_err = sources['natmag_error'].data
         # Replace nans with numerical values
         mag_corr[np.isnan(mag_corr)] = 0.
         mag_err[np.isnan(mag_err)] = 1.
@@ -342,7 +342,7 @@ class PhotometryProcess:
 
         # Store color term result
         self.phot_calib['color_term'] = cterm
-        self.phot_calib['color_term_err'] = cterm_err
+        self.phot_calib['color_term_error'] = cterm_err
         self.phot_calib['cterm_stdev_fit'] = stdev_fit
         self.phot_calib['cterm_stdev_min'] = stdev_min
         self.phot_calib['cterm_range_min'] = cterm_minval
@@ -433,10 +433,10 @@ class PhotometryProcess:
                     (self.sources['mag_auto'] < 90) &
                     bflags &
                     (self.sources['flag_clean'] == 1) &
-                    ~self.sources['gaiadr2_bpmag'].mask &
-                    ~self.sources['gaiadr2_rpmag'].mask &
-                    (self.sources['gaiadr2_bp_rp'].filled(99.) <= 2) &
-                    (self.sources['gaiadr2_neighbors'] == 1))
+                    ~self.sources['gaiaedr3_bpmag'].mask &
+                    ~self.sources['gaiaedr3_rpmag'].mask &
+                    (self.sources['gaiaedr3_bp_rp'].filled(99.) <= 2) &
+                    (self.sources['gaiaedr3_neighbors'] == 1))
 
         num_calstars = cal_mask.sum()
         self.phot_calib['num_candidate_stars'] = num_calstars
@@ -479,7 +479,7 @@ class PhotometryProcess:
             return
 
         cterm = self.phot_calib['color_term']
-        cterm_err = self.phot_calib['color_term_err']
+        cterm_err = self.phot_calib['color_term_error']
 
         # Use stars in all annular bins
         self.log.write('Photometric calibration using annular bins 1-9', 
@@ -504,8 +504,8 @@ class PhotometryProcess:
             return
 
         plate_mag_u = self.sources['mag_auto'][ind_calibstar_u].data
-        cat_bmag_u = self.sources['gaiadr2_bpmag'][ind_calibstar_u].data
-        cat_vmag_u = self.sources['gaiadr2_rpmag'][ind_calibstar_u].data
+        cat_bmag_u = self.sources['gaiaedr3_bpmag'][ind_calibstar_u].data
+        cat_vmag_u = self.sources['gaiaedr3_rpmag'][ind_calibstar_u].data
         cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
         self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
@@ -984,7 +984,7 @@ class PhotometryProcess:
         # Assign magnitudes and errors
         self.sources['natmag'][sol_mask] = s(mag_auto_sol)
         self.sources['natmag_plate'][sol_mask] = s(mag_auto_sol)
-        self.sources['natmagerr'][sol_mask] = s_rmse(mag_auto_sol)
+        self.sources['natmag_error'][sol_mask] = s_rmse(mag_auto_sol)
 
         if s_corr is not None:
             self.sources['natmag_correction'][sol_mask] = natmag_corr
@@ -1002,36 +1002,36 @@ class PhotometryProcess:
 
         if brange.sum() > 0:
             self.sources['phot_range_flags'][ind] = 1
-            self.sources['natmagerr'][ind] = s_rmse(plate_mag_brightest)
+            self.sources['natmag_error'][ind] = s_rmse(plate_mag_brightest)
 
         brange = (mag_auto_sol > plate_mag_lim)
         ind = np.where(sol_mask)[0][brange]
 
         if brange.sum() > 0:
             self.sources['phot_range_flags'][ind] = 2
-            self.sources['natmagerr'][ind] = s_rmse(plate_mag_lim)
+            self.sources['natmag_error'][ind] = s_rmse(plate_mag_lim)
 
         # Select stars with known external photometry
         bgaia = (sol_mask &
-                 ~self.sources['gaiadr2_bpmag'].mask &
-                 ~self.sources['gaiadr2_rpmag'].mask)
+                 ~self.sources['gaiaedr3_bpmag'].mask &
+                 ~self.sources['gaiaedr3_rpmag'].mask)
 
         if bgaia.sum() > 0:
-            bp_rp = self.sources['gaiadr2_bp_rp'][bgaia]
+            bp_rp = self.sources['gaiaedr3_bp_rp'][bgaia]
             bp_rp_err = 0.
 
             self.sources['rpmag'][bgaia] = (self.sources['natmag'][bgaia]
                                             - cterm * bp_rp)
             self.sources['bpmag'][bgaia] = (self.sources['natmag'][bgaia]
                                             - (cterm - 1.) * bp_rp)
-            rpmagerr = np.sqrt(self.sources['natmagerr'][bgaia]**2 +
+            rpmagerr = np.sqrt(self.sources['natmag_error'][bgaia]**2 +
                                (cterm_err * bp_rp)**2 +
                                (cterm * bp_rp_err)**2)
-            bpmagerr = np.sqrt(self.sources['natmagerr'][bgaia]**2 +
+            bpmagerr = np.sqrt(self.sources['natmag_error'][bgaia]**2 +
                                (cterm_err * bp_rp)**2 +
                                ((cterm - 1.) * bp_rp_err)**2)
-            self.sources['rpmagerr'][bgaia] = rpmagerr
-            self.sources['bpmagerr'][bgaia] = bpmagerr
+            self.sources['rpmag_error'][bgaia] = rpmagerr
+            self.sources['bpmag_error'][bgaia] = bpmagerr
 
         try:
             brightlim = min([cal['bright_limit']

@@ -13,6 +13,7 @@ from astropy import wcs
 from astropy.io import fits, votable
 from astropy.table import Table, Column, MaskedColumn, vstack, join
 from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
+from astropy.coordinates import Galactic, GeocentricMeanEcliptic
 from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
 from astropy.time import Time
@@ -106,10 +107,14 @@ _source_meta = OrderedDict([
     ('flag_clean',          ('i1', '%1d', '')),
     ('model_prediction',    ('f4', '%7.5f', '')),
     ('solution_num',        ('i2', '%1d', '')),
-    ('raj2000',             ('f8', '%11.7f', '')),
-    ('dej2000',             ('f8', '%11.7f', '')),
-    ('raerr',               ('f4', '%7.4f', '')),
-    ('decerr',              ('f4', '%7.4f', '')),
+    ('ra_icrs',             ('f8', '%11.7f', '')),
+    ('dec_icrs',            ('f8', '%11.7f', '')),
+    ('ra_error',            ('f4', '%7.4f', '')),
+    ('dec_error',           ('f4', '%7.4f', '')),
+    ('gal_lat',             ('f8', '%11.7f', '')),
+    ('gal_lon',             ('f8', '%11.7f', '')),
+    ('ecl_lat',             ('f8', '%11.7f', '')),
+    ('ecl_lon',             ('f8', '%11.7f', '')),
     ('x_sphere',            ('f8', '%10.7f', '')),
     ('y_sphere',            ('f8', '%10.7f', '')),
     ('z_sphere',            ('f8', '%10.7f', '')),
@@ -118,11 +123,11 @@ _source_meta = OrderedDict([
     ('zenith_angle',        ('f4', '%7.4f', '')),
     ('airmass',             ('f4', '%7.4f', '')),
     ('natmag',              ('f4', '%7.4f', '')),
-    ('natmagerr',           ('f4', '%7.4f', '')),
+    ('natmag_error',        ('f4', '%7.4f', '')),
     ('bpmag',               ('f4', '%7.4f', '')),
-    ('bpmagerr',            ('f4', '%7.4f', '')),
+    ('bpmag_error',         ('f4', '%7.4f', '')),
     ('rpmag',               ('f4', '%7.4f', '')),
-    ('rpmagerr',            ('f4', '%7.4f', '')),
+    ('rpmag_error',         ('f4', '%7.4f', '')),
     ('natmag_plate',        ('f4', '%7.4f', '')),
     ('natmag_correction',   ('f4', '%7.4f', '')),
     ('natmag_residual',     ('f4', '%7.4f', '')),
@@ -131,15 +136,13 @@ _source_meta = OrderedDict([
     ('color_term',          ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
     ('match_radius',        ('f4', '%7.3f', '')),
-    ('gaiadr2_id',          ('i8', '%d', '')),
-    ('gaiadr2_ra',          ('f8', '%11.7f', '')),
-    ('gaiadr2_dec',         ('f8', '%11.7f', '')),
-    ('gaiadr2_gmag',        ('f4', '%7.4f', '')),
-    ('gaiadr2_bpmag',       ('f4', '%7.4f', '')),
-    ('gaiadr2_rpmag',       ('f4', '%7.4f', '')),
-    ('gaiadr2_bp_rp',       ('f4', '%7.4f', '')),
-    ('gaiadr2_dist',        ('f4', '%6.3f', '')),
-    ('gaiadr2_neighbors',   ('i4', '%3d', ''))
+    ('gaiaedr3_id',         ('i8', '%d', '')),
+    ('gaiaedr3_gmag',       ('f4', '%7.4f', '')),
+    ('gaiaedr3_bpmag',      ('f4', '%7.4f', '')),
+    ('gaiaedr3_rpmag',      ('f4', '%7.4f', '')),
+    ('gaiaedr3_bp_rp',      ('f4', '%7.4f', '')),
+    ('gaiaedr3_dist',       ('f4', '%6.3f', '')),
+    ('gaiaedr3_neighbors',  ('i4', '%3d', ''))
 ])
 
 
@@ -260,10 +263,14 @@ class SourceTable(Table):
         self['erra_psf'] = np.nan
         self['errb_psf'] = np.nan
         self['errtheta_psf'] = np.nan
-        self['raj2000'] = np.nan
-        self['dej2000'] = np.nan
-        self['raerr'] = np.nan
-        self['decerr'] = np.nan
+        self['ra_icrs'] = np.nan
+        self['dec_icrs'] = np.nan
+        self['ra_error'] = np.nan
+        self['dec_error'] = np.nan
+        self['gal_lat'] = np.nan
+        self['gal_lon'] = np.nan
+        self['ecl_lat'] = np.nan
+        self['ecl_lon'] = np.nan
         self['x_sphere'] = np.nan
         self['y_sphere'] = np.nan
         self['z_sphere'] = np.nan
@@ -271,19 +278,18 @@ class SourceTable(Table):
         self['nn_dist'] = np.nan
         self['zenith_angle'] = np.nan
         self['airmass'] = np.nan
-        self['gaiadr2_ra'] = np.nan
-        self['gaiadr2_dec'] = np.nan
-        self['gaiadr2_bpmag'] = np.nan
-        self['gaiadr2_rpmag'] = np.nan
-        self['gaiadr2_bp_rp'] = np.nan
-        self['gaiadr2_dist'] = np.nan
-        self['gaiadr2_neighbors'] = 0
+        self['gaiaedr3_gmag'] = np.nan
+        self['gaiaedr3_bpmag'] = np.nan
+        self['gaiaedr3_rpmag'] = np.nan
+        self['gaiaedr3_bp_rp'] = np.nan
+        self['gaiaedr3_dist'] = np.nan
+        self['gaiaedr3_neighbors'] = 0
         self['natmag'] = np.nan
-        self['natmagerr'] = np.nan
+        self['natmag_error'] = np.nan
         self['bpmag'] = np.nan
-        self['bpmagerr'] = np.nan
+        self['bpmag_error'] = np.nan
         self['rpmag'] = np.nan
-        self['rpmagerr'] = np.nan
+        self['rpmag_error'] = np.nan
         self['natmag_residual'] = np.nan
         self['natmag_correction'] = np.nan
         self['color_term'] = np.nan
@@ -563,24 +569,21 @@ class SourceTable(Table):
         ind_gaia = index_ref[ind_ref]
         self['solution_num'][ind_plate] = sol_ref[ind_ref]
         self['match_radius'][ind_plate] = tolerance_arcsec
-        self['gaiadr2_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
-        self['gaiadr2_ra'][ind_plate] = ra_ref[ind_gaia]
-        self['gaiadr2_dec'][ind_plate] = dec_ref[ind_gaia]
-        self['gaiadr2_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
-        self['gaiadr2_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
-        self['gaiadr2_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
-        self['gaiadr2_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
-        self['gaiadr2_dist'][ind_plate] = dist_arcsec
+        self['gaiaedr3_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
+        self['gaiaedr3_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
+        self['gaiaedr3_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
+        self['gaiaedr3_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
+        self['gaiaedr3_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
+        self['gaiaedr3_dist'][ind_plate] = dist_arcsec
         self.num_crossmatch_gaia = len(ind_plate)
 
         # Mask nan values in listed columns
-        for col in ['gaiadr2_ra', 'gaiadr2_dec', 'gaiadr2_gmag',
-                    'gaiadr2_bpmag', 'gaiadr2_rpmag', 'gaiadr2_bp_rp',
-                    'gaiadr2_dist']:
+        for col in ['gaiaedr3_gmag', 'gaiaedr3_bpmag', 'gaiaedr3_rpmag',
+                    'gaiaedr3_bp_rp', 'gaiaedr3_dist']:
             self[col] = MaskedColumn(self[col], mask=np.isnan(self[col]))
 
         # Mask zeros in the ID column
-        col = 'gaiadr2_id'
+        col = 'gaiaedr3_id'
         self[col] = MaskedColumn(self[col], mask=(self[col] == 0))
 
         # Crossmatch: find all neighbours for sources
@@ -610,7 +613,7 @@ class SourceTable(Table):
             # Construct neighbors table
             nbs = Table()
             nbs['source_num'] = self['source_num'][k_plate]
-            nbs['gaiadr2_id'] = star_catalog['source_id'][index_ref[k_ref]]
+            nbs['gaiaedr3_id'] = star_catalog['source_id'][index_ref[k_ref]]
             nbs['dist'] = dist
             nbs['solution_num'] = sol_ref[k_ref]
             nbs['x_gaia'] = xy_ref[k_ref,0]
@@ -620,9 +623,9 @@ class SourceTable(Table):
             # with the source table
             tab = Table()
             tab['source_num'] = self['source_num']
-            tab['gaiadr2_id'] = self['gaiadr2_id'].filled(0)
+            tab['gaiaedr3_id'] = self['gaiaedr3_id'].filled(0)
             tab['flag_xmatch'] = np.int8(1)
-            jtab = join(nbs, tab, keys=('source_num', 'gaiadr2_id'),
+            jtab = join(nbs, tab, keys=('source_num', 'gaiaedr3_id'),
                         join_type='left')
             jtab['flag_xmatch'] = jtab['flag_xmatch'].filled(0)
             self.neighbors_gaia = jtab
@@ -631,10 +634,10 @@ class SourceTable(Table):
             source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
             mask = np.isin(self['source_num'], source_num)
             ind_mask = np.where(mask)[0]
-            self['gaiadr2_neighbors'][ind_mask] = cnt
+            self['gaiaedr3_neighbors'][ind_mask] = cnt
         else:
             # Create empty neighbors table
-            nbs = Table(names=('source_num', 'gaiadr2_id', 'dist',
+            nbs = Table(names=('source_num', 'gaiaedr3_id', 'dist',
                                'solution_num', 'x_gaia', 'y_gaia',
                                'flag_xmatch'),
                         dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8', 'i1'))
@@ -677,18 +680,18 @@ class SourceTable(Table):
             if m.sum() > 0:
                 ra, dec = w.all_pix2world(self['x_source'][m],
                                           self['y_source'][m], 1)
-                self['raj2000'][m] = ra
-                self['dej2000'][m] = dec
+                self['ra_icrs'][m] = ra
+                self['dec_icrs'][m] = dec
 
                 # Assign astrometric errors
                 if (solution['scamp_sigma_1'] is not None
                     and solution['scamp_sigma_2'] is not None):
-                    self['raerr'][m] = solution['scamp_sigma_1']
-                    self['decerr'][m] = solution['scamp_sigma_2']
+                    self['ra_error'][m] = solution['scamp_sigma_1']
+                    self['dec_error'][m] = solution['scamp_sigma_2']
 
         # Check if we have any usable coordinates
-        bool_finite = (np.isfinite(self['raj2000']) &
-                       np.isfinite(self['dej2000']))
+        bool_finite = (np.isfinite(self['ra_icrs']) &
+                       np.isfinite(self['dec_icrs']))
         num_finite = bool_finite.sum()
 
         if num_finite == 0:
@@ -697,20 +700,20 @@ class SourceTable(Table):
             return
 
         ind_finite = np.where(bool_finite)[0]
-        ra_finite = self['raj2000'][ind_finite]
-        dec_finite = self['dej2000'][ind_finite]
+        ra_finite = self['ra_icrs'][ind_finite]
+        dec_finite = self['dec_icrs'][ind_finite]
 
         # Calculate X, Y, and Z on the unit sphere
         # http://www.sdss3.org/svn/repo/idlutils/tags/v5_5_5/pro/coord/angles_to_xyz.pro
-        phi_rad = np.radians(self['raj2000'])
-        theta_rad = np.radians(90. - self['dej2000'])
+        phi_rad = np.radians(self['ra_icrs'])
+        theta_rad = np.radians(90. - self['dec_icrs'])
         self['x_sphere'] = np.cos(phi_rad) * np.sin(theta_rad)
         self['y_sphere'] = np.sin(phi_rad) * np.sin(theta_rad)
         self['z_sphere'] = np.cos(theta_rad)
 
         if have_healpy:
-            phi_rad = np.radians(self['raj2000'][ind_finite])
-            theta_rad = np.radians(90. - self['dej2000'][ind_finite])
+            phi_rad = np.radians(self['ra_icrs'][ind_finite])
+            theta_rad = np.radians(90. - self['dec_icrs'][ind_finite])
             hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
             self['healpix256'][ind_finite] = hp256.astype(np.int32)
 
@@ -719,6 +722,14 @@ class SourceTable(Table):
         _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
         matchdist = ds2d.to(u.arcsec).value
         self['nn_dist'][ind_finite] = matchdist.astype(np.float32)
+
+        # Calculate Galactic and ecliptic coordinates
+        coords_gal = coords.transform_to(Galactic)
+        self['gal_lon'][ind_finite] = coords_gal.l.deg
+        self['gal_lat'][ind_finite] = coords_gal.b.deg
+        coords_ecl = coords.transform_to(GeocentricMeanEcliptic)
+        self['ecl_lon'][ind_finite] = coords_ecl.lon.deg
+        self['ecl_lat'][ind_finite] = coords_ecl.lat.deg
 
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure

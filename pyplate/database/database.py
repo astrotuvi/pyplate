@@ -338,10 +338,8 @@ class PlateDB:
         pmeta_dict = {}
         pmeta_dict['plate_id'] = 'db_plate_id'
         pmeta_dict['flag_coord'] = 'coord_flag'
-        pmeta_dict['raj2000'] = 'ra_deg'
-        pmeta_dict['dej2000'] = 'dec_deg'
-        pmeta_dict['raj2000_hms'] = 'ra'
-        pmeta_dict['dej2000_dms'] = 'dec'
+        pmeta_dict['ra_icrs'] = 'ra_deg'
+        pmeta_dict['dec_icrs'] = 'dec_deg'
         pmeta_dict['date_orig_start'] = 'date_orig'
         pmeta_dict['date_orig_end'] = 'date_orig_end'
         pmeta_dict['time_orig_start'] = 'tms_orig'

@@ -80,7 +80,7 @@ class StarCatalog(Table):
 
     def query_gaia_tap(self, query, skycoord, radius):
         """
-        Query Gaia DR2 catalogue with TAP.
+        Query Gaia EDR3 catalogue with TAP.
 
         Parameters
         ----------
@@ -97,7 +97,7 @@ class StarCatalog(Table):
         tap_service = vo.dal.TAPService('https://gaia.aip.de/tap')
 
         # Schema and table name in the Gaia database
-        table_name = 'gdr2.gaia_source'
+        table_name = 'gaiaedr3.gaia_source'
 
         # Suppress warnings
         warnings.filterwarnings('ignore', module='astropy.io.votable')
@@ -122,7 +122,7 @@ class StarCatalog(Table):
 
     def query_gaia_sql(self, query, skycoord, radius):
         """
-        Query Gaia DR2 catalogue with SQL.
+        Query Gaia EDR3 catalogue with SQL.
 
         Parameters
         ----------
@@ -171,7 +171,7 @@ class StarCatalog(Table):
                    mag_range=[0,20], color_term=None, filename=None,
                    protocol=None):
         """
-        Query Gaia DR2 catalogue for all plate solutions and
+        Query Gaia EDR3 catalogue for all plate solutions and
         store results in FITS files.
 
         Parameters
@@ -252,7 +252,7 @@ class StarCatalog(Table):
             gaia_tables.append(tab)
 
             if filename is None:
-                filename = ('gaiadr2_{:.2f}_{:.2f}_{:.2f}.fits'
+                filename = ('gaiaedr3_{:.2f}_{:.2f}_{:.2f}.fits'
                             .format(skycoord.ra.to(u.deg).value,
                                     skycoord.dec.to(u.deg).value,
                                     radius.to(u.deg).value))
@@ -280,14 +280,14 @@ class StarCatalog(Table):
 
                 gaia_tables.append(tab)
 
-                #fn_tab = os.path.join(self.scratch_dir, 'gaiadr2.fits')
+                #fn_tab = os.path.join(self.scratch_dir, 'gaiaedr3.fits')
                 #tab.write(fn_tab, format='fits', overwrite=True)
             else:
                 # Loop through solutions
                 for i in np.arange(psol.num_solutions):
                     solution = psol.solutions[i]
-                    sol_skycoord = SkyCoord(ra=solution['raj2000']*u.deg,
-                                            dec=solution['dej2000']*u.deg)
+                    sol_skycoord = SkyCoord(ra=solution['ra_icrs']*u.deg,
+                                            dec=solution['dec_icrs']*u.deg)
 
                     if protocol == 'SQL':
                         tab = self.query_gaia_sql(query_str, sol_skycoord,
@@ -300,14 +300,14 @@ class StarCatalog(Table):
                     gaia_tables.append(tab)
 
                     #fn_tab = os.path.join(self.scratch_dir,
-                    #                      'gaiadr2-{:02d}.fits'.format(i+1))
+                    #                      'gaiaedr3-{:02d}.fits'.format(i+1))
                     #tab.write(fn_tab, format='fits', overwrite=True)
 
         # Append data from files to the catalog
         self.append_gaia(gaia_tables)
 
         # Add catalog name
-        self.name = 'Gaia DR2'
+        self.name = 'Gaia EDR3'
 
         # Update mag_range
         if self.mag_range is None:
@@ -330,8 +330,9 @@ class StarCatalog(Table):
 
         """
 
-        self.log.write('Appending data from Gaia query result tables',
-                       level=3, event=43)
+        if self.log is not None:
+            self.log.write('Appending data from Gaia query result tables',
+                           level=3, event=43)
 
         assert isinstance(gaia_tables, list)
 
@@ -354,8 +355,9 @@ class StarCatalog(Table):
             if len(self) == 0:
                 self.columns = gaia_table.columns
             elif len(gaia_table) == 0:
-                self.log.write('Gaia query result table is empty!',
-                               level=4, event=43)
+                if self.log is not None:
+                    self.log.write('Gaia query result table is empty!',
+                                   level=4, event=43)
             else:
                 # Find rows in the Gaia table that we do not have yet
                 d = setdiff(gaia_table, self, keys=['source_id'])

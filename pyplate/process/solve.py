@@ -335,8 +335,8 @@ class PlateSolution:
         assert self.num_solutions > 0
 
         # Collect center coordinates of solutions
-        sol_ra = np.array([sol['raj2000'] for sol in self.solutions])
-        sol_dec = np.array([sol['dej2000'] for sol in self.solutions])
+        sol_ra = np.array([sol['ra_icrs'] for sol in self.solutions])
+        sol_dec = np.array([sol['dec_icrs'] for sol in self.solutions])
         c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
 
         # Create an offset frame based on the first solution
@@ -396,8 +396,8 @@ class AstrometricSolution(OrderedDict):
         self.log = None
 
     def populate(self):
-        keys = ['solution_num', 'raj2000', 'dej2000',
-                'raj2000_hms', 'dej2000_dms',
+        keys = ['solution_num', 'ra_icrs', 'dec_icrs',
+                'ra_icrs_hms', 'dec_icrs_dms',
                 'fov1', 'fov2', 'half_diag', 'pixel_scale', 'source_density',
                 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 'rotation_angle',
                 'plate_mirrored', 'ncp_close', 'scp_close',
@@ -498,8 +498,8 @@ class AstrometricSolution(OrderedDict):
             return
 
         self.wcs = wcs.WCS(self['header_wcs'])
-        self['raj2000'] = self['header_wcs']['CRVAL1']
-        self['dej2000'] = self['header_wcs']['CRVAL2']
+        self['ra_icrs'] = self['header_wcs']['CRVAL1']
+        self['dec_icrs'] = self['header_wcs']['CRVAL2']
         self['cd1_1'] = self['header_wcs']['CD1_1']
         self['cd1_2'] = self['header_wcs']['CD1_2']
         self['cd2_1'] = self['header_wcs']['CD2_1']
@@ -532,13 +532,13 @@ class AstrometricSolution(OrderedDict):
 
         # Check if a celestial pole is nearby or on the plate
         self['half_diag'] = np.sqrt(self['fov1']**2 + self['fov2']**2) / 2.
-        self['ncp_close'] = 90. - self['dej2000'] <= self['half_diag'] / u.deg
-        self['scp_close'] = 90. + self['dej2000'] <= self['half_diag'] / u.deg
+        self['ncp_close'] = 90. - self['dec_icrs'] <= self['half_diag'] / u.deg
+        self['scp_close'] = 90. + self['dec_icrs'] <= self['half_diag'] / u.deg
         ncp_on_plate = False
         scp_on_plate = False
 
         if self['ncp_close']:
-            ncp_pix = self.wcs.all_world2pix([[self['raj2000'],90.]], 1,
+            ncp_pix = self.wcs.all_world2pix([[self['ra_icrs'], 90.]], 1,
                                              quiet=True)
 
             if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth
@@ -546,7 +546,7 @@ class AstrometricSolution(OrderedDict):
                 ncp_on_plate = True
 
         if self['scp_close']:
-            scp_pix = self.wcs.all_world2pix([[self['raj2000'],-90.]], 1,
+            scp_pix = self.wcs.all_world2pix([[self['ra_icrs'], -90.]], 1,
                                              quiet=True)
 
             if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth
@@ -557,13 +557,13 @@ class AstrometricSolution(OrderedDict):
         self['scp_on_plate'] = scp_on_plate
 
         # Construct coordinate strings
-        ra_angle = Angle(self['raj2000'], u.deg)
-        dec_angle = Angle(self['dej2000'], u.deg)
+        ra_angle = Angle(self['ra_icrs'], u.deg)
+        dec_angle = Angle(self['dec_icrs'], u.deg)
 
-        self['raj2000_hms'] = ra_angle.to_string(unit=u.hour, sep=':',
+        self['ra_icrs_hms'] = ra_angle.to_string(unit=u.hour, sep=':',
                                                  precision=1, pad=True)
-        self['dej2000_dms'] = dec_angle.to_string(unit=u.deg, sep=':',
-                                                  precision=1, pad=True)
+        self['dec_icrs_dms'] = dec_angle.to_string(unit=u.deg, sep=':',
+                                                   precision=1, pad=True)
         self['stc_box'] = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
                            .format(self['header_wcs']['CRVAL1'],
                                    self['header_wcs']['CRVAL2'],
@@ -589,17 +589,17 @@ class AstrometricSolution(OrderedDict):
                            self['header_wcs']['CRPIX2']])
 
             if dec_angle.deg > 89.:
-                cn = self.wcs.wcs_world2pix([[self['raj2000'],90.]], 1)
+                cn = self.wcs.wcs_world2pix([[self['ra_icrs'], 90.]], 1)
             else:
-                cn = self.wcs.wcs_world2pix([[self['raj2000'],
-                                              self['dej2000']+1.]], 1)
+                cn = self.wcs.wcs_world2pix([[self['ra_icrs'],
+                                              self['dec_icrs'] + 1.]], 1)
 
             if ra_angle.deg > 359.:
-                ce = self.wcs.wcs_world2pix([[self['raj2000']-359.,
-                                              self['dej2000']]], 1)
+                ce = self.wcs.wcs_world2pix([[self['ra_icrs'] - 359.,
+                                              self['dec_icrs']]], 1)
             else:
-                ce = self.wcs.wcs_world2pix([[self['raj2000']+1.,
-                                              self['dej2000']]], 1)
+                ce = self.wcs.wcs_world2pix([[self['ra_icrs'] + 1.,
+                                              self['dec_icrs']]], 1)
 
             naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
             eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
@@ -1478,11 +1478,11 @@ class SolveProcess:
             # If this is not the first solution, check if we got a unique
             # solution
             if self.num_solutions > 0:
-                sol_ra = np.array([sol['raj2000'] for sol in self.solutions])
-                sol_dec = np.array([sol['dej2000'] for sol in self.solutions])
+                sol_ra = np.array([sol['ra_icrs'] for sol in self.solutions])
+                sol_dec = np.array([sol['dec_icrs'] for sol in self.solutions])
                 c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
-                c_cur = SkyCoord(solution['raj2000'] * u.deg,
-                                 solution['dej2000'] * u.deg, frame='icrs')
+                c_cur = SkyCoord(solution['ra_icrs'] * u.deg,
+                                 solution['dec_icrs'] * u.deg, frame='icrs')
                 min_sep = c_cur.separation(c_sol).min()
 
                 if min_sep > 1. * u.deg:
@@ -2506,22 +2506,22 @@ class SolveProcess:
 
         #self.log.write('Getting reference catalogs', level=3, event=40)
 
-        # Read the Gaia DR2 catalogue
+        # Read the Gaia EDR3 catalogue
         if self.use_gaia_fits:
-            fn_gaia = os.path.join(self.gaia_dir, 'gaiadr2_pyplate.fits')
+            fn_gaia = os.path.join(self.gaia_dir, 'gaiaedr3_pyplate.fits')
 
             tab = Table.read(fn_gaia)
 
             # Calculate RA and Dec for the plate epoch
-            ra_ref = (tab['ra'] + (self.plate_epoch - 2015.5) * tab['pmra']
+            ra_ref = (tab['ra'] + (self.plate_epoch - 2016.0) * tab['pmra']
                       / np.cos(tab['dec'] * np.pi / 180.) / 3600000.)
-            dec_ref = (tab['dec'] + (self.plate_epoch - 2015.5)
+            dec_ref = (tab['dec'] + (self.plate_epoch - 2016.0)
                        * tab['pmdec'] / 3600000.)
             catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
 
             # Query stars around the plate center
-            c = SkyCoord(solution['raj2000'] * u.deg,
-                         solution['dej2000'] * u.deg, frame='icrs')
+            c = SkyCoord(solution['ra_icrs'] * u.deg,
+                         solution['dec_icrs'] * u.deg, frame='icrs')
             dist = catalog.separation(c)
             mask_dist = dist < solution['half_diag']
             ind = np.arange(len(tab))[mask_dist]
@@ -2535,7 +2535,7 @@ class SolveProcess:
             ind_ref = ind[mask_inside]
 
             numref = mask_inside.sum()
-            self.log.write('Fetched {:d} entries from Gaia DR2'
+            self.log.write('Fetched {:d} entries from Gaia EDR3'
                            ''.format(numref))
 
             # Construct table for return
@@ -2572,8 +2572,8 @@ class SolveProcess:
             catalog = SkyCoord(ra_tyc, dec_tyc, frame='icrs')
 
             # Query stars around the plate center
-            c = SkyCoord(solution['raj2000'] * u.deg,
-                         solution['dej2000'] * u.deg, frame='icrs')
+            c = SkyCoord(solution['ra_icrs'] * u.deg,
+                         solution['dec_icrs'] * u.deg, frame='icrs')
             dist = catalog.separation(c)
             mask_dist = dist < solution['half_diag']
             ind = np.arange(len(tycho2))[mask_dist]
