@@ -1358,7 +1358,7 @@
       order: 7
       mysql_datatype: "SMALLINT UNSIGNED"
       pgsql_datatype: "smallint"
-    - name: gaiadr2_id
+    - name: gaiaedr3_id
       order: 8
       mysql_datatype: "BIGINT"
       pgsql_datatype: "bigint"
@@ -1390,9 +1390,9 @@
 
     indexes:
     - name: mysql_pk
-      val: "ALTER TABLE source_xmatch ADD CONSTRAINT source_xmatch_pky PRIMARY KEY (source_id, gaiadr2_id)"
+      val: "ALTER TABLE source_xmatch ADD CONSTRAINT source_xmatch_pky PRIMARY KEY (source_id, gaiaedr3_id)"
     - name: pgsql_pk
-      val: "ALTER TABLE source_xmatch ADD CONSTRAINT source_xmatch_pky PRIMARY KEY (source_id, gaiadr2_id)"
+      val: "ALTER TABLE source_xmatch ADD CONSTRAINT source_xmatch_pky PRIMARY KEY (source_id, gaiaedr3_id)"
     - name: index_1
       val: "CREATE INDEX source_ind ON source_xmatch (source_id)"
     - name: index_2
@@ -1404,7 +1404,7 @@
     - name: index_5
       val: "CREATE INDEX archive_ind ON source_xmatch (archive_id)"
     - name: index_6
-      val: "CREATE INDEX gaiadr2_id_ind ON source_xmatch (gaiadr2_id)"
+      val: "CREATE INDEX gaiaedr3_id_ind ON source_xmatch (gaiaedr3_id)"
 
   - name: solution_set
     order: 13
@@ -1840,7 +1840,7 @@
       order: 15
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
-    - name: num_gaia_dr2
+    - name: num_gaia_edr3
       order: 16
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"
@@ -2096,7 +2096,7 @@
       order: 22
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: num_gaia_dr2
+    - name: num_gaia_edr3
       order: 23
       mysql_datatype: "INT UNSIGNED"
       pgsql_datatype: "integer"

@@ -2129,8 +2129,8 @@ class Process:
 
         # If photometric calibration failed for all solutions, then give up
         if len(phot_calib_curves) == 0 or len(cur_faint_limit) == 0:
-            num_gaia_dr2=self.sources.num_crossmatch_gaia
-            self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+            num_gaia_edr3 = self.sources.num_crossmatch_gaia
+            self.db_update_process(num_gaia_edr3=num_gaia_edr3,
                                    num_iterations=self.num_iterations,
                                    calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
@@ -2271,10 +2271,10 @@ class Process:
 
             iteration += 1
 
-        num_gaia_dr2 = self.sources.num_crossmatch_gaia
+        num_gaia_edr3 = self.sources.num_crossmatch_gaia
 
         if num_calib_solutions == 0:
-            self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+            self.db_update_process(num_gaia_edr3=num_gaia_edr3,
                                    num_iterations=self.num_iterations,
                                    calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
@@ -2284,7 +2284,7 @@ class Process:
             self.phot_calib_curves = phot_calib_curves
             mag_range = max_cur_faint_limit - min_cur_bright_limit
 
-            self.db_update_process(num_gaia_dr2=num_gaia_dr2,
+            self.db_update_process(num_gaia_edr3=num_gaia_edr3,
                                    color_term=mean_cur_color_term,
                                    bright_limit=min_cur_bright_limit,
                                    faint_limit=max_cur_faint_limit,

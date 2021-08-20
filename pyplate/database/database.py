@@ -1007,7 +1007,7 @@ class PlateDB:
                     if 'healpix256' in k and source_val < 0:
                         source_val = None
                         
-                    if 'gaiadr2_id' in k and source_val == 0:
+                    if 'gaiaedr3_id' in k and source_val == 0:
                         source_val = None
                         
                     val_tuple = val_tuple + (source_val, )

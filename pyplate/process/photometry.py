@@ -415,7 +415,7 @@ class PhotometryProcess:
 
         # Store number of Gaia DR2 objects matched with the current solution
         bgaia = (self.sources['solution_num'] == solution_num)
-        self.phot_calib['num_gaia_dr2'] = bgaia.sum()
+        self.phot_calib['num_gaia_edr3'] = bgaia.sum()
 
         # For single exposures, exclude blended sources.
         # For multiple exposures, include them, because otherwise the bright
