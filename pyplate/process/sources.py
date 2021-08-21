@@ -752,12 +752,12 @@ class SourceTable(Table):
             date_avg = Time(self.platemeta['date_avg'][0], 
                             format='isot', scale='ut1')
             c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
-            self['zenith_angle'] = c_altaz.zen.deg
+            self['zenith_angle'][ind_finite] = c_altaz.zen.deg
             coszt = np.cos(c_altaz.zen)
             airmass = ((1.002432 * coszt**2 + 0.148386 * coszt + 0.0096467) 
                        / (coszt**3 + 0.149864 * coszt**2 + 0.0102963 * coszt 
                           + 0.000303978))
-            self['airmass'] = airmass
+            self['airmass'][ind_finite] = airmass
 
     def output_csv(self, filename):
         """
