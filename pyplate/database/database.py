@@ -75,6 +75,7 @@ class PlateDB:
         self.conf = None
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
+        self.write_db_source_xmatch_dir = ''
 
         if self.rdbms == 'pgsql':
             self.db = DB_pgsql(schema=self.schema)
@@ -99,7 +100,7 @@ class PlateDB:
         self.conf = conf
 
         for attr in ['write_log_dir', 'write_db_source_dir', 
-                     'write_db_source_calib_dir']:
+                     'write_db_source_calib_dir', 'write_db_source_xmatch_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except configparser.Error:
