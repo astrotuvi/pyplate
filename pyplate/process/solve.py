@@ -1384,7 +1384,12 @@ class SolveProcess:
         try:
             max_exp = np.max(self.platemeta['exptime'])
             min_exp = np.min(self.platemeta['exptime'])
-            exp_factor = np.log10(max_exp / min_exp) + 1.
+
+            if min_exp > 0:
+                exp_factor = np.log10(max_exp / min_exp) + 1.
+            else:
+                exp_factor = 1.
+
             exp_factor = min(max(1., exp_factor), 4.)
         except Exception:
             exp_factor = 1.
@@ -1992,7 +1997,7 @@ class SolveProcess:
             header_wcs.extend(header_scamp)
 
             # Fix SCAMP header if TPV projection is not specified
-            if 'PV1_5' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
+            if 'PV1_1' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
                 header_wcs.set('CTYPE1', 'RA---TPV')
                 header_wcs.set('CTYPE2', 'DEC--TPV')
 
@@ -2401,7 +2406,7 @@ class SolveProcess:
             header_wcs.extend(header_scamp)
 
             # Fix SCAMP header if TPV projection is not specified
-            if 'PV1_5' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
+            if 'PV1_1' in header_wcs and header_wcs['CTYPE1'] == 'RA---TAN':
                 header_wcs.set('CTYPE1', 'RA---TPV')
                 header_wcs.set('CTYPE2', 'DEC--TPV')
 
