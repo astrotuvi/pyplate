@@ -1385,7 +1385,7 @@ class SolveProcess:
             max_exp = np.max(self.platemeta['exptime'])
             min_exp = np.min(self.platemeta['exptime'])
             exp_factor = np.log10(max_exp / min_exp) + 1.
-            exp_factor = max(1., exp_factor)
+            exp_factor = min(max(1., exp_factor), 4.)
         except Exception:
             exp_factor = 1.
 
