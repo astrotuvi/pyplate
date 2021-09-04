@@ -915,14 +915,14 @@ class PlateDB:
             fn_source_csv = '{:05d}_source.csv'.format(process_id)
             fn_source_csv = os.path.join(self.write_db_source_dir, 
                                          fn_source_csv)
-            source_csv = open(fn_source_csv, 'wb')
+            source_csv = open(fn_source_csv, 'w', newline='')
             source_writer = csvWriter(source_csv, delimiter=',',
                                       quotechar='"', 
                                       quoting=csv.QUOTE_MINIMAL)
             fn_source_calib_csv = '{:05d}_source_calib.csv'.format(process_id)
             fn_source_calib_csv = os.path.join(self.write_db_source_calib_dir, 
                                                fn_source_calib_csv)
-            source_calib_csv = open(fn_source_calib_csv, 'wb')
+            source_calib_csv = open(fn_source_calib_csv, 'w', newline='')
             source_calib_writer = csvWriter(source_calib_csv, delimiter=',',
                                             quotechar='"', 
                                             quoting=csv.QUOTE_MINIMAL)
@@ -1039,7 +1039,7 @@ class PlateDB:
             fn_source_xmatch_csv = '{:05d}_source_xmatch.csv'.format(process_id)
             fn_source_xmatch_csv = os.path.join(self.write_db_source_xmatch_dir, 
                                                fn_source_xmatch_csv)
-            source_xmatch_csv = open(fn_source_xmatch_csv, 'wb')
+            source_xmatch_csv = open(fn_source_xmatch_csv, 'w', newline='')
             source_xmatch_writer = csvWriter(source_xmatch_csv, delimiter=',',
                                              quotechar='"', 
                                              quoting=csv.QUOTE_MINIMAL)
