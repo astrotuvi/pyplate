@@ -1010,29 +1010,39 @@ class Process:
                                           self.basefn + '.cat')
                     t = Table.read(fn_cat, hdu=2)
                     num_sources = len(t)
-                    flux_peak = np.sort(t['FLUX_MAX'] - t['BACKGROUND'])[::-1]
+                    flux_peak = np.sort(t['FLUX_MAX'])[::-1]
 
                     if self.min_model_sources < num_sources:
                         th_max = flux_peak[self.min_model_sources]
                         th_max_sigma = th_max / sky_sigma
+                    else:
+                        th_max = None
+                        th_max_sigma = None
 
                     if self.max_model_sources < num_sources:
                         th_min = flux_peak[self.max_model_sources]
                         th_min_sigma = th_min / sky_sigma
+                    else:
+                        th_min = None
+                        th_min_sigma = None
 
                     if use_fix_threshold:
-                        if psf_model_threshold < th_min:
+                        if (th_min is not None and th_min > 0 and
+                            psf_model_threshold < th_min):
                             psf_model_threshold = th_min
-                        elif psf_model_threshold > th_max:
+                        elif (th_max is not None and th_max > 0 and
+                              psf_model_threshold > th_max):
                             psf_model_threshold = th_max
 
                         self.log.write('Using threshold {:f} ADU'
                                        .format(psf_model_threshold), 
                                        level=4, event=23)
                     else:
-                        if psf_model_sigma < th_min_sigma:
+                        if (th_min_sigma is not None and th_min_sigma > 0 and
+                            psf_model_sigma < th_min_sigma):
                             psf_model_sigma = th_min_sigma
-                        elif psf_model_sigma > th_max_sigma:
+                        elif (th_max_sigma is not None and th_max_sigma > 0 and
+                              psf_model_sigma > th_max_sigma):
                             psf_model_sigma = th_max_sigma
 
                         threshold_adu = sky_sigma * psf_model_sigma
