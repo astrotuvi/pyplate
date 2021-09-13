@@ -2095,6 +2095,7 @@ class Process:
 
         # Default values
         mean_cur_color_term = None
+        weighted_cur_color_term = None
         max_cur_faint_limit = None
         min_cur_bright_limit = None
         num_calib = None
@@ -2295,7 +2296,7 @@ class Process:
             mag_range = max_cur_faint_limit - min_cur_bright_limit
 
             self.db_update_process(num_gaia_edr3=num_gaia_edr3,
-                                   color_term=mean_cur_color_term,
+                                   color_term=weighted_cur_color_term,
                                    bright_limit=min_cur_bright_limit,
                                    faint_limit=max_cur_faint_limit,
                                    mag_range=mag_range, num_calib=num_calib,

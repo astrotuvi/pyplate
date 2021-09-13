@@ -1501,7 +1501,7 @@ class SolveProcess:
                                'nearest solution by {}'.format(sep_str),
                                level=4, event=32)
 
-                if min_sep < 10. * u.arcsec:
+                if min_sep < (10. * sol['pixel_scale'] * u.pixel):
                     unique_solution = False
                     unique_num = c_cur.separation(c_sol).argmin() + 1
 
@@ -2037,6 +2037,13 @@ class SolveProcess:
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
 
+        if solution['scamp_sigma_mean']:
+            xmatch_radius = (20. * solution['scamp_sigma_mean']
+                             / solution['pixel_scale']
+                             / u.pixel)
+        else:
+            xmatch_radius = 10.
+
         w = solution.wcs
         xr,yr = w.all_world2pix(astref_table['ra'], astref_table['dec'], 1,
                                 quiet=True)
@@ -2045,11 +2052,11 @@ class SolveProcess:
                                   self.astrom_sources['y_source'])).T
         kdt = KDT(coords_ref)
         ds,ind_ref = kdt.query(coords_plate, k=1)
-        indmask = ds > 5.
+        indmask = ds > xmatch_radius
         ind_plate = np.arange(num_astrom_sources)
 
         # Select crossmatched stars and calculate their centroid
-        mask_xmatch = ds <= 5.
+        mask_xmatch = ds <= xmatch_radius
         matched_sources = self.astrom_sources[ind_plate[mask_xmatch]]
         solution['x_centroid'] = matched_sources['x_source'].mean()
         solution['y_centroid'] = matched_sources['y_source'].mean()
