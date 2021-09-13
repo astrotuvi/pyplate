@@ -1501,7 +1501,7 @@ class SolveProcess:
                                'nearest solution by {}'.format(sep_str),
                                level=4, event=32)
 
-                if min_sep < (10. * sol['pixel_scale'] * u.pixel):
+                if min_sep < (10. * solution['pixel_scale'] * u.pixel):
                     unique_solution = False
                     unique_num = c_cur.separation(c_sol).argmin() + 1
 
