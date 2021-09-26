@@ -1410,11 +1410,14 @@ class SolveProcess:
         # Check if artifacts have been classified.
         # If yes, then select sources that are classified as true sources.
         # If not, then rely only on flag_clean.
-        if np.isnan(self.sources['model_prediction']).sum() == 0 and numexp < 2:
-            bclean = ((self.sources['flag_clean'] == 1) &
-                      (self.sources['model_prediction'] > 0.9))
-        else:
-            bclean = self.sources['flag_clean'] == 1
+        #if np.isnan(self.sources['model_prediction']).sum() == 0 and numexp < 2:
+        #    bclean = ((self.sources['flag_clean'] == 1) &
+        #              (self.sources['model_prediction'] > 0.9))
+        #else:
+        #    bclean = self.sources['flag_clean'] == 1
+
+        # Use only flag_clean, because model_prediction is not robust enough
+        bclean = self.sources['flag_clean'] == 1
 
         indclean = np.where(bclean & (self.sources['annular_bin'] <= 8))[0]
         sb = skip_bright
@@ -1853,6 +1856,7 @@ class SolveProcess:
         header_wcs.set('NAXIS', 2)
         header_wcs.set('NAXIS1', self.imwidth, after='NAXIS')
         header_wcs.set('NAXIS2', self.imheight, after='NAXIS1')
+        header_wcs_anet = header_wcs
 
         # Create AstrometricSolution instance and calculate parameters
         self.log.write('Calculating parameters for the initial solution '
@@ -2037,14 +2041,15 @@ class SolveProcess:
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
 
-        if solution['scamp_sigma_mean']:
+        if solution['scamp_sigma_mean'] is not None:
             xmatch_radius = (20. * solution['scamp_sigma_mean']
                              / solution['pixel_scale']
                              / u.pixel)
         else:
             xmatch_radius = 10.
 
-        w = solution.wcs
+        # Using WCS from Astrometry.net, as it is more robust
+        w = wcs.WCS(header_wcs_anet)
         xr,yr = w.all_world2pix(astref_table['ra'], astref_table['dec'], 1,
                                 quiet=True)
         coords_ref = np.vstack((xr, yr)).T
@@ -2232,12 +2237,14 @@ class SolveProcess:
         # Check if artifacts have been classified.
         # If yes, then select sources that are classified as true sources.
         # If not, then rely only on flag_clean.
-        if np.isnan(self.sources['model_prediction']).sum() == 0:
-            bclean = ((self.sources['flag_clean'] == 1) &
-                      (self.sources['model_prediction'] > 0.9))
-        else:
-            bclean = self.sources['flag_clean'] == 1
+        #if np.isnan(self.sources['model_prediction']).sum() == 0:
+        #    bclean = ((self.sources['flag_clean'] == 1) &
+        #              (self.sources['model_prediction'] > 0.9))
+        #else:
+        #    bclean = self.sources['flag_clean'] == 1
 
+        # Use only flag_clean, because model_prediction is not robust enough
+        bclean = self.sources['flag_clean'] == 1
         mask_bins = bclean & (self.sources['annular_bin'] <= 9)
 
         if mask_bins.sum() <= 10:
