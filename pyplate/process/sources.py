@@ -119,6 +119,7 @@ _source_meta = OrderedDict([
     ('y_sphere',            ('f8', '%10.7f', '')),
     ('z_sphere',            ('f8', '%10.7f', '')),
     ('healpix256',          ('i4', '%6d', '')),
+    ('healpix1024',         ('i4', '%8d', '')),
     ('nn_dist',             ('f4', '%6.3f', '')),
     ('zenith_angle',        ('f4', '%7.4f', '')),
     ('airmass',             ('f4', '%7.4f', '')),
@@ -275,6 +276,7 @@ class SourceTable(Table):
         self['y_sphere'] = np.nan
         self['z_sphere'] = np.nan
         self['healpix256'] = -1
+        self['healpix1024'] = -1
         self['nn_dist'] = np.nan
         self['zenith_angle'] = np.nan
         self['airmass'] = np.nan
@@ -716,6 +718,9 @@ class SourceTable(Table):
             theta_rad = np.radians(90. - self['dec_icrs'][ind_finite])
             hp256 = healpy.ang2pix(256, theta_rad, phi_rad, nest=True)
             self['healpix256'][ind_finite] = hp256.astype(np.int32)
+            hp1024 = healpy.ang2pix(1024, theta_rad, phi_rad, nest=True)
+            self['healpix1024'][ind_finite] = hp1024.astype(np.int32)
+            u_hpx1024 = np.unique(hp1024.astype(np.int32))
 
         # Find nearest neighbours
         coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
