@@ -408,7 +408,8 @@ class AstrometricSolution(OrderedDict):
                 'scamp_dscale', 'scamp_dangle', 'scamp_dx', 'scamp_dy',
                 'scamp_sigma_1', 'scamp_sigma_2', 'scamp_sigma_mean',
                 'scamp_chi2', 'scamp_ndeg',
-                'scamp_distort', 'scamp_iteration']
+                'scamp_distort', 'scamp_iteration',
+                'num_gaia_edr3', 'healpix_table']
 
         for k in keys:
             self[k] = None

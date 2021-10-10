@@ -588,6 +588,21 @@ class SourceTable(Table):
         col = 'gaiaedr3_id'
         self[col] = MaskedColumn(self[col], mask=(self[col] == 0))
 
+        # Store number of crossmatched sources to each solution
+        grp = self.group_by('solution_num').groups
+        tab_grp = Table(grp.aggregate(len)['solution_num', 'source_num'])
+        tab_grp.rename_column('source_num', 'num_gaia_edr3')
+
+        for i in np.arange(plate_solution.num_solutions):
+            solution = solutions[i]
+            m = tab_grp['solution_num'] == i + 1
+
+            if m.sum() > 0:
+                num_gaia_edr3 = tab_grp['num_gaia_edr3'][m].data[0]
+                solution['num_gaia_edr3'] = num_gaia_edr3
+            else:
+                solution['num_gaia_edr3'] = 0
+
         # Crossmatch: find all neighbours for sources
         kdt_ref = KDT(xy_ref)
         kdt_plate = KDT(coords_plate)
@@ -720,7 +735,40 @@ class SourceTable(Table):
             self['healpix256'][ind_finite] = hp256.astype(np.int32)
             hp1024 = healpy.ang2pix(1024, theta_rad, phi_rad, nest=True)
             self['healpix1024'][ind_finite] = hp1024.astype(np.int32)
-            u_hpx1024 = np.unique(hp1024.astype(np.int32))
+
+            # Loop over solutions and calculate healpix statistics for each
+            # solution
+            for i,solution in enumerate(plate_solution.solutions):
+                # Find all healpixes inside solution corners
+                lat = solution['skycoord_corners'].dec.deg
+                lon = solution['skycoord_corners'].ra.deg
+                vertices = healpy.pixelfunc.ang2vec(lon, lat, lonlat=True)
+                pix_inside = healpy.query_polygon(1024, vertices,
+                                                  inclusive=False, nest=True)
+                tab_inside = Table()
+                tab_inside['healpix1024'] = pix_inside
+                tab_inside['num_stars'] = 0
+
+                # If there is only one solution, then select all sources
+                if plate_solution.num_solutions == 1:
+                    m = np.isfinite(self['x_source'])
+                else:
+                    m = self['solution_num'] == i + 1
+
+                # Find all healpixes that have sources
+                if m.sum() > 0:
+                    grp = self.group_by('healpix1024').groups
+                    tab_grp = Table(grp.aggregate(len)['healpix1024',
+                                                       'source_num'])
+                    tab_grp.rename_column('source_num', 'num_stars')
+
+                    tab_stack = vstack([tab_grp, tab_inside])
+                    grp_stack = tab_stack.group_by('healpix1024').groups
+                    tab_sum = grp_stack.aggregate(np.sum)
+                else:
+                    tab_sum = tab_inside
+
+                solution['healpix_table'] = tab_sum
 
         # Find nearest neighbours
         coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
