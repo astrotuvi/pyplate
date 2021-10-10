@@ -1639,7 +1639,17 @@ class Process:
             kw['solutionset_id'] = set_id
 
             for solution in self.plate_solution.solutions:
-                platedb.write_solution(solution, **kw)
+                sol_id = platedb.write_solution(solution, **kw)
+
+                if solution['healpix_table'] is not None:
+                    kw['solution_id'] = sol_id
+                    kw['solution_num'] = solution['solution_num']
+
+                    for row in solution['healpix_table']:
+                        platedb.write_solution_healpix(row, **kw)
+
+                    del kw['solution_id']
+                    del kw['solution_num']
 
             for solution in self.plate_solution.duplicate_solutions:
                 platedb.write_solution(solution, **kw)

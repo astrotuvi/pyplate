@@ -747,7 +747,7 @@ class SourceTable(Table):
                                                   inclusive=False, nest=True)
                 tab_inside = Table()
                 tab_inside['healpix1024'] = pix_inside
-                tab_inside['num_stars'] = 0
+                tab_inside['num_sources'] = 0
 
                 # If there is only one solution, then select all sources
                 if plate_solution.num_solutions == 1:
@@ -757,10 +757,10 @@ class SourceTable(Table):
 
                 # Find all healpixes that have sources
                 if m.sum() > 0:
-                    grp = self.group_by('healpix1024').groups
+                    grp = self[m].group_by('healpix1024').groups
                     tab_grp = Table(grp.aggregate(len)['healpix1024',
                                                        'source_num'])
-                    tab_grp.rename_column('source_num', 'num_stars')
+                    tab_grp.rename_column('source_num', 'num_sources')
 
                     tab_stack = vstack([tab_grp, tab_inside])
                     grp_stack = tab_stack.group_by('healpix1024').groups

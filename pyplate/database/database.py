@@ -829,8 +829,37 @@ class PlateDB:
         solution_id = self.db.execute_query(sql, val_tuple)
         return solution_id
 
-    def write_scanner_pattern(self, table_row, solutionset_id, process_id=None,
-                              scan_id=None, plate_id=None, archive_id=None):
+    def write_solution_healpix(self, table_row, solution_id=None,
+                               solutionset_id=None, process_id=None,
+                               scan_id=None, plate_id=None, archive_id=None,
+                               solution_num=None):
+        """
+        Write HEALPix map of a solution to the database.
+
+        """
+
+        col_list = ['solution_id', 'solutionset_id', 'process_id', 'scan_id',
+                    'plate_id', 'archive_id', 'solution_num']
+        val_tuple = (solution_id, solutionset_id, process_id, scan_id,
+                     plate_id, archive_id, solution_num)
+
+        # Get phot_calib table columns from database schema
+        solution_healpix_table = self.get_table_dict('solution_healpix')
+
+        for k in solution_healpix_table.keys():
+            if k in table_row.columns:
+                col_list.append(k)
+                val_tuple = val_tuple + (table_row[k], )
+
+        col_str = ','.join(col_list)
+        val_str = ','.join(['%s'] * len(col_list))
+        sql = ('INSERT INTO {} ({}) VALUES ({})'
+               .format(self.table_name('solution_healpix'), col_str, val_str))
+        self.db.execute_query(sql, val_tuple)
+
+    def write_scanner_pattern(self, table_row, solutionset_id=None,
+                              process_id=None, scan_id=None, plate_id=None,
+                              archive_id=None):
         """
         Write scanner pattern to the database.
 

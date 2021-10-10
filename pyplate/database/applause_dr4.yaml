@@ -1185,100 +1185,104 @@
       order: 23
       mysql_datatype: "INT"
       pgsql_datatype: "integer"
-    - name: nn_dist
+    - name: healpix1024
       order: 24
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: zenith_angle
+      mysql_datatype: "INT"
+      pgsql_datatype: "integer"
+    - name: nn_dist
       order: 25
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: airmass
+    - name: zenith_angle
       order: 26
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: natmag
+    - name: airmass
       order: 27
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: natmag_error
+    - name: natmag
       order: 28
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: bpmag
+    - name: natmag_error
       order: 29
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: bpmag_error
+    - name: bpmag
       order: 30
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: rpmag
+    - name: bpmag_error
       order: 31
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: rpmag_error
+    - name: rpmag
       order: 32
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: natmag_plate
+    - name: rpmag_error
       order: 33
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: natmag_correction
+    - name: natmag_plate
       order: 34
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: natmag_residual
+    - name: natmag_correction
       order: 35
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: phot_range_flags
+    - name: natmag_residual
       order: 36
-      mysql_datatype: "TINYINT"
-      pgsql_datatype: "smallint"
-    - name: phot_calib_flags
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: phot_range_flags
       order: 37
       mysql_datatype: "TINYINT"
       pgsql_datatype: "smallint"
-    - name: color_term
+    - name: phot_calib_flags
       order: 38
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: cat_natmag
+      mysql_datatype: "TINYINT"
+      pgsql_datatype: "smallint"
+    - name: color_term
       order: 39
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: match_radius
+    - name: cat_natmag
       order: 40
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: gaiaedr3_id
+    - name: match_radius
       order: 41
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: gaiaedr3_id
+      order: 42
       mysql_datatype: "BIGINT"
       pgsql_datatype: "bigint"
     - name: gaiaiedr3_gmag
-      order: 42
-      mysql_datatype: "FLOAT"
-      pgsql_datatype: "real"
-    - name: gaiaedr3_bp_rp
       order: 43
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: gaiaedr3_dist
+    - name: gaiaedr3_bp_rp
       order: 44
       mysql_datatype: "FLOAT"
       pgsql_datatype: "real"
-    - name: gaiaedr3_neighbors
+    - name: gaiaedr3_dist
       order: 45
+      mysql_datatype: "FLOAT"
+      pgsql_datatype: "real"
+    - name: gaiaedr3_neighbors
+      order: 46
       mysql_datatype: "INT"
       pgsql_datatype: "integer"
     - name: timestamp_insert
-      order: 46
+      order: 47
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 47
+      order: 48
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
 
@@ -1692,11 +1696,11 @@
     - name: pgsql_pk
       val: "ALTER TABLE solution ADD CONSTRAINT solution_pky PRIMARY KEY (solution_id)"
     - name: index_1
-      val: "CREATE INDEX process_ind ON solution (process_id)"
+      val: "CREATE INDEX solutionset_ind ON solution (solutionset_id)"
     - name: index_2
-      val: "CREATE INDEX scan_ind ON solution (scan_id)"
+      val: "CREATE INDEX process_ind ON solution (process_id)"
     - name: index_3
-      val: "CREATE INDEX exposure_ind ON solution (exposure_id)"
+      val: "CREATE INDEX scan_ind ON solution (scan_id)"
     - name: index_4
       val: "CREATE INDEX plate_ind ON solution (plate_id)"
     - name: index_5
@@ -1706,8 +1710,77 @@
     - name: index_7
       val: "CREATE INDEX dec_icrs_ind ON solution (dec_icrs)"
 
-  - name: scanner_pattern
+  - name: solution_healpix
     order: 15
+    columns:
+    - name: solution_id
+      order: 1
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: solutionset_id
+      order: 2
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: process_id
+      order: 3
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: scan_id
+      order: 4
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: plate_id
+      order: 5
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: archive_id
+      order: 6
+      mysql_datatype: "INT UNSIGNED NOT NULL"
+      pgsql_datatype: "integer"
+    - name: solution_num
+      order: 7
+      mysql_datatype: "SMALLINT"
+      pgsql_datatype: "smallint"
+    - name: healpix1024
+      order: 8
+      mysql_datatype: "INT"
+      pgsql_datatype: "integer"
+    - name: num_sources
+      order: 9
+      mysql_datatype: "SMALLINT"
+      pgsql_datatype: "smallint"
+    - name: timestamp_insert
+      order: 10
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+    - name: timestamp_update
+      order: 11
+      mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+      pgsql_datatype: "timestamp with time zone not null default NOW()"
+
+    triggers:
+        pgsql:
+        - name: set_timestamp
+          function: trigger_set_timestamp()
+
+    indexes:
+    - name: index_1
+      val: "CREATE INDEX solution_ind ON solution_healpix (solution_id)"
+    - name: index_2
+      val: "CREATE INDEX solutionset_ind ON solution_healpix (solutionset_id)"
+    - name: index_3
+      val: "CREATE INDEX process_ind ON solution_healpix (process_id)"
+    - name: index_4
+      val: "CREATE INDEX scan_ind ON solution_healpix (scan_id)"
+    - name: index_5
+      val: "CREATE INDEX plate_ind ON solution_healpix (plate_id)"
+    - name: index_6
+      val: "CREATE INDEX archive_ind ON solution_healpix (archive_id)"
+    - name: index_7
+      val: "CREATE INDEX healpix_ind ON solution_healpix (healpix1024)"
+
+  - name: scanner_pattern
+    order: 16
     columns:
     - name: pattern_id
       order: 1
@@ -1778,7 +1851,7 @@
       val: "CREATE INDEX archive_ind ON scanner_pattern (archive_id)"
 
   - name: phot_calib
-    order: 16
+    order: 17
     columns:
     - name: calib_id
       order: 1
@@ -1933,7 +2006,7 @@
       val: "CREATE INDEX archive_ind ON phot_calib (archive_id)"
 
   - name: phot_calib_curve
-    order: 17
+    order: 18
     columns:
     - name: calibcurve_id
       order: 1
@@ -2006,7 +2079,7 @@
       val: "CREATE INDEX archive_ind ON phot_calib_curve (archive_id)"
 
   - name: process
-    order: 18
+    order: 19
     columns:
     - name: process_id
       order: 1
@@ -2152,7 +2225,7 @@
       val: "CREATE INDEX filename_ind ON process (filename)"
 
   - name: process_log
-    order: 19
+    order: 20
     columns:
     - name: processlog_id
       order: 1
