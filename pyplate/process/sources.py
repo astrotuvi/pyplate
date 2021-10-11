@@ -749,11 +749,8 @@ class SourceTable(Table):
                 tab_inside['healpix1024'] = pix_inside
                 tab_inside['num_sources'] = 0
 
-                # If there is only one solution, then select all sources
-                if plate_solution.num_solutions == 1:
-                    m = np.isfinite(self['x_source'])
-                else:
-                    m = self['solution_num'] == i + 1
+                # Select sources that belong to the solution
+                m = self['solution_num'] == i + 1
 
                 # Find all healpixes that have sources
                 if m.sum() > 0:
