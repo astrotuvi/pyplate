@@ -1676,12 +1676,16 @@
       order: 42
       mysql_datatype: "INT"
       pgsql_datatype: "integer"
-    - name: timestamp_insert
+    - name: num_gaia_edr3
       order: 43
+      mysql_datatype: "INT"
+      pgsql_datatype: "integer"
+    - name: timestamp_insert
+      order: 44
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
     - name: timestamp_update
-      order: 44
+      order: 45
       mysql_datatype: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
       pgsql_datatype: "timestamp with time zone not null default NOW()"
       

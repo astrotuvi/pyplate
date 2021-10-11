@@ -1615,11 +1615,11 @@ class Process:
         """
 
         self.log.to_db(3, 'Writing astrometric solution to the database', 
-                       event=35)
+                       event=77)
 
         if self.plate_solution.num_solutions == 0:
             self.log.write('No plate solution to write to the database', 
-                           level=2, event=35)
+                           level=2, event=77)
             return
 
         self.log.write('Open database connection for writing to the '

@@ -168,9 +168,6 @@ class PlatePipeline:
                 proc.solve_plate()
                 proc.sources.process_coordinates()
 
-            if self.output_solution_db:
-                proc.output_solution_db()
-
             if self.output_wcs_file:
                 proc.output_wcs_header()
 
@@ -210,6 +207,9 @@ class PlatePipeline:
 
             if self.calibrate_photometry:
                 proc.calibrate_photometry()
+
+            if self.output_solution_db:
+                proc.output_solution_db()
 
             if self.output_calibration_db:
                 proc.output_calibration_db()
