@@ -640,11 +640,11 @@ class SourceTable(Table):
             # with the source table
             tab = Table()
             tab['source_num'] = self['source_num']
-            tab['gaiaedr3_id'] = self['gaiaedr3_id'].filled(0)
+            tab['gaiaedr3_id'] = MaskedColumn(self['gaiaedr3_id']).filled(0)
             tab['flag_xmatch'] = np.int8(1)
             jtab = join(nbs, tab, keys=('source_num', 'gaiaedr3_id'),
                         join_type='left')
-            jtab['flag_xmatch'] = jtab['flag_xmatch'].filled(0)
+            jtab['flag_xmatch'] = MaskedColumn(jtab['flag_xmatch']).filled(0)
             self.neighbors_gaia = jtab
 
             # Calculate neighbor counts
