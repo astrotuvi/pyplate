@@ -732,6 +732,7 @@ class SolveProcess:
         self.sip = 3
         self.skip_bright = 10
         self.allow_force = False
+        self.repeat_find = True
         self.distort = 3
         self.subfield_distort = 1
         self.max_recursion_depth = 5
@@ -911,7 +912,7 @@ class SolveProcess:
                 pass
 
         for attr in ['use_filter', 'use_psf', 'circular_film',
-                     'allow_force']:
+                     'allow_force', 'repeat_find']:
             try:
                 setattr(self, attr, conf.getboolean('Solve', attr))
             except ValueError:
@@ -1325,7 +1326,8 @@ class SolveProcess:
 
         return exp_num
 
-    def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
+    def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None,
+                    repeat_find=None):
         """
         Solve astrometry in a FITS file.
 
@@ -1338,6 +1340,9 @@ class SolveProcess:
         skip_bright : int
             Number of brightest stars to skip when solving with Astrometry.net
             (default 10).
+        repeat_find : bool
+            If True, repeat finding astrometric solutions until none is found.
+            If False, stop after finding the expected number of solutions.
 
         """
 
@@ -1351,6 +1356,9 @@ class SolveProcess:
                 plate_year = int(plate_epoch)
             except ValueError:
                 plate_year = self.plate_year
+
+        if repeat_find is None:
+            repeat_find = self.repeat_find
 
         # Log Astrometry.net and SCAMP versions
         anet_ver = (sp.check_output([self.solve_field_path, '-h']).strip()
@@ -1530,6 +1538,17 @@ class SolveProcess:
                                .format(unique_num, solution['solution_num']),
                                level=4, event=32,
                                solution_num=solution['solution_num'])
+
+            # Check the number of remaining solutions
+            try:
+                num_remain_exp = self.platemeta['numexp'] - self.num_solutions
+            except Exception:
+                num_remain_exp = 1 - self.num_solutions
+
+            # If the expected number of solutions is found and repeat_find is
+            # False, then stop finding.
+            if repeat_find == False and num_remain_exp < 1:
+                break
 
         # Improve astrometric solutions (two iterations)
         if self.plate_solved:
@@ -1789,7 +1808,15 @@ class SolveProcess:
 
         # If the number of solutions is larger than 4, then accept
         # solutions with lower odds
-        if self.platemeta['numexp'] > 4 or self.num_solutions > 4:
+        numexp_condition = False
+
+        try:
+            if self.platemeta['numexp'] > 4:
+                numexp_condition = True
+        except Exception:
+            pass
+
+        if numexp_condition or self.num_solutions > 4:
             cmd += ' --odds-to-solve 1e8'
 
         if num_remain_exp > 0:

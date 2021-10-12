@@ -1559,7 +1559,8 @@ class Process:
         self.log.write('Classified {:d} sources as artifacts (prediction < 0.1)'
                        .format(num_artifacts), level=4, event=29)
 
-    def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None):
+    def solve_plate(self, plate_epoch=None, sip=None, skip_bright=None,
+                    repeat_find=None):
         """
         Solve astrometry in a FITS file.
 
@@ -1572,6 +1573,9 @@ class Process:
         skip_bright : int
             Number of brightest stars to skip when solving with Astrometry.net
             (default 10).
+        repeat_find : bool
+            If True, repeat finding astrometric solutions until none is found.
+            If False, stop after finding the expected number of solutions.
 
         """
 
@@ -1579,6 +1583,9 @@ class Process:
 
         # Initialise solve process
         solveproc = SolveProcess(self.filename, archive_id=self.archive_id)
+
+        # Assign configuration
+        solveproc.assign_conf(self.conf)
 
         # Assign process attributes
         solveproc.__dict__.update(self.__dict__)
@@ -1588,7 +1595,8 @@ class Process:
 
         # Do plate solving
         plate_solution = solveproc.solve_plate(plate_epoch=plate_epoch, sip=sip,
-                                               skip_bright=skip_bright)
+                                               skip_bright=skip_bright,
+                                               repeat_find=repeat_find)
 
         # Create WCS header
         if plate_solution.plate_solved:
