@@ -47,6 +47,7 @@ except ImportError:
     have_sklearn = False
 
 try:
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
     from keras.models import load_model
     have_keras = True
 except ImportError:
