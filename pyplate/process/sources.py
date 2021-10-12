@@ -781,6 +781,10 @@ class SourceTable(Table):
         self['ecl_lon'][ind_finite] = coords_ecl.lon.deg
         self['ecl_lat'][ind_finite] = coords_ecl.lat.deg
 
+        # Suppress ERFA warnings
+        warnings.filterwarnings('ignore', message='Tried to get polar motions')
+        warnings.filterwarnings('ignore', message='ERFA function')
+
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
         if (self.platemeta and 
@@ -808,6 +812,10 @@ class SourceTable(Table):
                        / (coszt**3 + 0.149864 * coszt**2 + 0.0102963 * coszt 
                           + 0.000303978))
             self['airmass'][ind_finite] = airmass
+
+        # Restore ERFA warnings
+        warnings.filterwarnings('default', message='Tried to get polar motions')
+        warnings.filterwarnings('default', message='ERFA function')
 
     def output_csv(self, filename):
         """
