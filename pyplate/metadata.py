@@ -13,6 +13,7 @@ import datetime as dt
 import numpy as np
 import ephem
 import pytimeparse
+import warnings
 from deprecated import deprecated
 from astropy import wcs
 from astropy.io import fits
@@ -2018,6 +2019,10 @@ class Plate(OrderedDict):
 
         """
 
+        # Suppress ERFA warnings
+        warnings.filterwarnings('ignore', message='Tried to get polar motions')
+        warnings.filterwarnings('ignore', message='ERFA function')
+
         # By default, assume that date refers to observation time, not evening
         evening_date = False
 
@@ -2564,6 +2569,10 @@ class Plate(OrderedDict):
                         self['hjd_weighted'].append(None)
 
         self['date'] = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+
+        # Restore ERFA warnings
+        warnings.filterwarnings('default', message='Tried to get polar motions')
+        warnings.filterwarnings('default', message='ERFA function')
 
     # Create alias for compute_values
     calculate = compute_values
