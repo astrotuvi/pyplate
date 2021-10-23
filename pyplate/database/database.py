@@ -104,7 +104,8 @@ class PlateDB:
         self.conf = conf
 
         for attr in ['write_log_dir', 'write_db_source_dir', 
-                     'write_db_source_calib_dir', 'write_db_source_xmatch_dir']:
+                     'write_db_source_calib_dir', 'write_db_source_xmatch_dir',
+                     'write_db_solution_healpix_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except configparser.Error:
