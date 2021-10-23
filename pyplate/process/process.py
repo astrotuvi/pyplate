@@ -239,6 +239,7 @@ class Process:
 
         self.output_db = None
         self.write_sources_csv = False
+        self.write_solution_healpix_csv = False
 
         self.sextractor_path = 'sex'
         self.scamp_path = 'scamp'
@@ -406,7 +407,8 @@ class Process:
 
         for attr in ['use_gaia_fits', 'use_tycho2_fits', 
                      'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log', 'write_sources_csv']:
+                     'enable_db_log', 'write_sources_csv',
+                     'write_solution_healpix_csv']:
             try:
                 setattr(self, attr, conf.getboolean('Database', attr))
             except ValueError:
@@ -1617,11 +1619,14 @@ class Process:
         else:
             self.db_update_process(solved=0, num_solutions=0)
 
-    def output_solution_db(self):
+    def output_solution_db(self, write_csv=None):
         """
         Write plate solution to the database.
 
         """
+
+        if write_csv is None:
+            write_csv = self.write_solution_healpix_csv
 
         self.log.to_db(3, 'Writing astrometric solution to the database', 
                        event=77)
@@ -1653,12 +1658,12 @@ class Process:
                 if solution['healpix_table'] is not None:
                     kw['solution_id'] = sol_id
                     kw['solution_num'] = solution['solution_num']
-
-                    for row in solution['healpix_table']:
-                        platedb.write_solution_healpix(row, **kw)
-
+                    kw['write_csv'] = write_csv
+                    platedb.write_solution_healpix(solution['healpix_table'],
+                                                   **kw)
                     del kw['solution_id']
                     del kw['solution_num']
+                    del kw['write_csv']
 
             for solution in self.plate_solution.duplicate_solutions:
                 platedb.write_solution(solution, **kw)

@@ -76,6 +76,10 @@ class PlateDB:
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
         self.write_db_source_xmatch_dir = ''
+        self.write_db_solution_healpix_dir = ''
+        self.dr_num = 0
+        self.process_num_digits = 6
+        self.source_num_digits = 7
 
         if self.rdbms == 'pgsql':
             self.db = DB_pgsql(schema=self.schema)
@@ -103,6 +107,12 @@ class PlateDB:
                      'write_db_source_calib_dir', 'write_db_source_xmatch_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
+            except configparser.Error:
+                pass
+
+        for attr in ['dr_num', 'process_num_digits', 'source_num_digits']:
+            try:
+                setattr(self, attr, conf.getint('Database', attr))
             except configparser.Error:
                 pass
 
@@ -829,33 +839,78 @@ class PlateDB:
         solution_id = self.db.execute_query(sql, val_tuple)
         return solution_id
 
-    def write_solution_healpix(self, table_row, solution_id=None,
+    def write_solution_healpix(self, solution_healpix, solution_id=None,
                                solutionset_id=None, process_id=None,
                                scan_id=None, plate_id=None, archive_id=None,
-                               solution_num=None):
+                               solution_num=None, write_csv=None):
         """
         Write HEALPix map of a solution to the database.
 
         """
 
+        # Open CSV files for writing
+        if write_csv:
+            fn_solhp_csv = '{:06d}_solution_healpix.csv'.format(solution_id)
+            fn_solhp_csv = os.path.join(self.write_db_solution_healpix_dir,
+                                        fn_solhp_csv)
+            solhp_csv = open(fn_solhp_csv, 'w', newline='')
+            solhp_writer = csvWriter(solhp_csv, delimiter=',', quotechar='"',
+                                     quoting=csv.QUOTE_MINIMAL)
+
+        # Prepare query for the solution_healpix table
         col_list = ['solution_id', 'solutionset_id', 'process_id', 'scan_id',
                     'plate_id', 'archive_id', 'solution_num']
-        val_tuple = (solution_id, solutionset_id, process_id, scan_id,
-                     plate_id, archive_id, solution_num)
 
-        # Get phot_calib table columns from database schema
-        solution_healpix_table = self.get_table_dict('solution_healpix')
+        # Get solution_healpix table columns from database schema
+        solhp_table = self.get_table_dict('solution_healpix')
 
-        for k in solution_healpix_table.keys():
-            if k in table_row.columns:
+        for k in solhp_table.keys():
+            if k in solution_healpix.columns:
                 col_list.append(k)
-                val_tuple = val_tuple + (table_row[k], )
 
         col_str = ','.join(col_list)
         val_str = ','.join(['%s'] * len(col_list))
         sql = ('INSERT INTO {} ({}) VALUES ({})'
                .format(self.table_name('solution_healpix'), col_str, val_str))
-        self.db.execute_query(sql, val_tuple)
+
+        # Write header rows to CSV files
+        if write_csv:
+            solhp_writer.writerow(col_list)
+
+        # Prepare data and execute queries
+        solhp_data = []
+
+        for i, solhp in enumerate(solution_healpix):
+            # Insert 1000 rows simultaneously
+            if not write_csv and i > 0 and i%1000 == 0:
+                self.db.executemany_query(sql, solhp_data)
+                solhp_data = []
+
+            # Prepare solution_healpix data
+            val_tuple = (solution_id, solutionset_id, process_id, scan_id,
+                         plate_id, archive_id, solution_num)
+
+            for k in col_list:
+                if k in solution_healpix.columns:
+                    try:
+                        solhp_val = (solhp[k] if np.isfinite(solhp[k])
+                                      else None)
+                    except TypeError:
+                        solhp_val = solhp[k]
+
+                    val_tuple = val_tuple + (solhp_val, )
+
+            if write_csv:
+                solhp_writer.writerow(val_tuple)
+            else:
+                solhp_data.append(val_tuple)
+
+        if write_csv:
+            # Close CSV file
+            solhp_csv.close()
+        else:
+            # Insert remaining rows
+            self.db.executemany_query(sql, solhp_data)
 
     def write_scanner_pattern(self, table_row, solutionset_id=None,
                               process_id=None, scan_id=None, plate_id=None,
@@ -869,7 +924,7 @@ class PlateDB:
                     'archive_id']
         val_tuple = (solutionset_id, process_id, scan_id, plate_id, archive_id)
 
-        # Get phot_calib table columns from database schema
+        # Get scanner_pattern table columns from database schema
         scanner_pattern_table = self.get_table_dict('scanner_pattern')
 
         for k in scanner_pattern_table.keys():
@@ -918,7 +973,7 @@ class PlateDB:
         col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
         val_tuple = (process_id, scan_id, plate_id, archive_id)
 
-        # Get phot_calib table columns from database schema
+        # Get phot_calib_curve table columns from database schema
         phot_calib_curve_table = self.get_table_dict('phot_calib_curve')
 
         for k in phot_calib_curve_table.keys():
@@ -941,14 +996,14 @@ class PlateDB:
 
         # Open CSV files for writing
         if write_csv:
-            fn_source_csv = '{:05d}_source.csv'.format(process_id)
+            fn_source_csv = '{:06d}_source.csv'.format(process_id)
             fn_source_csv = os.path.join(self.write_db_source_dir, 
                                          fn_source_csv)
             source_csv = open(fn_source_csv, 'w', newline='')
             source_writer = csvWriter(source_csv, delimiter=',',
                                       quotechar='"', 
                                       quoting=csv.QUOTE_MINIMAL)
-            fn_source_calib_csv = '{:05d}_source_calib.csv'.format(process_id)
+            fn_source_calib_csv = '{:06d}_source_calib.csv'.format(process_id)
             fn_source_calib_csv = os.path.join(self.write_db_source_calib_dir, 
                                                fn_source_calib_csv)
             source_calib_csv = open(fn_source_calib_csv, 'w', newline='')
@@ -1009,7 +1064,10 @@ class PlateDB:
                 source_calib_data = []
 
             # Prepare source data
-            source_id = process_id * 10000000 + i + 1
+            source_id = (self.dr_num * 10**(self.process_num_digits +
+                                            self.source_num_digits) +
+                         process_id * 10**self.source_num_digits +
+                         source['source_num'])
             val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
 
             for k in source_columns:
@@ -1065,7 +1123,7 @@ class PlateDB:
 
         # Open CSV files for writing
         if write_csv:
-            fn_source_xmatch_csv = '{:05d}_source_xmatch.csv'.format(process_id)
+            fn_source_xmatch_csv = '{:06d}_source_xmatch.csv'.format(process_id)
             fn_source_xmatch_csv = os.path.join(self.write_db_source_xmatch_dir, 
                                                fn_source_xmatch_csv)
             source_xmatch_csv = open(fn_source_xmatch_csv, 'w', newline='')
@@ -1077,7 +1135,7 @@ class PlateDB:
         col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
                     'archive_id']
 
-        # Get source table columns from database schema
+        # Get source_xmatch table columns from database schema
         source_xmatch_table = self.get_table_dict('source_xmatch')
 
         for k in source_xmatch_table.keys():
@@ -1105,7 +1163,10 @@ class PlateDB:
                 source_xmatch_data = []
 
             # Prepare source_xmatch data
-            source_id = process_id * 10000000 + xmatch['source_num']
+            source_id = (self.dr_num * 10**(self.process_num_digits +
+                                            self.source_num_digits) +
+                         process_id * 10**self.source_num_digits +
+                         xmatch['source_num'])
             val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
 
             for k in source_xmatch_columns:
