@@ -213,6 +213,7 @@ class Process:
         self.write_db_source_dir = ''
         self.write_db_source_calib_dir = ''
         self.write_db_source_xmatch_dir = ''
+        self.write_db_solution_healpix_dir = ''
         self.write_phot_dir = ''
         self.write_wcs_dir = ''
         self.write_log_dir = ''
@@ -396,7 +397,8 @@ class Process:
                      'work_dir', 'write_log_dir', 'write_phot_dir',
                      'write_source_dir', 'write_wcs_dir',
                      'write_db_source_dir', 'write_db_source_calib_dir',
-                     'write_db_source_xmatch_dir']:
+                     'write_db_source_xmatch_dir',
+                     'write_db_solution_healpix_dir']:
             try:
                 setattr(self, attr, conf.get('Files', attr))
             except configparser.Error:
@@ -1636,8 +1638,18 @@ class Process:
                            level=2, event=77)
             return
 
+        if write_csv:
+            # Create output directory, if missing
+            if (self.write_db_solution_healpix_dir and
+                not os.path.isdir(self.write_db_solution_healpix_dir)):
+                self.log.write('Creating output directory {}'
+                               .format(self.write_db_solution_healpix_dir),
+                               level=4, event=77)
+                os.makedirs(self.write_db_solution_healpix_dir)
+
         self.log.write('Open database connection for writing to the '
-                       'solution table')
+                       'solution, solution_set, solution_healpix and '
+                       'scanner_pattern tables')
         platedb = PlateDB()
         platedb.assign_conf(self.conf)
         platedb.open_connection()
