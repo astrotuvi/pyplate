@@ -2202,6 +2202,10 @@ class Plate(OrderedDict):
                     self['jd_end'].append(expmeta['jd_end'][-1])
                     self['year_end'].append(expmeta['year_end'][-1])
 
+                    # Suppress ERFA warnings
+                    warnings.filterwarnings('ignore', message='Tried to get polar motions')
+                    warnings.filterwarnings('ignore', message='ERFA function')
+
                     # Check if exptimes exist for all sub-exposures
                     if (len(list(filter(None, expmeta['exptime']))) == 
                         expmeta['numexp']):
