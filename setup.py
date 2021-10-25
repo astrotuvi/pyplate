@@ -32,7 +32,7 @@ setup(
                         'Pillow',
                         'Deprecated'
                        ],
-    extras_require = {'ml': ['tensorflow'],
+    extras_require = {'ml': ['scikit-learn', 'tensorflow'],
                       'pgsql': ['psycopg2-binary'],
                       'mysql': ['pymysql']}
 )

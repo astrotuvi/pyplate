@@ -1448,7 +1448,7 @@ class SolveProcess:
         except Exception:
             numexp = 1
 
-        if numexp > 4:
+        if numexp > 4 and have_sklearn:
             coords = np.empty((nrows, 3))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
