@@ -13,6 +13,7 @@ import datetime as dt
 import numpy as np
 import ephem
 import pytimeparse
+import warnings
 from deprecated import deprecated
 from astropy import wcs
 from astropy.io import fits
@@ -160,7 +161,7 @@ _keyword_meta = OrderedDict([
     ('pix_size1', (float, False, None, 'PIXSIZE1', None)),
     ('pix_size2', (float, False, None, 'PIXSIZE2', None)),
     ('scan_software', (str, False, None, 'SCANSOFT', None)),
-    ('scan_gamma', (str, False, None, 'SCANGAM', None)),
+    ('scan_gamma', (float, False, None, 'SCANGAM', None)),
     ('scan_focus', (str, False, None, 'SCANFOC', None)),
     ('wedge', (str, False, None, 'WEDGE', None)),
     ('datescan', (str, False, None, 'DATESCAN', None)),
@@ -2018,6 +2019,10 @@ class Plate(OrderedDict):
 
         """
 
+        # Suppress ERFA warnings
+        warnings.filterwarnings('ignore', message='Tried to get polar motions')
+        warnings.filterwarnings('ignore', message='ERFA function')
+
         # By default, assume that date refers to observation time, not evening
         evening_date = False
 
@@ -2197,8 +2202,12 @@ class Plate(OrderedDict):
                     self['jd_end'].append(expmeta['jd_end'][-1])
                     self['year_end'].append(expmeta['year_end'][-1])
 
+                    # Suppress ERFA warnings
+                    warnings.filterwarnings('ignore', message='Tried to get polar motions')
+                    warnings.filterwarnings('ignore', message='ERFA function')
+
                     # Check if exptimes exist for all sub-exposures
-                    if (len(filter(None, expmeta['exptime'])) == 
+                    if (len(list(filter(None, expmeta['exptime']))) == 
                         expmeta['numexp']):
                         exptime_calc.append(sum(expmeta['exptime']))
                         jd_weighted = np.average(expmeta['jd_avg'],
@@ -2240,6 +2249,10 @@ class Plate(OrderedDict):
                             if tme_orig.count(':') == 1:
                                 tme_orig += ':00'
 
+                            # Handle time notation with ending colon
+                            if tme_orig.endswith(':'):
+                                tme_orig = tme_orig[:-1]
+
                             tsec = pytimeparse.parse(tme_orig)
 
                             if evening_date and tsec < 43200:
@@ -2260,6 +2273,10 @@ class Plate(OrderedDict):
                         if tms_orig:
                             if tms_orig.count(':') == 1:
                                 tms_orig += ':00'
+
+                            # Handle time notation with ending colon
+                            if tms_orig.endswith(':'):
+                                tms_orig = tms_orig[:-1]
 
                             tsec = pytimeparse.parse(tms_orig)
                             
@@ -2465,7 +2482,7 @@ class Plate(OrderedDict):
                     else:
                         exptime_calc.append(None)
 
-            if self['exptime'] == [] and filter(None, exptime_calc) != []:
+            if self['exptime'] == [] and list(filter(None, exptime_calc)) != []:
                 self['exptime'] = exptime_calc
 
         if self['ra_orig'] and self['dec_orig'] and self['date_orig']:
@@ -2556,6 +2573,10 @@ class Plate(OrderedDict):
                         self['hjd_weighted'].append(None)
 
         self['date'] = dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+
+        # Restore ERFA warnings
+        warnings.filterwarnings('default', message='Tried to get polar motions')
+        warnings.filterwarnings('default', message='ERFA function')
 
     # Create alias for compute_values
     calculate = compute_values
@@ -3458,7 +3479,7 @@ class PlateHeader(fits.Header):
             wcs_ind = list(self.values()).index(wcs_sep) + 1
             
             for c in wcshead.cards:
-                if c[0] == 'HISTORY':
+                if c[0] == 'HISTORY' or c[0] == '':
                     #self.insert(wcs_ind, ('COMMENT', c[1]))
                     self.insert(wcs_ind, c)
                     wcs_ind += 1

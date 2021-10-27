@@ -6,7 +6,7 @@ setup(
     url = 'https://github.com/astrotuvi/pyplate',
     license = 'Apache License, Version 2.0',
     author = 'Taavi Tuvikene',
-    author_email = 'taavi.tuvikene@to.ee',
+    author_email = 'taavi.tuvikene@ut.ee',
     description = 'A Python package for processing astronomical photographic plates',
     classifiers = ['Programming Language :: Python',
                    'Programming Language :: Python :: 3',
@@ -17,16 +17,22 @@ setup(
                   ],
     packages = ['pyplate'],
     install_requires = ['numpy>=1.7',
-                        'astropy>=1.0',
+                        'astropy',
+                        'scipy',
+                        'statsmodels',
+                        'healpy',
+                        'astroquery',
+                        'pyvo',
                         'ephem',
                         'pytimeparse',
                         'pytz',
                         'unicodecsv',
                         'unidecode',
+                        'PyYAML',
                         'Pillow',
                         'Deprecated'
                        ],
-    extras_require = {'solve': ['scipy', 'statsmodels', 'healpy', 'esutil'],
-                      'mysql': ['MySQL-python']}
+    extras_require = {'ml': ['scikit-learn', 'tensorflow'],
+                      'pgsql': ['psycopg2-binary'],
+                      'mysql': ['pymysql']}
 )
-

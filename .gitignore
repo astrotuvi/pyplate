@@ -37,6 +37,7 @@ htmlcov/
 .tox/
 .coverage
 .cache
+.pytest_cache
 nosetests.xml
 coverage.xml
 
@@ -52,3 +53,13 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# vim 
+*.sw[op]
+
+# local config
+*.loc
+*.local 
+
+# ignore sql files
+*.sql
