@@ -22,7 +22,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSplin
 from scipy.ndimage.filters import generic_filter
 from scipy.linalg import lstsq
 from collections import OrderedDict
-from ..database import PlateDB
+from ..database.database import PlateDB
 from ..conf import read_conf
 from .._version import __version__
 from .sources import crossmatch_cartesian

@@ -8,7 +8,7 @@ from astropy import units as u
 #from astroquery.gaia import Gaia
 from .solve import PlateSolution
 from ..conf import read_conf
-from ..database import PlateDB
+from ..database.database import PlateDB
 
 try:
     import configparser

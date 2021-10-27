@@ -3,7 +3,7 @@ import multiprocessing as mp
 import time
 from deprecated import deprecated
 from ..metadata import Archive, PlateHeader, read_conf
-from ..database import PlateDB
+from ..database.database import PlateDB
 from ..image import PlateConverter
 from .process import Process
 
