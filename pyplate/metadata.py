@@ -22,7 +22,7 @@ from astropy.time import Time, TimeDelta
 from astropy.coordinates import Angle, SkyCoord, EarthLocation
 from astropy import units
 from collections import OrderedDict
-from .database import PlateDB
+from .database.database import PlateDB
 from .conf import read_conf
 from ._version import __version__
 
