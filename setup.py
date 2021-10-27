@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name = 'pyplate',
@@ -15,7 +15,7 @@ setup(
                    'License :: OSI Approved :: Apache Software License',
                    'Topic :: Scientific/Engineering :: Astronomy'
                   ],
-    packages = ['pyplate'],
+    packages = find_packages(),
     install_requires = ['numpy>=1.7',
                         'astropy',
                         'scipy',

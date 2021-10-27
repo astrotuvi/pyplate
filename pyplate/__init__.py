@@ -1,6 +1,6 @@
-from . import database
 from . import metadata
 from . import image
+from . import database
 from . import conf
 from . import process
 from ._version import __version__
