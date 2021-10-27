@@ -1,0 +1,2 @@
+include pyplate/database/*.yaml
+include pyplate/process/artifact_model.h5
