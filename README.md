@@ -9,13 +9,17 @@ Install with basic requirements:
 
 `pip install pyplate`
 
-Add dependencies for astrometric and photometric calibration:
+Add dependencies for artifact classification and multi-exposure pattern finding:
 
-`pip install pyplate[solve]`
+`pip install pyplate[ml]`
+
+Add PostgreSQL support:
+
+`pip install pyplate[pgsql]`
 
 Add MySQL support:
 
-`pip install pyplate[solve,mysql]`
+`pip install pyplate[mysql]`
 
 Install development version from GitHub:
 
