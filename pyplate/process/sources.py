@@ -767,9 +767,11 @@ class SourceTable(Table):
 
                 solution['healpix_table'] = tab_sum
 
+        # Create SkyCoord from RA and Dec
+        coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
+
         # Find nearest neighbours
         if num_finite > 1:
-            coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
             _, ds2d, _ = match_coordinates_sky(coords, coords, nthneighbor=2)
             matchdist = ds2d.to(u.arcsec).value
             self['nn_dist'][ind_finite] = matchdist.astype(np.float32)
