@@ -1013,7 +1013,7 @@ class Process:
                     # extracted sources without PSF model
                     fn_cat = os.path.join(self.scratch_dir, 
                                           self.basefn + '.cat')
-                    t = Table.read(fn_cat, hdu=2)
+                    t = Table.read(fn_cat)
                     num_sources = len(t)
                     flux_peak = np.sort(t['FLUX_MAX'])[::-1]
 
