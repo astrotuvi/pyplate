@@ -86,7 +86,7 @@ class PhotometryProcess:
         cat_mag2 = sources['gaiaedr3_rpmag'].data
         plate_mag = sources['mag_auto'].data
         mag_corr = sources['natmag_correction'].data
-        mag_err = sources['natmag_error'].data
+        mag_err = sources['magerr_auto'].data
         # Replace nans with numerical values
         mag_corr[np.isnan(mag_corr)] = 0.
         mag_err[np.isnan(mag_err)] = 1.
@@ -143,7 +143,7 @@ class PhotometryProcess:
         mag_err_u = mag_err_u[ind_nofaint]
 
         # Iteration 1
-        cterm_list = np.arange(33) * 0.25 - 3.
+        cterm_list = np.arange(41) * 0.25 - 3.
         stdev_list = []
 
         for cterm in cterm_list:
@@ -153,8 +153,10 @@ class PhotometryProcess:
                                         return_sorted=True)
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = cat_mag - s(plate_mag_u) - mag_corr_u
-            #stdev_val = mag_diff.std()
-            stdev_val = np.sqrt(np.sum((mag_diff / mag_err_u)**2) / len(mag_diff))
+            stdev_val = (np.sqrt(np.sum((mag_diff / mag_err_u)**2)
+                                 / len(mag_diff))
+                         * np.sqrt(np.sum(mag_err_u**2)
+                                   / len(mag_diff)))
             stdev_list.append(stdev_val)
 
             # Store cterm data
@@ -183,7 +185,7 @@ class PhotometryProcess:
 
         try:
             cterm_min = cterm_extr[np.where((der2 > 0) & (cterm_extr > -2.5) &
-                                            (cterm_extr < 4.5))][0]
+                                            (cterm_extr < 5))][0]
         except IndexError:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72, solution_num=solution_num)
@@ -202,7 +204,7 @@ class PhotometryProcess:
         ind_good = ind1[ind_good1]
 
         # Iteration 2
-        cterm_list = np.arange(33) * 0.25 - 3.
+        cterm_list = np.arange(41) * 0.25 - 3.
         stdev_list = []
 
         frac = 0.2
@@ -219,8 +221,10 @@ class PhotometryProcess:
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = (cat_mag[ind_good] - s(plate_mag_u[ind_good])
                         - mag_corr_u[ind_good])
-            #stdev_val = mag_diff.std()
-            stdev_val = np.sqrt(np.sum((mag_diff / mag_err_u[ind_good])**2) / len(mag_diff))
+            stdev_val = (np.sqrt(np.sum((mag_diff / mag_err_u[ind_good])**2)
+                                 / len(mag_diff))
+                         * np.sqrt(np.sum(mag_err_u[ind_good]**2)
+                                   / len(mag_diff)))
             stdev_list.append(stdev_val)
 
             # Store cterm data
@@ -264,8 +268,8 @@ class PhotometryProcess:
             return None
 
         # Iteration 3
-        cterm_list = (np.arange(61) * 0.02 +
-                      round(cterm_min*50.)/50. - 0.6)
+        cterm_list = (np.arange(41) * 0.02 +
+                      round(cterm_min*50.)/50. - 0.4)
         stdev_list = []
 
         for cterm in cterm_list:
@@ -277,8 +281,10 @@ class PhotometryProcess:
             s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
             mag_diff = (cat_mag[ind_good] - s(plate_mag_u[ind_good])
                         - mag_corr_u[ind_good])
-            #stdev_val = mag_diff.std()
-            stdev_val = np.sqrt(np.sum((mag_diff / mag_err_u[ind_good])**2) / len(mag_diff))
+            stdev_val = (np.sqrt(np.sum((mag_diff / mag_err_u[ind_good])**2)
+                                 / len(mag_diff))
+                         * np.sqrt(np.sum(mag_err_u[ind_good]**2)
+                                   / len(mag_diff)))
             stdev_list.append(stdev_val)
 
             # Store cterm data
@@ -306,7 +312,7 @@ class PhotometryProcess:
         num_stars = len(mag_diff)
         iteration = 3
 
-        if cf[0] < 0 or cterm < -2 or cterm > 4:
+        if cf[0] < 0 or cterm < -2 or cterm > 5:
             if cf[0] < 0:
                 self.log.write('Color term fit not reliable!',
                                level=2, event=72, solution_num=solution_num)
@@ -315,7 +321,7 @@ class PhotometryProcess:
                                '({:.3f})!'.format(cterm),
                                level=2, event=72, solution_num=solution_num)
 
-            if cterm_min < -2 or cterm_min > 4:
+            if cterm_min < -2 or cterm_min > 5:
                 self.log.write('Color term from previous iteration '
                                'outside of allowed range ({:.3f})!'
                                ''.format(cterm_min),
