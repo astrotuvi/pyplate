@@ -5,6 +5,7 @@ from astropy.table import Table
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
 from scipy.ndimage.filters import generic_filter
+from scipy.optimize import curve_fit
 from collections import OrderedDict
 from ..conf import read_conf
 
@@ -22,6 +23,10 @@ except ImportError:
 
 def _rmse(residuals):
     return np.sqrt(np.mean(residuals**2))
+
+
+def _abscurve(x, x0, a, b, c):
+    return a * np.abs(x - x0) + b * (x - x0)**2 + c
 
 
 class PhotometryProcess:
@@ -111,17 +116,24 @@ class PhotometryProcess:
         mag_corr_u = mag_corr[uind1[uind2]]
         mag_err_u = mag_err[uind1[uind2]]
 
-        # Discard faint sources (within 1 mag from the plate limit)
+        # Discard faint sources (within 1 mag from the plate limit),
+        # if the number of sources is larger than 100
+        if len(plate_mag_u) > 100:
+            diff_from_limit = 1.
+        else:
+            diff_from_limit = 0.
+
         kde = sm.nonparametric.KDEUnivariate(plate_mag_u
                                              .astype(np.double))
         kde.fit()
         ind_dense = np.where(kde.density > 0.2*kde.density.max())[0]
         plate_mag_lim = kde.support[ind_dense[-1]]
-        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - 1.)[0]
+        ind_nofaint = np.where(plate_mag_u < plate_mag_lim - diff_from_limit)[0]
         num_nofaint = len(ind_nofaint)
 
         self.log.write('Determining color term: {:d} stars after discarding '
-                       'faint sources'.format(num_nofaint),
+                       'faint sources ({:.1f} mag from faint limit)'
+                       .format(num_nofaint, diff_from_limit),
                        double_newline=False, level=4, event=72,
                        solution_num=solution_num)
 
@@ -143,7 +155,7 @@ class PhotometryProcess:
         mag_err_u = mag_err_u[ind_nofaint]
 
         # Iteration 1
-        cterm_list = np.arange(41) * 0.25 - 3.
+        cterm_list = np.arange(45) * 0.25 - 4.
         stdev_list = []
 
         for cterm in cterm_list:
@@ -177,34 +189,39 @@ class PhotometryProcess:
                            solution_num=solution_num)
             return None
 
-        cf = np.polyfit(cterm_list, stdev_list, 4)
-        cf1d = np.poly1d(cf)
-        extrema = cf1d.deriv().r
-        cterm_extr = extrema[np.where(extrema.imag==0)].real
-        der2 = cf1d.deriv(2)(cterm_extr)
+        # Fit curve to stdev_list and get the cterm_min value
+        params, pcov = curve_fit(_abscurve, cterm_list, stdev_list)
+        perr = np.sqrt(np.diag(pcov))
+        cterm_min = params[0]
 
-        try:
-            cterm_min = cterm_extr[np.where((der2 > 0) & (cterm_extr > -2.5) &
-                                            (cterm_extr < 5))][0]
-        except IndexError:
+        self.log.write('Color term fit (iteration 1, num_stars = {:d}, '
+                       'min_stdev = {:.3f}, max_stdev = {:.3f}): '
+                       'parameters {:.4f} {:.4f} {:.4f} {:.4f}, '
+                       'errors {:.4f} {:.4f} {:.4f} {:.4f}'
+                       .format(len(mag_diff), min(stdev_list), max(stdev_list),
+                               *params, *perr),
+                       double_newline=False,
+                       level=4, event=72, solution_num=solution_num)
+
+        if cterm_min < -3 or cterm_min > 5:
             self.log.write('Color term outside of allowed range!',
                            level=2, event=72, solution_num=solution_num)
             return None
 
-        # Eliminate outliers (over 1 mag + sigma clip)
+        # Eliminate outliers (over 1.5 mag + sigma clip)
         cat_mag = cat_mag2_u + cterm_min * (cat_mag1_u - cat_mag2_u)
         z = sm.nonparametric.lowess(cat_mag, plate_mag_u,
                                     frac=frac, it=3, delta=0.2,
                                     return_sorted=True)
         s = InterpolatedUnivariateSpline(z[:,0], z[:,1], k=1)
         mag_diff = cat_mag - s(plate_mag_u) - mag_corr_u
-        ind1 = np.where(np.absolute(mag_diff) <= 1.)[0]
+        ind1 = np.where(np.absolute(mag_diff) <= 1.5)[0]
         flt = sigma_clip(mag_diff[ind1], maxiters=None)
         ind_good1 = ~flt.mask
         ind_good = ind1[ind_good1]
 
         # Iteration 2
-        cterm_list = np.arange(41) * 0.25 - 3.
+        cterm_list = np.arange(45) * 0.25 - 4.
         stdev_list = []
 
         frac = 0.2
@@ -246,24 +263,37 @@ class PhotometryProcess:
                            level=2, event=72, solution_num=solution_num)
             return None
 
-        cf, cov = np.polyfit(cterm_list, stdev_list, 2,
-                             w=1./stdev_list**2, cov=True)
-        cterm_min = -0.5 * cf[1] / cf[0]
-        cf_err = np.sqrt(np.diag(cov))
-        cterm_min_err = np.sqrt((-0.5 * cf_err[1] / cf[0])**2 +
-                                (0.5 * cf[1] * cf_err[0] / cf[0]**2)**2)
-        p2 = np.poly1d(cf)
-        stdev_fit_iter2 = p2(cterm_min)
+        # Fit curve to stdev_list and get the cterm_min value
+        params, pcov = curve_fit(_abscurve, cterm_list, stdev_list)
+        perr = np.sqrt(np.diag(pcov))
+        cterm_min = params[0]
+        cterm_min_err = perr[0]
+
+        self.log.write('Color term fit (iteration 2, num_stars = {:d}, '
+                       'min_stdev = {:.3f}, max_stdev = {:.3f}): '
+                       'parameters {:.4f} {:.4f} {:.4f} {:.4f}, '
+                       'errors {:.4f} {:.4f} {:.4f} {:.4f}'
+                       .format(len(mag_diff), min(stdev_list), max(stdev_list),
+                               *params, *perr),
+                       double_newline=False,
+                       level=4, event=72, solution_num=solution_num)
+
+        if cterm_min < -3 or cterm_min > 5:
+            self.log.write('Color term outside of allowed range!',
+                           level=2, event=72, solution_num=solution_num)
+            return None
+
+        stdev_fit_iter2 = np.nan
         stdev_min_iter2 = np.min(stdev_list)
         cterm_minval_iter2 = np.min(cterm_list)
         cterm_maxval_iter2 = np.max(cterm_list)
         num_stars_iter2 = len(mag_diff)
 
-        if cf[0] < 0 or min(stdev_list) < 0.01 or min(stdev_list) > 2:
+        if params[1] < 0 or min(stdev_list) < 0.01:
             self.log.write('Color term fit failed! '
-                           '(iteration 2, num_stars = {:d}, cf[0] = {:f}, '
+                           '(iteration 2, num_stars = {:d}, params[1] = {:f}, '
                            'min_stdev = {:.3f})'
-                           .format(len(mag_diff), cf[0], min(stdev_list)),
+                           .format(len(mag_diff), params[1], min(stdev_list)),
                            level=2, event=72, solution_num=solution_num)
             return None
 
@@ -312,7 +342,17 @@ class PhotometryProcess:
         num_stars = len(mag_diff)
         iteration = 3
 
-        if cf[0] < 0 or cterm < -2 or cterm > 5:
+        self.log.write('Color term fit (iteration 3, num_stars = {:d}, '
+                       'min_stdev = {:.3f}, max_stdev = {:.3f}, '
+                       'min_cterm = {:.3f}, max_cterm = {:.3f}): '
+                       'parameters {:.4f} {:.4f} {:.4f}, '
+                       'errors {:.4f} {:.4f} {:.4f}'
+                       .format(num_stars, min(stdev_list), max(stdev_list),
+                               cterm_minval, cterm_maxval, *cf, *cf_err),
+                       double_newline=False,
+                       level=4, event=72, solution_num=solution_num)
+
+        if cf[0] < 0 or cterm < -3 or cterm > 5:
             if cf[0] < 0:
                 self.log.write('Color term fit not reliable!',
                                level=2, event=72, solution_num=solution_num)
@@ -321,7 +361,7 @@ class PhotometryProcess:
                                '({:.3f})!'.format(cterm),
                                level=2, event=72, solution_num=solution_num)
 
-            if cterm_min < -2 or cterm_min > 5:
+            if cterm_min < -3 or cterm_min > 5:
                 self.log.write('Color term from previous iteration '
                                'outside of allowed range ({:.3f})!'
                                ''.format(cterm_min),
@@ -468,6 +508,14 @@ class PhotometryProcess:
             self.log.write('Determining color term using annular bins 1-3', 
                            level=3, event=72, solution_num=solution_num)
             cterm_mask = cal_mask & (self.sources['annular_bin'] <= 3)
+
+            if cterm_mask.sum() < 50:
+                self.log.write('Found {:d} calibration stars in bins 1-3, '
+                               'increasing area'.format(cterm_mask.sum()),
+                               level=4, event=72, solution_num=solution_num)
+                self.log.write('Determining color term using annular bins 1-6',
+                               level=3, event=72, solution_num=solution_num)
+                cterm_mask = cal_mask & (self.sources['annular_bin'] <= 6)
         else:
             self.log.write('Determining color term using annular bins 1-8', 
                            level=3, event=72, solution_num=solution_num)
