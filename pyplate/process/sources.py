@@ -545,20 +545,36 @@ class SourceTable(Table):
                              if sol['scamp_sigma_1'] is not None])
         sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in solutions
                              if sol['scamp_sigma_2'] is not None])
+        ndeg = np.array([sol['scamp_ndeg'] for sol in solutions
+                         if sol['scamp_sigma_1'] is not None])
+
+        # Keep values only for solutions with scamp_ndeg > 10
+        mask_ndeg = ndeg > 10
+        sigma1 = sigma1[mask_ndeg]
+        sigma2 = sigma2[mask_ndeg]
+        ndeg = ndeg[mask_ndeg]
 
         if len(sigma1) > 0 and len(sigma2) > 0:
-            mean_scamp_sigma = np.sqrt(sigma1.mean()**2 + sigma2.mean()**2)
+            # Calculate weighted mean of scamp_sigma over all solutions
+            wmean_sigma1 = (sigma1 * ndeg).sum() / ndeg.sum()
+            wmean_sigma2 = (sigma2 * ndeg).sum() / ndeg.sum()
+            mean_scamp_sigma = np.sqrt(wmean_sigma1**2 + wmean_sigma2**2)
+
+            # Increase sigma if the sum of scamp_ndeg < 30
+            if ndeg.sum() < 30:
+                mean_scamp_sigma = (30. / ndeg.sum()) * mean_scamp_sigma
+
+            # Use default value if the mean sigma is abnormally low
+            if (mean_scamp_sigma < 0.1 * mean_pixscale * u.pixel
+                and ndeg.mean() < 20):
+                mean_scamp_sigma = 2. * mean_pixscale * u.pixel
         else:
-            mean_scamp_sigma = 2. * u.arcsec
+            mean_scamp_sigma = 2. * mean_pixscale * u.pixel
 
         # Crossmatch sources and Gaia stars
         coords_plate = np.vstack((self['x_source'], self['y_source'])).T
         tolerance = ((5. * mean_scamp_sigma / mean_pixscale)
                      .to(u.pixel).value)
-
-        #if (5. * mean_scamp_sigma) < 2 * u.arcsec:
-        #    tolerance = ((2 * u.arcsec / mean_pixscale)
-        #                 .to(u.pixel).value)
 
         tolerance_arcsec = (5. * mean_scamp_sigma).to(u.arcsec).value
         self.log.write('Crossmatch tolerance: {:.2f} arcsec ({:.2f} pixels)'
