@@ -2246,7 +2246,9 @@ class Plate(OrderedDict):
                         t_date_orig = Time(date_orig, scale='tai')
 
                         if tme_orig:
-                            if tme_orig.count(':') == 1:
+                            if tme_orig.count(':') == 0:
+                                tme_orig += ':00:00'
+                            elif tme_orig.count(':') == 1:
                                 tme_orig += ':00'
 
                             # Handle time notation with ending colon
@@ -2271,7 +2273,9 @@ class Plate(OrderedDict):
                                                     precision=0).iso.split()[-1]
 
                         if tms_orig:
-                            if tms_orig.count(':') == 1:
+                            if tms_orig.count(':') == 0:
+                                tms_orig += ':00:00'
+                            elif tms_orig.count(':') == 1:
                                 tms_orig += ':00'
 
                             # Handle time notation with ending colon
