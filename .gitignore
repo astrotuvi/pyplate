@@ -63,3 +63,6 @@ target/
 
 # ignore sql files
 *.sql
+
+# VS Code
+.vscode/
