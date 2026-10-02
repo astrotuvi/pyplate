@@ -85,7 +85,7 @@ cd docs && make html        # Sphinx docs (published on readthedocs)
 
 `tests/test_db_*.py` and `tests/test_schema.py` are stale scripts (they import `pyplate.config.local` and `pyplate.db_pgsql`, which no longer exist) and need a live database; don't treat their failures as regressions.
 
-The version string lives in `pyplate/_version.py`; `setup.py` parses its last line.
+The version string lives in `pyplate/_version.py`; `pyproject.toml` reads it via `[tool.setuptools.dynamic]`.
 
 ## Architecture
 
@@ -100,7 +100,7 @@ Four subpackages/modules, all configured from a single INI file read via `conf.r
 
 Processing shells out to external programs via `subprocess`: SExtractor (`sex`), PSFEx, SCAMP, and astrometry.net (`solve-field`, `wcs-to-tan`). Paths are overridable in the `[Programs]` config section. Large reference catalogues and astrometry.net index files are read from directories in `[Files]`.
 
-Artifact classification uses a bundled Keras 3 model (`process/artifact_model.keras`; `artifact_model.h5` is the legacy format). Keras is an optional import guarded by `have_keras`. Note that `MANIFEST.in` currently only lists the `.h5` file.
+Artifact classification uses a bundled Keras 3 model (`process/artifact_model.keras`). Keras is an optional import guarded by `have_keras`.
 
 ### Logging
 

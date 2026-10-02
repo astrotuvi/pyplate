@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyplate"
+dynamic = ["version"]
+description = "A Python package for processing astronomical photographic plates"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Taavi Tuvikene", email = "taavi.tuvikene@ut.ee"},
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "numpy>=1.7",
+    "astropy",
+    "scipy",
+    "statsmodels",
+    "healpy",
+    "astroquery",
+    "pyvo",
+    "ephem",
+    "pytimeparse",
+    "pytz",
+    "unicodecsv",
+    "unidecode",
+    "PyYAML",
+    "Pillow",
+    "Deprecated",
+]
+
+[project.optional-dependencies]
+ml = ["scikit-learn", "tensorflow"]
+pgsql = ["psycopg2-binary"]
+mysql = ["pymysql"]
+
+[project.urls]
+Homepage = "https://github.com/astrotuvi/pyplate"
+
+[tool.setuptools.dynamic]
+version = {attr = "pyplate._version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["pyplate*"]
+
+[tool.setuptools.package-data]
+"pyplate.database" = ["*.yaml"]
+"pyplate.process" = ["artifact_model.keras"]
