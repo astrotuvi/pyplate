@@ -103,8 +103,8 @@ class StarCatalog(Table):
         warnings.filterwarnings('ignore', module='astropy.io.votable')
 
         # Construct query string
-        pos_query_str = ('CONTAINS(POINT(\'ICRS\',ra,dec), '
-                         'CIRCLE(\'ICRS\',{:f},{:f},{:f}))=1')
+        pos_query_str = ('1=CONTAINS(POINT(\'ICRS\',ra,dec), '
+                         'CIRCLE(\'ICRS\',{:f},{:f},{:f}))')
         pos_query = (pos_query_str
                      .format(skycoord.ra.to(u.deg).value,
                              skycoord.dec.to(u.deg).value,

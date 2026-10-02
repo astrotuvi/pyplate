@@ -795,7 +795,7 @@ class Process:
         """
 
         self.log.write('Extracting sources from image', level=3, event=20)
-        sex_ver = (sp.check_output([self.sextractor_path, '-v']).strip()
+        sex_ver = (sp.check_output([self.sextractor_path, '--version']).strip()
                    .decode('utf-8'))
         self.log.write('Using {}'.format(sex_ver), level=4, event=20)
 
@@ -1507,7 +1507,7 @@ class Process:
             return
 
         # Read model
-        fn_model = os.path.join(os.path.dirname(__file__), 'artifact_model.h5')
+        fn_model = os.path.join(os.path.dirname(__file__), 'artifact_model.keras')
         model = load_model(fn_model)
 
         # Read inverted FITS file

@@ -930,7 +930,7 @@ class PhotometryProcess:
             residuals2 = np.zeros(num_valid)
 
             for i in np.arange(num_valid):
-                residuals2[i] = residuals[i] - s_corr(X[i], Y[i])
+                residuals2[i] = residuals[i] - s_corr.ev(X[i], Y[i])
 
             # Create magnitude bins
             plate_mag_srt = np.sort(plate_mag_u)
@@ -1023,7 +1023,7 @@ class PhotometryProcess:
             # large input arrays
             for i in np.arange(num_solstars):
                 # Apply first correction (dependent only on coordinates)
-                natmag_corr[i] = s_corr(xsrc[i], ysrc[i])
+                natmag_corr[i] = s_corr.ev(xsrc[i], ysrc[i])
 
                 # Apply second correction (dependent on mag_auto)
                 if s_magcorr is not None:

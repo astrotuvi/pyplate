@@ -143,7 +143,7 @@ def valid_wcs_header(header, imwidth, imheight):
     if fov1 < 1e-3 or fov2 < 1e-3:
         return False
 
-    ratio = (fov1 / fov2) / (np.float(imwidth) / np.float(imheight))
+    ratio = (fov1 / fov2) / (float(imwidth) / float(imheight))
 
     if ratio > 0.95 and ratio < 1.05:
         return True
@@ -1291,7 +1291,7 @@ class SolveProcess:
         xy_mean_exp[:,1] -= xy_mean_exp[0,1]
 
         # Find locations of pattern and assign sources to exposures
-        exp_num = np.zeros(len(coords), dtype=np.int)
+        exp_num = np.zeros(len(coords), dtype=int)
         kdt_coords = KDT(coords[:,:2])
         xy_found = np.empty((0, 2))
 
@@ -2037,8 +2037,7 @@ class SolveProcess:
             fn_xml = os.path.join(self.scratch_dir, fn_xml)
             warnings.filterwarnings('ignore', message='.*W42.*',
                                     category=votable.exceptions.VOTableSpecWarning)
-            scamp_stats = votable.parse_single_table(fn_xml,
-                                                     pedantic=False).to_table()
+            scamp_stats = votable.parse_single_table(fn_xml, verify='warn').to_table()
             scamp_ndeg = scamp_stats['NDeg_Reference'][0]
 
             if scamp_ndeg > 5:
@@ -2338,7 +2337,7 @@ class SolveProcess:
         t['axis'] = np.append(np.full(len(xx), 1), np.full(len(yy), 2))
         t['coord'] = np.append(xx, yy)
         t['shift'] = np.append(xx_pattern, yy_pattern)
-        t['extrapolated'] = np.append(xx_extra, yy_extra).astype(np.int)
+        t['extrapolated'] = np.append(xx_extra, yy_extra).astype(int)
         self.pattern_table = t
 
         # Create new array for xy coordinates of reference stars
@@ -2456,7 +2455,7 @@ class SolveProcess:
             fn_xml = os.path.join(self.scratch_dir, fn_xml)
             warnings.filterwarnings('ignore', message='.*W42.*',
                                     category=votable.exceptions.VOTableSpecWarning)
-            scamp_stats = votable.parse_single_table(fn_xml, pedantic=False).to_table()
+            scamp_stats = votable.parse_single_table(fn_xml, verify='warn').to_table()
             scamp_ndeg = scamp_stats['NDeg_Reference'][0]
 
             if scamp_ndeg > 5:
