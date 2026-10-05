@@ -1,0 +1,732 @@
+# PyPlate redesign
+
+This document describes the planned redesign of the PyPlate package. It
+records the decisions taken, the target package structure, the order of work
+and how each step is verified. Section 10 lists developments that are planned
+but deliberately left out of the design for now.
+
+Terms used:
+
+- **DDL** (Data Definition Language): SQL statements that define the database
+  structure (`CREATE`/`DROP`/`ALTER TABLE`, `CREATE INDEX`, triggers).
+- **Upsert**: insert a row, or update it if a row with the same key already
+  exists, in a single statement.
+
+## 1. Goals and agreed decisions
+
+| # | Decision |
+|---|---|
+| 1 | `metadata.py` becomes a `metadata/` subpackage with one module per class. |
+| 2 | Metadata classes `Archive`, `Plate`, `Exposure`, `SubExposure`, `Scan`, `Preview`, `Logbook` and `Logpage` have exactly the columns of their database table as attributes (excluding `timestamp_insert`/`timestamp_update`). No name mapping exists between Python and the database. |
+| 3 | `plate_id` (and every other `*_id`) is the integer database key. `plate_num` is the plate identifier from the input files. |
+| 4 | Clean break for configuration files: no deprecated aliases. A key that is not accepted in its section is an error. |
+| 5 | The number of exposures is worked out as in the current code: `numexp` from the inputs, adjusted by the number of original start times (4.3). |
+| 6 | Two archive classes: `Archive` (the table row) and `ArchiveReader` (reads the input files). |
+| 7 | Database backends: PostgreSQL, MySQL and a new SQLite backend. |
+| 8 | The schema YAML moves to a backend-neutral format. The code targets DR5 (`applause_dr5.yaml`) directly. The table name `exposure_sub` is kept. |
+| 9 | Crossmatching moves to its own package with a single matcher (`NearestMatcher`, the current behaviour). |
+| 10 | Photometry is not restructured. It only gets the changes needed to work with the new inputs, result classes and DR5 column names; it is reworked later (section 10). |
+| 11 | `process/` remains. Long functions outside photometry are split, steps pass explicit inputs, the number of class attributes goes down, and dead code is removed. |
+
+## 2. Package layout
+
+```
+pyplate/
+  __init__.py
+  _version.py
+  config.py                 typed config sections, parsed once from the INI file
+  image.py                  PlateConverter (TIFF → FITS, previews)
+  metadata/
+    __init__.py             re-exports the public classes
+    base.py                 DbRecord base: to_row(), from_row(), columns()
+    archive.py              Archive
+    archive_reader.py       ArchiveReader
+    plate.py                Plate
+    exposure.py             Exposure
+    subexposure.py          SubExposure
+    scan.py                 Scan
+    preview.py              Preview
+    logbook.py              Logbook
+    logpage.py              Logpage
+    timeutils.py            ST→UT, mid/weighted times, JD/year/HJD
+    codes.py                object-type and method code tables
+    header.py               PlateHeader + the one field → FITS keyword table
+    readers/
+      wfpdb.py              WFPDB maindata / quality / notes / observer
+      csv.py                CSV files mapped by column name
+      fits.py               values from an existing FITS header
+      exif.py               image metadata for Preview / Logpage
+  database/
+    __init__.py
+    database.py             PlateDB: generic insert / insert_many / update / upsert / lookups
+    backend.py              Backend interface
+    db_pgsql.py
+    db_mysql.py
+    db_sqlite.py
+    schema.py               neutral YAML → Schema object
+    ddl.py                  Schema → CREATE / DROP / INDEX / TRIGGER SQL for each backend
+    applause_dr4.yaml       converted to neutral format (kept to check the generated SQL)
+    applause_dr5.yaml       the target schema
+  process/
+    __init__.py
+    context.py              ProcessContext
+    process.py              Process: orchestrator
+    pipeline.py             PlatePipeline: single_image(), parallel_run()
+    log.py                  ProcessLog
+    output.py               writing results to the database / CSV
+    extraction.py           SExtractor / PSFEx runs, building the source table
+    sources.py              SourceTable + coordinate processing, annular bins, edge flags
+    catalog.py              StarCatalog (Gaia only)
+    artifacts.py            classifying artifacts with the Keras model
+    astrometry.py           AstrometryNetIndex (unchanged)
+    photometry.py           PhotometryProcess: current code, adapted only (6.6)
+    solve/
+      __init__.py
+      solve.py              SolveProcess: top-level flow
+      anet.py               astrometry.net wrapper
+      scamp.py              SCAMP wrapper + refinement
+      multiexp.py           finding multi-exposure and scanner patterns
+      solution.py           SolutionSet, Solution, ScannerPattern
+    crossmatch/
+      __init__.py
+      reference.py          ReferenceStars: catalogue moved to the plate epoch and projected
+      pairs.py              all source–star pairs within the search radius
+      tolerance.py          match radius from the astrometric errors
+      matcher.py            Matcher interface, Association
+      nearest.py            NearestMatcher
+```
+
+Removed:
+
+- `conf.py`, replaced by `config.py`;
+- the Python 2 compatibility code (`unicode`, `ConfigParser`, `unicodecsv`);
+- the aliases `ArchiveMeta`, `PlateMeta`, `LogbookMeta`, `LogpageMeta`, `PreviewMeta`;
+- `Process.get_reference_catalogs()` (about 360 lines, never called) and the
+  UCAC4 / APASS / Tycho-2 attributes and settings in `process.py`, `solve.py`
+  and `sources.py`;
+- the settings left over from the removed sub-field recursion:
+  `subfield_distort`, `max_recursion_depth`, `force_recursion_depth`;
+- the stale `tests/test_db_*.py` and `tests/test_schema.py` scripts.
+
+## 3. Configuration (`config.py`)
+
+The INI file is parsed once into frozen dataclasses:
+
+| Section dataclass | Contents |
+|---|---|
+| `FilesConfig` | input and output directories, file names |
+| `ProgramsConfig` | paths to `sex`, `psfex`, `scamp`, `solve-field`, `wcs-to-tan` |
+| `DatabaseConfig` | `rdbms`, host / port / socket / file, user, password, schema |
+| `ArchiveConfig` | `[Archive]` columns + list of logbook sections |
+| `CsvConfig` | for each CSV file: column → position, `csv_list_delimiter`, `csv_timezone` |
+| `MetadataConfig` | `evening_date`, `[Keyword values]`, `[Keyword lookup]` |
+| `ExtractionConfig` | thresholds, filter, PSF settings, `circular_film` |
+| `SolveConfig` | `sip`, `skip_bright`, `distort`, `plate_epoch`, solve settings |
+| `CrossmatchConfig` | match-radius settings |
+| `PipelineConfig` | which steps and outputs are switched on |
+
+- A `Config` object holds all the sections. Each component receives only its
+  own section(s). This replaces every `assign_conf()` method and its
+  `try/except configparser.Error` blocks.
+- Validation: each dataclass lists its accepted keys. Any other key in any
+  section raises an error naming the section and key. In metadata sections
+  (`[Archive]`, logbook sections, CSV sections, `[Keyword values]`) the
+  accepted keys are the column names of the target classes, plus the parsing
+  settings. The exception is a lookup section named in `[Keyword lookup]`,
+  whose keys are data values rather than settings.
+
+Example:
+
+```ini
+[Archive]
+archive_id = 7
+archive_name = Lippert-Astrograph
+institute = Hamburger Sternwarte
+logbooks = LB1, LB2
+
+[LB1]
+logbook_num = 1
+logbook_title = Journal I
+
+[Files]
+csv_dir = data
+plate_csv = my_plates.csv
+scan_csv = my_scans.csv
+
+[my_plates.csv]
+csv_list_delimiter = ;
+plate_num = 1
+date_orig_start = 2
+time_orig_start = 3
+time_orig_end = 4
+numexp = 5
+exptime = 6
+observer = 7
+
+[my_scans.csv]
+filename_scan = 1
+plate_num = 2
+scan_author = 3
+scan_date = 4
+
+[Keyword values]
+observatory = Astrophysikalische Observatorium Potsdam
+site_longitude = 13.06417
+```
+
+## 4. Metadata subpackage
+
+### 4.1 Record classes
+
+Every record class is a `@dataclass` that inherits from `DbRecord`:
+
+```python
+class DbRecord:
+    table: ClassVar[str]
+    def columns(cls) -> list[str]            # dataclass fields that are columns
+    def to_row(self) -> dict[str, Any]       # column → value
+    def from_row(cls, row) -> Self
+```
+
+| Class | Table | Related records (not columns) |
+|---|---|---|
+| `Archive` | `archive` | `logbooks: list[Logbook]` |
+| `Plate` | `plate` | `exposures`, `scans`, `previews`, `logpages` |
+| `Exposure` | `exposure` | `subexposures: list[SubExposure]` |
+| `SubExposure` | `exposure_sub` | — |
+| `Scan` | `scan` | — |
+| `Preview` | `preview` | — |
+| `Logbook` | `logbook` | — |
+| `Logpage` | `logpage` | — |
+
+- The fields are written out explicitly, which gives typing, editor
+  completion and docstrings. A test checks them against `applause_dr5.yaml`.
+- `plate_logpage` is written from `plate.logpages`, with `logpage_order`
+  taken from the list position.
+
+Values that have no column:
+
+| Kind | Examples | Where it goes |
+|---|---|---|
+| Parsing intermediates | `tz_orig`, UT/ST start/end strings, `jd_avg_orig` | Local to the readers |
+| Derived values | object-type text, method text, sexagesimal RA/Dec, ISO dates for FITS | Read-only properties or `PlateHeader` |
+| Settings written only to the header | `licence`, `detector`, acknowledgements | `PlateHeader` reads them from config |
+| Links to other tables | former `fn_pre`, `fn_cover`, `fn_log` | `plate.previews`, `plate.logpages` |
+| Raw FITS structure | `bitpix`, `bscale`, `bzero` | Local to the FITS reader; `Scan` gets `naxis1/2`, `minval`, `maxval` |
+
+### 4.2 Archive and ArchiveReader
+
+```python
+@dataclass
+class Archive(DbRecord):
+    table = 'archive'
+    archive_id: int
+    archive_name: str | None = None
+    institute: str | None = None
+    logbooks: list[Logbook] = field(default_factory=list)
+```
+
+```python
+class ArchiveReader:
+    def __init__(self, cfg: Config)          # reads WFPDB / CSV files named in the config
+    archive: Archive                         # built from [Archive] + logbook sections
+    def get_plate(self, plate_num=None, wfpdb_id=None, filename_scan=None) -> Plate
+    def iter_plates(self) -> Iterator[Plate]
+    def iter_scans(self) -> Iterator[Scan]
+    def iter_previews(self) -> Iterator[Preview]
+    def iter_logpages(self) -> Iterator[Logpage]
+```
+
+- `archive_id` is set in one place only: `ArchiveReader` copies it into every
+  record it creates; input files never supply it.
+- The order of precedence is unchanged: WFPDB maindata → quality → observer →
+  notes → plate CSV → scan CSV → `[Keyword values]` → `[Keyword lookup]`.
+- How a CSV column maps to a class: a plate CSV fills `Plate` and `Exposure`,
+  and `Plate` wins where both have the name. A scan CSV fills `Scan`. Writing
+  `exposure.<column>` targets the exposure explicitly (for example
+  `exposure.method_code`).
+- Database IDs are never read from input files. They are set when the record
+  is written, or looked up in the database.
+
+### 4.3 Exposures and sub-exposures
+
+`ArchiveReader` decides the number of exposures after merging all inputs,
+using the rule of the current code:
+
+1. Start from `numexp` in the inputs, default 1.
+2. If `date_orig_start` is given, count the `time_orig_start` values; no
+   values count as 1.
+3. Change `numexp` to that count if the count is larger than `numexp`, or
+   smaller but greater than 1.
+4. With no date, `numexp` stays as given.
+
+| `numexp` given | Start times | Final `numexp` |
+|---|---|---|
+| 1 | 3 | 3 |
+| 4 | 2 | 2 |
+| 4 | 1 | 4 |
+| 4 | 0 | 4 |
+| 2 | 3, no date | 2 |
+
+The reader then creates `numexp` `Exposure` objects and spreads each
+per-exposure field with *n* values as in the current code:
+
+| *n* | Fields | Result |
+|---|---|---|
+| ≥ `numexp` | any | one value per exposure; extra values ignored |
+| 1 | `time_orig_start`, `time_orig_end`, `exptime` | first exposure only, the rest `None` |
+| 1 | everything else | copied to every exposure |
+| other | any | values by position, missing ones `None` |
+
+`Exposure.num_sub` comes from the `|`-separated times in an exposure's time
+string, with `len(subexposures) == num_sub`.
+
+### 4.4 Computations
+
+The current `Plate.compute_values()` (570 lines) becomes:
+
+- `Exposure.compute_times(site, evening_date)`: `ut_*`, `jd_*`, `year_*`,
+  `hjd_*` (start / mid / weighted / end). Weighted values come from the
+  sub-exposures.
+- `Exposure.compute_coords()`: `ra_icrs`/`dec_icrs` from `ra_orig`/`dec_orig`.
+- `SubExposure.compute_times(site, …)`.
+- `Plate.compute_values()`: loops over the exposures.
+- `timeutils.py`: pure functions (ST→UT, time-zone handling, HJD).
+
+### 4.5 PlateHeader
+
+`PlateHeader(fits.Header)` is built with
+`PlateHeader.from_metadata(plate, scan, cfg)`. One table in `header.py` lists,
+for each FITS keyword: the source field, a per-exposure flag (`DT-OBSn`, …)
+and the comment. That table replaces the old `_keyword_meta` and most of the
+300-line `PlateHeader.__init__`. WCS insertion and writing to a file or FITS
+stay as methods.
+
+## 5. Database
+
+### 5.1 Layers
+
+```python
+class Backend(Protocol):
+    placeholder: str                         # '%s' or '?'
+    def connect(self, cfg) -> None
+    def qualify(self, table) -> str          # schema.table, db.table, or table
+    def execute(self, sql, params) -> Any
+    def executemany(self, sql, rows) -> None
+    def insert_returning_id(self, table, row, id_col) -> int
+    def upsert(self, table, row, key_cols) -> None
+    def ddl(self, schema: Schema) -> list[str]
+```
+
+`PlateDB` works the same for every backend:
+
+- `insert(table, row)`, `insert_many(table, rows)`, `update(table, row, key)`,
+  `upsert(…)`;
+- `write_archive(archive)`, an upsert on `archive_id`;
+- `write_plate(plate)`, which writes the plate, exposures, sub-exposures,
+  scans, previews and plate–logpage links;
+- `write_logbook(logbook)`, `write_logpage(logpage)`;
+- result writers, called from `process/output.py`;
+- ID lookups by `plate_num`, `wfpdb_id`, `filename_scan` and so on.
+
+`to_row()` supplies the columns, so all hand-written column loops go away.
+
+Upsert syntax for each backend:
+
+```sql
+-- PostgreSQL and SQLite
+INSERT INTO archive (archive_id, archive_name, institute)
+VALUES (...)
+ON CONFLICT (archive_id) DO UPDATE
+  SET archive_name = EXCLUDED.archive_name,
+      institute = EXCLUDED.institute;
+
+-- MySQL
+INSERT INTO archive (archive_id, archive_name, institute)
+VALUES (...)
+ON DUPLICATE KEY UPDATE
+  archive_name = VALUES(archive_name),
+  institute = VALUES(institute);
+```
+
+From MySQL 8.0.20, `VALUES()` in that clause is deprecated in favour of a row
+alias (`... AS new ON DUPLICATE KEY UPDATE archive_name = new.archive_name`).
+The MySQL backend uses the form the production server supports.
+
+### 5.2 Backends
+
+- PostgreSQL (`psycopg2`) and MySQL (`pymysql`): unchanged in what they do,
+  rewritten to the `Backend` interface.
+- SQLite (standard-library `sqlite3`):
+  - no schema prefix;
+  - WAL mode and a busy timeout, so `parallel_run()` workers can write one
+    after another;
+  - `INSERT … RETURNING` (SQLite ≥ 3.35) or `lastrowid`;
+  - timestamps stored as ISO text;
+  - also used for the in-memory database tests.
+
+### 5.3 Neutral schema format
+
+```yaml
+schema: applause_dr5
+tables:
+- name: exposure
+  timestamps: true
+  primary_key: [exposure_id]
+  columns:
+  - {name: exposure_id, type: serial}
+  - {name: plate_id,    type: int, unsigned: true, null: false}
+  - {name: ra_icrs,     type: double}
+  - {name: object_name, type: varchar(80)}
+  indexes:
+  - {name: plate_ind, columns: [plate_id]}
+```
+
+- Types: `serial`, `tinyint`, `smallint`, `int`, `bigint`, `real`, `double`,
+  `bool`, `char(n)`, `varchar(n)`, `text`, `date`, `datetime`, `timestamp`,
+  plus `unsigned`, `null` and `default`.
+- Per-backend escape hatch: `pgsql:`, `mysql:` or `sqlite:` keys for the rare
+  column that needs it.
+- Generated, not written by hand: `timestamps: true` adds
+  `timestamp_insert`/`timestamp_update` and the update triggers for each
+  backend.
+- Primary keys: generated as `ALTER TABLE … ADD CONSTRAINT` for PostgreSQL
+  and MySQL, and inside `CREATE TABLE` for SQLite.
+- Check: DR4, converted to this format, must generate the same PostgreSQL and
+  MySQL SQL as the current code.
+
+### 5.4 DR5 content changes compared with DR4
+
+| Change | Tables |
+|---|---|
+| `gaiaedr3_id` → `gaia_id`, `gaiaiedr3_gmag` → `gaia_gmag` (fixes the typo), `gaiaedr3_bp_rp` → `gaia_bp_rp`, `gaiaedr3_dist` → `gaia_dist`, `gaiaedr3_neighbors` → `gaia_neighbors` | `source_calib`, `source_xmatch` |
+| `num_gaia_edr3` → `num_gaia` | `solution`, `phot_calib`, `process` |
+| new `gaia_release varchar(10)` | `process` |
+| `exposure_sub` name kept; `flag_xmatch` kept | — |
+
+The schema additions for blends and photometry methods are decided with those
+developments (section 10).
+
+## 6. Process subpackage
+
+### 6.1 Shared state
+
+```python
+@dataclass
+class ProcessContext:
+    cfg: Config
+    filename: str
+    plate: Plate
+    scan: Scan
+    header: PlateHeader
+    imwidth: int
+    imheight: int
+    plate_epoch: float
+    work_dir: Path
+    log: ProcessLog
+    record: ProcessRecord        # the `process` table row (columns), updated as steps finish
+```
+
+Steps receive the context plus explicit inputs and return result objects.
+Steps no longer pass state around by copying each other's attribute
+dictionaries (`__dict__.update`).
+
+### 6.2 Orchestrator
+
+```python
+class Process:
+    ctx: ProcessContext
+    sources: SourceTable | None
+    solution: SolutionSet | None
+    association: Association | None
+    phot_calib: list[PhotCalib] | None
+
+    def setup(self)
+    def invert_plate(self)
+    def extract_sources(self)
+    def classify_artifacts(self)
+    def solve_plate(self)
+    def crossmatch(self)
+    def calibrate_photometry(self)   # current depth loop, adapted only (6.6)
+    def finish(self)
+```
+
+`Process` drops from about 215 attribute assignments to the context plus four
+results. `PlatePipeline.single_image()` runs:
+
+1. `ArchiveReader` → `Plate`
+2. → `PlateHeader`
+3. → `Process`
+4. → the steps
+5. → `output.write_results(db, process)`
+
+`parallel_run()` stays as it is.
+
+### 6.3 Result objects follow the same naming rule
+
+| Object | Table |
+|---|---|
+| `ProcessRecord` | `process` |
+| `SolutionSet` (was `PlateSolution`) | `solution_set` |
+| `Solution` (was `AstrometricSolution`) | `solution` |
+| `ScannerPattern` | `scanner_pattern` |
+| `PhotCalib`, `PhotCalibCurve` | `phot_calib`, `phot_calib_curve` |
+| `SourceTable` columns | `source`, `source_calib` |
+| `Association.neighbors` columns | `source_xmatch` |
+
+`SourceTable` may have extra working columns. The writer selects only each
+table's columns.
+
+### 6.4 Splitting the long functions (photometry excluded)
+
+| Current | Becomes |
+|---|---|
+| `Process.extract_sources` (~720 lines) | `extraction.py`: `write_sextractor_config`, `run_sextractor`, `run_psfex`, `build_source_table`; `sources.py`: `compute_annular_bins`, `flag_edge_sources`, `apply_psf_coordinates` |
+| `SolveProcess.solve_plate` (~260) | a loop over `find_next_solution()` + `multiexp.find_pattern()` |
+| `find_astrometric_solution` (~585) | `select_solve_sources` (by exposure number, by nearest-neighbour pattern for multiple exposures, or in force mode); `anet.solve_field` (writes the source list and backend config, runs `solve-field`, retries without SIP); `Solution.from_anet`; `select_reference_stars`; `scamp.refine` |
+| `improve_astrometric_solutions` (~370) | `scamp.refine`, `scamp.parse_results` |
+| `find_multiexp_pattern` (~235) | `multiexp.py` helpers |
+| `SourceTable.crossmatch_gaia` (~230) | the `crossmatch/` package |
+
+`ProcessLog` moves to `process/log.py`. Event and level numbers stay as they
+are.
+
+### 6.5 Crossmatching
+
+Crossmatching decides which Gaia stars belong to which plate sources. The
+current `SourceTable.crossmatch_gaia()` does this in one method and stores the
+result in two places: the best match goes into source-table columns, and every
+nearby star goes into a separate table (`neighbors_gaia`), which is written to
+`source_xmatch`. The redesign keeps exactly this result. It is produced by a
+separate package and collected in one object, `Association`.
+
+#### Steps
+
+```python
+refs = ReferenceStars.from_catalog(catalog, solution, ctx)    # reference.py
+match_radius, search_radius = tolerance.radii(solution)       # tolerance.py
+pairs = find_pairs(sources, refs, search_radius)              # pairs.py
+association = NearestMatcher(match_radius).associate(sources, refs, pairs)
+sources.add_matches(association, refs)
+```
+
+1. **Reference stars** (`reference.py`): Gaia positions are moved to the
+   plate epoch with proper motions and converted to pixel coordinates with
+   each solution's WCS. Only stars inside the image are kept. On a plate with
+   several exposures a star appears once per solution, so a reference star is
+   identified by `(gaia_id, solution_num)`.
+2. **Radii** (`tolerance.py`): the current SCAMP-sigma logic gives two radii:
+   - the match radius (5σ), within which a star can be the match of a source;
+   - the search radius (20σ, at least 5″), within which a star counts as a
+     neighbour.
+3. **Pairs** (`pairs.py`): every source–star pair closer than the search
+   radius, with its distance.
+4. **Matching** (`nearest.py`): `NearestMatcher` picks, for each source, the
+   nearest reference star within the match radius, as the current code does.
+   It returns an `Association`.
+5. **Copying to the source table**: `SourceTable.add_matches()` copies the
+   match and the matched star's catalogue values into the source columns. The
+   number of matches per solution is stored in `Solution.num_gaia`.
+   Coordinates are then processed again, as now, because matches may change a
+   source's `solution_num`.
+
+#### The `Association` object
+
+```python
+class Matcher(Protocol):
+    def associate(self, sources: SourceTable, refs: ReferenceStars,
+                  pairs: Table) -> Association: ...
+
+@dataclass
+class Association:
+    matches: Table      # one row per matched source
+    neighbors: Table    # one row per source–star pair within the search radius
+```
+
+`matches`: the best match of each source; sources without a match have no
+row.
+
+| Column | Meaning |
+|---|---|
+| `source_num` | plate source |
+| `solution_num` | solution (exposure) the matched star belongs to |
+| `gaia_id` | matched Gaia star |
+| `gaia_dist` | distance between source and star (arcsec) |
+| `match_radius` | match radius used (arcsec) |
+| `gaia_neighbors` | number of Gaia stars within the search radius |
+
+`neighbors`: all source–star pairs within the search radius, including the
+match. This table is written to `source_xmatch` unchanged.
+
+| Column | Meaning |
+|---|---|
+| `source_num` | plate source |
+| `gaia_id` | Gaia star |
+| `solution_num` | solution the star's position comes from |
+| `dist` | distance between source and star (arcsec) |
+| `x_gaia`, `y_gaia` | star's position on the plate (pixels) |
+| `flag_xmatch` | 1 if this pair is the source's match, otherwise 0 |
+
+Example: source 17 lies near three Gaia stars, and the nearest one is within
+the match radius.
+
+`matches`:
+
+| source_num | solution_num | gaia_id | gaia_dist | match_radius | gaia_neighbors |
+|---|---|---|---|---|---|
+| 17 | 1 | 4057…221 | 0.8 | 2.5 | 3 |
+
+`neighbors`:
+
+| source_num | gaia_id | solution_num | dist | x_gaia | y_gaia | flag_xmatch |
+|---|---|---|---|---|---|---|
+| 17 | 4057…221 | 1 | 0.8 | 1032.4 | 877.1 | 1 |
+| 17 | 4057…305 | 1 | 4.6 | 1035.0 | 879.9 | 0 |
+| 17 | 4057…118 | 1 | 7.9 | 1028.7 | 873.0 | 0 |
+
+#### Where the results end up
+
+| Result | Destination |
+|---|---|
+| `matches` + catalogue values of the matched star (`gaia_gmag`, `gaia_bp_rp`, BP and RP magnitudes) | `SourceTable` columns; written to `source_calib` |
+| `neighbors` | `source_xmatch` |
+| number of matches per solution | `Solution.num_gaia`; written to `solution` |
+
+Photometry reads the matches from the source table, as now. A source with
+`gaia_neighbors == 1` has a single Gaia star nearby and is a candidate
+calibration star.
+
+#### Why a separate object
+
+`SourceTable` no longer does any matching; it only receives the result. The
+matching method can be replaced without changing the source table, photometry
+or database writing: any matcher only has to return the two tables above. A
+future blend-aware matcher (section 10) can mark several stars per source in
+`neighbors` with the same structure.
+
+### 6.6 Photometry (adapted only)
+
+`photometry.py` (`calibrate_photometry_gaia`, `evaluate_color_term`) and
+`Process.calibrate_photometry` keep their structure. Changes:
+
+1. Inputs: `PhotometryProcess(ctx, sources, solution)` replaces
+   `photproc.__dict__.update(self.__dict__)`. It uses `log`, `basefn`,
+   `write_phot_dir`, the plate header, the sources and the solution set.
+2. DR5 column names: `gaiaedr3_*` → `gaia_*`, `num_gaia_edr3` → `num_gaia`.
+3. Result types: `PlateSolution` → `SolutionSet`. The `phot_calib` dicts are
+   converted to `PhotCalib` / `PhotCalibCurve` records in `output.py`.
+
+## 7. Testing
+
+### 7.1 Unit and regression tests
+
+| Test | What it checks |
+|---|---|
+| `test_schema_consistency.py` | Every record and result class's columns equal its DR5 table |
+| `test_metadata.py` (ported) | Readers, the `numexp` cases in 4.3, sub-exposures, time computations |
+| `test_metadata_regression.py` | New results equal old `compute_values` results (renamed columns) on `tests/data` + WFPDB / multi-exposure samples |
+| `test_timeutils.py` | ST→UT, HJD, evening dates |
+| `test_config.py` | Parsing, unknown-key errors |
+| `test_crossmatch.py` | `NearestMatcher` gives the same results as the old `crossmatch_gaia` |
+| Reference-plate comparison | Old code (git worktree at `ed2a193`) and new code produce the same sources CSV output for one or two reference plates (DR5 column names, floats within a tolerance); run where the external programs are installed |
+
+### 7.2 Database tests
+
+The database tests need no database server.
+
+1. Generated SQL. Before any refactoring, capture the `get_schema_sql()`
+   output of the current code (`create_schema`, `drop_schema`,
+   `create_indexes`, `drop_indexes`) for DR4, PostgreSQL and MySQL, and commit
+   it as `tests/golden/ddl/`. `ddl.py` must reproduce it from the neutral DR4
+   YAML (compared statement by statement, whitespace normalised).
+2. SQLite round trip. Create the DR5 schema in an in-memory SQLite database,
+   write an archive, a plate with several exposures and sub-exposures, a
+   scan, previews and logpages, read them back and compare. Write the archive
+   twice to check the upsert.
+
+## 8. Order of work
+
+| Step | Content | Check |
+|---|---|---|
+| 0 | Capture the reference SQL files (7.2) and the old code's output for the reference plates | — |
+| 1 | `config.py`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend | 7.1 metadata / config / schema tests, 7.2 |
+| 2 | `ProcessContext`, result classes, `output.py`, dead code removed, photometry adapted (6.6) | reference-plate comparison (7.1) |
+| 3 | Long functions split (6.4), `solve/` package, `crossmatch/` with `NearestMatcher` | reference-plate comparison, `test_crossmatch.py` |
+
+## 9. Open items
+
+1. Name of the `process` row class: `ProcessRecord` (keeps `Process` for the
+   orchestrator) or rename the orchestrator (for example `PlateProcess`) and
+   call the record `Process`.
+2. SQLite minimum version: require 3.35 for `RETURNING`, or fall back to
+   `lastrowid`.
+
+## 10. Future developments
+
+### 10.1 Planned for DR5, not yet designed
+
+| Development | How the main design leaves room for it | Likely schema additions (decided later) |
+|---|---|---|
+| Blend-aware matching | A new `Matcher` implementation; `Association.neighbors` and `source_xmatch` already hold several stars per source. | per-pair flux share and role; per-source number of contributors |
+| Gaia XP spectra as photometric reference | Part of the photometry rework (10.2). | which reference method was used; colour-term columns NULL when unused |
+| Photometry rework | `photometry.py` is self-contained with explicit inputs, so it can be replaced without touching the other steps. | — |
+
+### 10.2 Candidate design for the photometry rework (to be decided later)
+
+Kept as a starting point, not a commitment.
+
+Layout:
+
+```
+process/photometry/
+  calibrate.py          PhotometryProcess: iterations and depth loop
+                        (moved from Process.calibrate_photometry)
+  curve.py              curve fitting, outlier removal, bright-end improvement,
+                        position correction, error estimation
+  reference.py          PhotometricReference interface
+  ref_colorterm.py      ColorTermReference
+  ref_xp.py             XPSpectraReference
+  results.py            PhotCalib, PhotCalibCurve
+```
+
+Reference interface:
+
+```python
+class PhotometricReference(Protocol):
+    name: str                                            # → phot_calib.ref_method
+    def catalog_columns(self) -> list[str]
+    def fit(self, sources, association, mask, ctx) -> RefFit
+    def reference_mag(self, catalog_rows, fit) -> np.ndarray   # per star, plate passband
+    def catalog_mag_limit(self, fit) -> float
+    def derived_mags(self, sources, association, fit) -> dict
+```
+
+- `ColorTermReference`: the current method, with the colour-term fit,
+  `rp + c·(bp−rp)`, the `19 + c` depth limit and the BP/RP back-conversion.
+- `XPSpectraReference`: synthetic magnitudes in the plate passband
+  (emulsion × filter × atmosphere) from Gaia XP spectra, with no colour term.
+  XP spectra exist only for G ≲ 17.65, so deep plates may need a hybrid: XP
+  where available, and below that a transformation calibrated on the XP
+  stars. One reference can wrap another.
+
+Splitting `calibrate_photometry_gaia`: `select_calibration_stars` →
+`reference.reference_mag` → `curve.eliminate_outliers` → `curve.fit_curve` →
+`curve.improve_bright_end` → `curve.position_correction` →
+`curve.estimate_errors` → `apply_calibration`.
+
+Link to crossmatching:
+
+- `Association.is_single()` replaces the direct `gaia_neighbors == 1` check.
+- `Association.blend_mag(ref_mag)` = −2.5·log10 Σ 10^(−0.4 mᵢ) gives the
+  combined reference magnitude of a blend, the same for every reference
+  method.
+- A blend matcher would receive the `PhotometricReference`, so flux shares
+  are calculated in the plate passband.
+
+Order of work:
+
+1. Wrap the current code in the interface, and check that the output is
+   identical.
+2. Split it into `curve.py`.
+3. Add XP.
+4. Add blends.
