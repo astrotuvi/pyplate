@@ -1,0 +1,182 @@
+SIMPLE  =                    T / file conforms to FITS standard                 
+BITPIX  =                   16 / number of bits per data pixel                  
+NAXIS   =                    2 / number of data axes                            
+NAXIS1  =                10000 / length of data axis 1                          
+NAXIS2  =                12000 / length of data axis 2                          
+BSCALE  =                  1.0 / physical_value = BZERO + BSCALE * array_value  
+BZERO   =                32768 / physical_value = BZERO + BSCALE * array_value  
+MINVAL  =                120.0 / minimum image value                            
+MAXVAL  =              65000.0 / maximum image value                            
+EXTEND  =                    T / file may contain extensions                    
+        --------------------------------------- Original data of the observation
+DATEORIG= '1950-01-02'         / recorded date of the observation               
+DATEOR1 = '1950-01-02'         / recorded date of exposure 1                    
+DATEOR2 = '1950-01-02'         / recorded date of exposure 2                    
+TMS-ORIG= '21:30:00'           / recorded time of the start of exposure 1       
+TMS-OR1 = '21:30:00'           / recorded time of the start of exposure 1       
+TMS-OR2 = '22:10:00|22:17:00'  / recorded time of the start of exposure 2       
+TME-ORIG= '22:00:00'           / recorded time of the end of exposure 1         
+TME-OR1 = '22:00:00'           / recorded time of the end of exposure 1         
+TME-OR2 = '22:15:00|22:22:00'  / recorded time of the end of exposure 2         
+JDA-ORIG=        2433284.40625 / recorded Julian date, mid-point of exposure 1  
+JDA-OR1 =        2433284.40625 / recorded Julian date, mid-point of exposure 1  
+JDA-OR2 =        2433284.42778 / recorded Julian date, mid-point of exposure 2  
+TIMEFLAG= 'time_flag0'         / quality flag of recorded time                  
+RA-ORIG = '10:00:00'           / recorded right ascension of exposure 1         
+DEC-ORIG= '+20:00:00'          / recorded declination of exposure 1             
+RA-OR1  = '10:00:00'           / recorded right ascension of exposure 1         
+RA-OR2  = '11:30:00'           / recorded right ascension of exposure 2         
+DEC-OR1 = '+20:00:00'          / recorded declination of exposure 1             
+DEC-OR2 = '-05:30:00'          / recorded declination of exposure 2             
+COORFLAG= 'coord_flag0'        / quality flag of recorded coordinates           
+OBJECT  = 'M 81    '           / observed object or field (exposure 1)          
+OBJECT1 = 'M 81    '           / observed object or field (exposure 1)          
+OBJECT2 = 'Field 2 '           / observed object or field (exposure 2)          
+OBJTYPE = 'galaxy  '           / object type                                    
+OBJTYP1 = 'galaxy  '           / object type (exposure 1)                       
+OBJTYP2 = 'field   '           / object type (exposure 2)                       
+EXPTIME =               1800.0 / [s] exposure time of exposure 1                
+NUMEXP  =                    2 / number of exposures of the plate               
+EXPTIM1 =               1800.0 / [s] exposure time of exposure 1                
+EXPTIM2 =                600.0 / [s] exposure time of exposure 2                
+OBSERVAT= 'observatory0'       / observatory name                               
+SITENAME= 'site_name0'         / observatory site                               
+SITELONG=               210.25 / [deg] East longitude of the observatory        
+SITELAT =               209.25 / [deg] latitude of the observatory              
+SITEELEV=               211.25 / [m] elevation of the observatory               
+TELESCOP= 'telescope0'         / telescope name                                 
+OTA-NAME= 'ota_name0'          / optical tube assembly (OTA)                    
+OTA-DIAM=               214.25 / [m] diameter of the OTA                        
+OTA-APER=               215.25 / [m] clear aperture of the OTA                  
+FOCLEN  =               216.25 / [m] focal length of the OTA                    
+PLTSCALE=               217.25 / [arcsec/mm] plate scale of the OTA             
+INSTRUME= 'instrument0'        / instrument                                     
+DETNAM  = 'detector0'          / detector                                       
+METHOD  = 'direct photograph'  / method of observation                          
+FILTER  = 'filter0 '           / filter type                                    
+PRISM   = 'prism0  '           / objective prism                                
+PRISMANG= 'prism_angle0'       / prism angle "deg:min"                          
+DISPERS =               224.25 / [Angstrom/mm] dispersion                       
+GRATING = 'grating0'           / grating                                        
+FOCUS   =                 12.5 / focus position                                 
+FOCUS1  =                 12.5 / focus position (exposure 1)                    
+FOCUS2  =                      / focus position (exposure 2)                    
+TEMPERAT=               226.25 / [deg C] air temperature (degrees Celsius)      
+CALMNESS= 'sky_calmness0'      / sky calmness (scale 1-5)                       
+SHARPNES= 'sky_sharpness0'     / sky sharpness (scale 1-5)                      
+TRANSPAR= 'sky_transparency0'  / sky transparency (scale 1-5)                   
+SKYCOND = 'sky_conditions0'    / other sky conditions                           
+OBSERVER= 'Jogi Muller'        / observer (comment from config)                 
+OBSNOTES= 'observer_notes0'    / observer notes                                 
+NOTES   = 'notes0  '           / miscellaneous notes                            
+BIBCODE = 'bibcode0'           / bibcode of a related paper                     
+        ----------------------------------------------------- Photographic plate
+PLATENUM= 'plate_num0'         / plate number in archive                        
+PNUMORIG= 'plate_num_orig0'    / original plate number in archive               
+WFPDB-ID= 'wfpdb_id0'          / plate identification in the WFPDB              
+SERIES  = 'series0 '           / plate series                                   
+PLATEFMT= 'plate_format0'      / plate format in cm                             
+PLATESZ1=               239.25 / [cm] plate size along axis 1                   
+PLATESZ2=               240.25 / [cm] plate size along axis 2                   
+EMULSION= 'emulsion0'          / photographic emulsion type                     
+DEVELOP = 'development0'       / plate development details                      
+PQUALITY= 'plate_quality0'     / quality of plate                               
+PLATNOTE= 'plate_notes0'       / plate notes                                    
+        --------------------------------------- Computed data of the observation
+DATE-OBS= '1950-01-02T21:30:00' / UT date of the start of exposure 1            
+DT-OBS1 = '1950-01-02T21:30:00' / UT date of the start of exposure 1            
+DT-OBS2 = '1950-01-02T22:10:00' / UT date of the start of exposure 2            
+DATE-AVG= '1950-01-02T21:45:00' / UT date of the mid-point of exposure 1        
+DT-AVG1 = '1950-01-02T21:45:00' / UT date of the mid-point of exposure 1        
+DT-AVG2 = '1950-01-02T22:16:00' / UT date of the mid-point of exposure 2        
+DATE-END= '1950-01-02T22:00:00' / UT date of the end of exposure 1              
+DT-END1 = '1950-01-02T22:00:00' / UT date of the end of exposure 1              
+DT-END2 = '1950-01-02T22:22:00' / UT date of the end of exposure 2              
+YEAR    =           1950.00527 / decimal year of the start of exposure 1        
+YEAR1   =           1950.00527 / decimal year of the start of exposure 1        
+YEAR2   =           1950.00535 / decimal year of the start of exposure 2        
+YEAR-AVG=            1950.0053 / decimal year of the mid-point of exposure 1    
+YR-AVG1 =            1950.0053 / decimal year of the mid-point of exposure 1    
+YR-AVG2 =           1950.00536 / decimal year of the mid-point of exposure 2    
+YEAR-END=           1950.00533 / decimal year of the end of exposure 1          
+YR-END1 =           1950.00533 / decimal year of the end of exposure 1          
+YR-END2 =           1950.00537 / decimal year of the end of exposure 2          
+JD      =        2433284.39583 / Julian date at the start of exposure 1         
+JD1     =        2433284.39583 / Julian date at the start of exposure 1         
+JD2     =        2433284.42361 / Julian date at the start of exposure 2         
+JD-AVG  =        2433284.40625 / Julian date at the mid-point of exposure 1     
+JD-AVG1 =        2433284.40625 / Julian date at the mid-point of exposure 1     
+JD-AVG2 =        2433284.42778 / Julian date at the mid-point of exposure 2     
+JD-END  =        2433284.41667 / Julian date at the end of exposure 1           
+JD-END1 =        2433284.41667 / Julian date at the end of exposure 1           
+JD-END2 =        2433284.43194 / Julian date at the end of exposure 2           
+HJD-AVG =        2433284.41012 / heliocentric JD at the mid-point of exposure 1 
+HJD-AV1 =        2433284.41012 / heliocentric JD at the mid-point of exposure 1 
+HJD-AV2 =        2433284.43165 / heliocentric JD at the mid-point of exposure 2 
+RA      = '10:00:29.6'         / right ascension of pointing (J2000) "h:m:s"    
+DEC     = '19:54:04.3'         / declination of pointing (J2000) "d:m:s"        
+RA1     = '10:00:29.6'         / right ascension of exposure 1 (J2000) "h:m:s"  
+RA2     = '11:31:22.0'         / right ascension of exposure 2 (J2000) "h:m:s"  
+DEC1    = '19:54:04.3'         / declination of exposure 1 (J2000) "d:m:s"      
+DEC2    = '-05:37:24.2'        / declination of exposure 2 (J2000) "d:m:s"      
+RA_DEG  =             150.1235 / [deg] right ascension of pointing (J2000)      
+DEC_DEG =              19.9012 / [deg] declination of pointing (J2000)          
+RA_DEG1 =             150.1235 / [deg] right ascension of exposure 1 (J2000)    
+RA_DEG2 =             172.8417 / [deg] right ascension of exposure 2 (J2000)    
+DEC_DE1 =              19.9012 / [deg] declination of exposure 1 (J2000)        
+DEC_DE2 =              -5.6234 / [deg] declination of exposure 2 (J2000)        
+        ------------------------------------------------------------------- Scan
+SCANNER = 'scanner0'           / scanner name                                   
+SCANRES1=                  150 / [dpi] scan resolution along axis 1             
+SCANRES2=                  151 / [dpi] scan resolution along axis 2             
+PIXSIZE1=               252.25 / [um] pixel size along axis 1                   
+PIXSIZE2=               253.25 / [um] pixel size along axis 2                   
+SCANSOFT= 'scan_software0'     / scanning software                              
+SCANGAM =               255.25 / scan gamma value                               
+SCANFOC = 'scan_focus0'        / scan focus                                     
+WEDGE   = 'wedge0  '           / type of photometric step-wedge                 
+DATESCAN= 'datescan0'          / scan date and time                             
+SCANAUTH= 'scan_author0'       / author of scan                                 
+SCANNOTE= 'scan_notes0'        / scan notes                                     
+        ------------------------------------------------------------- Data files
+FILENAME= 'filename0'          / filename of the plate scan                     
+FN-SCN1 = 'fn_scan0'           / filename of scan 1                             
+FN-SCN2 = 'fn_scan1'           / filename of scan 2                             
+FN-WEDGE= 'fn_wedge0'          / filename of the wedge scan                     
+FN-PRE  = 'fn_pre0 '           / filename of the preview image                  
+FN-COVER= 'fn_cover0'          / filename of the plate cover image              
+FN-LOG1 = 'fn_log0 '           / filename of logbook image 1                    
+FN-LOG2 = 'fn_log1 '           / filename of logbook image 2                    
+ORIGIN  = 'origin0 '                                                            
+DATE    = '2001-02-03T04:05:06' / last change of this file                      
+        -------------------------------------------------------------------- WCS
+CTYPE1  = 'RA---TAN'           / TAN projection                                 
+CTYPE2  = 'DEC--TAN'           / TAN projection                                 
+CRVAL1  =             150.1235 / RA of reference point                          
+CRVAL2  =              19.9012 / Dec of reference point                         
+CRPIX1  =               5000.5 / X reference pixel                              
+CRPIX2  =               6000.5 / Y reference pixel                              
+CD1_1   =            -0.000277 / Transformation matrix                          
+CD1_2   =                  0.0 / Transformation matrix                          
+CD2_1   =                  0.0 / Transformation matrix                          
+CD2_2   =             0.000277 / Transformation matrix                          
+HISTORY WCS created by mock solver                                              
+        ---------------------------------------------------------------- Licence
+LICENCE = 'licence0'                                                            
+        ------------------------------------------------------- Acknowledgements
+COMMENT This is the first paragraph of the acknowledgements. It is long enough  
+COMMENT to be wrapped into more than one line of the FITS header.               
+COMMENT This is the second paragraph.                                           
+        ---------------------------------------------------------------- History
+HISTORY First history line                                                      
+HISTORY Second history line                                                     
+HISTORY Header updated with PyPlate vmock-version at 2001-02-03T04:05:06        
+HISTORY WCS added with PyPlate vmock-version at 2001-02-03T04:05:06             
+        -------------------------------------------------------------- Checksums
+CHECKSUM= 'fits_checksum0'                                                      
+DATASUM = 'fits_datasum0'                                                       
+        ------------------------------------------------------------------------
+MOCKINT =                    7                                                  
+MOCKFLT =                  2.5                                                  
+MOCKSTR = 'mock string value'                                                   
+END                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        

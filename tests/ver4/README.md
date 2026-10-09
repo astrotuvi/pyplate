@@ -1,9 +1,10 @@
 # DR4 database SQL reference
 
-This directory holds the SQL that the database code sends for the
-`applause_dr4` schema before the redesign (DESIGN.md), and the inputs needed
-to produce it again. After the database subpackage is redesigned, a test runs
-the same inputs through the new code and checks that the SQL is unchanged.
+This directory holds output of the code before the redesign (DESIGN.md),
+with the inputs needed to produce it again: the SQL that the database code
+sends for the `applause_dr4` schema, and a plate FITS header. After the
+redesign, tests run the same inputs through the new code and check that the
+SQL and the header are unchanged.
 
 ## Contents
 
@@ -16,6 +17,9 @@ the same inputs through the new code and checks that the SQL is unchanged.
 | `sqlrecord.py` | Sets up the old `PlateDB` with a recording cursor (generators only) |
 | `gen_ddl.py` | Generates `ddl/` |
 | `gen_mock_queries.py` | Generates `queries/*/mock.sql` and `mock_data.json` |
+| `header/header.txt`, `header/header_wcs.txt` | Plate FITS header from mock metadata, before and after the WCS is inserted |
+| `header/mock_header.json` | The inputs of that header |
+| `gen_mock_header.py` | Generates `header/` |
 
 ## Regenerating the reference files
 
@@ -28,11 +32,15 @@ connection. From the repository root:
 ```
 PYTHONPATH=. python tests/ver4/gen_ddl.py
 PYTHONPATH=. python tests/ver4/gen_mock_queries.py
+PYTHONPATH=. python tests/ver4/gen_mock_header.py
 ```
 
 After the redesign, check out the old code in a separate worktree to run
 them, for example `git worktree add ../pyplate-dr4 ed2a193`, and copy the
 `tests/ver4` scripts there.
+
+The rest of this file first describes the SQL reference, then the header
+reference (section "Plate header").
 
 ## How the SQL was recorded
 
@@ -112,7 +120,7 @@ The JSON was checked by rebuilding the old-style objects from it alone and
 running the old methods: the SQL was identical to `mock.sql` for both
 backends.
 
-## Writing the test for the redesigned code
+## Writing the SQL test for the redesigned code
 
 The redesigned code targets DR5, but this reference is DR4. The test checks
 the database subpackage only: run the new database layer with the DR4 schema
@@ -216,3 +224,145 @@ Table-creation SQL (`ddl/`):
 - MySQL `drop_indexes.sql` is identical to the PostgreSQL one
   (`DROP INDEX IF EXISTS name`, which MySQL does not accept).
 - PostgreSQL `DROP INDEX` statements have no schema prefix.
+
+## Plate header
+
+`gen_mock_header.py` builds a plate header from mock metadata with the old
+`PlateHeader`, in the same steps as `PlatePipeline.single_image()`:
+`assign_conf()`, `assign_platemeta()`, `update_from_platemeta()`,
+`assign_values()`, `update_comments()`, `rewrite()`, `reorder()`. The result
+is `header/header.txt`. Then `insert_wcs()` adds a mock WCS header, and the
+result is `header/header_wcs.txt`.
+
+The files contain the header cards, one 80-character card per line
+(`Header.tostring(sep='\n')`, with a final newline). `output_to_file()`
+writes the same cards without separators, padded to FITS blocks.
+
+The plate has two exposures, and every metadata key that has a FITS keyword
+has a value. Generated values are distinct (integers 101, 102, ..., floats
+201.25, 202.25, ..., strings `<key><exposure index>`), so a value under the
+wrong keyword shows up as a difference. Some values are chosen to cover
+special cases:
+
+- a time with a colon (`TMS-ORIG = '21:30:00'`), which needs an astropy
+  workaround;
+- non-ASCII text (`OBSERVER = 'Jõgi Müller'`, written as `'Jogi Muller'`);
+- a missing value in a list (`FOCUS2`, written as an empty card `FOCUS2 =`);
+- acknowledgements with two paragraphs, wrapped at 72 characters;
+- existing HISTORY lines.
+
+### Fixed version and time
+
+The header code writes the pyplate version and the current UTC time:
+
+- `update_from_platemeta()` adds
+  `HISTORY Header updated with PyPlate v<version> at <time>`;
+- `insert_wcs()` adds `HISTORY WCS added with PyPlate v<version> at <time>`
+  and sets `DATE` to the time.
+
+The generator replaced the version with `mock-version` and the time with
+`2001-02-03T04:05:06` (both in `mock_header.json`). The redesigned header
+code needs a way to set both, for example arguments or attributes that
+default to the package version and the current time.
+
+### mock_header.json
+
+| Key | Contents |
+|---|---|
+| `pyplate_version`, `utcnow` | The fixed version and time |
+| `plate` | `plate` columns, and `exposures`: one entry per exposure with `exposure_num` and the `exposure` columns. The header uses no sub-exposures. |
+| `scan` | `scan` columns |
+| `header_only` | Values without a database column, by old metadata key: `{"fits_keyword": ..., "value": ...}`, and `"derived": true` for values the new code derives from columns |
+| `config` | Configuration sections used by the header code: `Integer values`, `Float values`, `String values`, `FITS keyword comments` |
+| `wcs` | The WCS header inserted with `insert_wcs()`, as `[keyword, value, comment]` cards |
+
+Column names are DR4 names, but the plate, exposure and scan columns used in
+the header are the same in DR5, so the new record classes can be built from
+them directly.
+
+How the old code takes values from the metadata:
+
+- A per-exposure value is written once under the main keyword with the value
+  of exposure 1 (`DATEORIG`, `EXPTIME`, `RA`, ...) and, when there is more
+  than one exposure, under numbered keywords for each exposure (`DATEOR1`,
+  `DATEOR2`, ...). The `exposures` entries give the values in order.
+- `TIMEFLAG` and `COORFLAG` come from the exposure columns `flag_time` and
+  `flag_coord` of exposure 1.
+- `DATEORIG` / `DATEORn` come from the exposure column `date_orig_start`.
+
+Derived values (`"derived": true`) were set as the old `compute_values()`
+does; the new code must derive them the same way:
+
+| Keyword | Derived from | Rule |
+|---|---|---|
+| `RA`, `RAn` | exposure `ra_icrs` | `Angle(ra_icrs, deg).to_string(unit=hour, sep=':', precision=1, pad=True)` |
+| `DEC`, `DECn` | exposure `dec_icrs` | `Angle(dec_icrs, deg).to_string(unit=deg, sep=':', precision=1, pad=True)` |
+| `OBJTYPE`, `OBJTYPn` | exposure `object_type_code` | `Plate._object_types[code]` (object-type table in `codes.py` after the redesign) |
+| `METHOD` | plate `method_code` | `Plate._method_codes[code]` (method table in `codes.py`) |
+
+The old code computes the RA/Dec strings and `ra_icrs`/`dec_icrs` from the
+same unrounded angle and rounds `ra_icrs`/`dec_icrs` to 4 decimals. Deriving
+the strings from the rounded columns can therefore differ in the last digit
+for real data. In the mock data they are consistent by construction.
+
+The other `header_only` values have no column, and the redesign has to
+decide where they come from (see DESIGN.md section 4.1):
+
+| Old key | FITS keyword | Likely source after the redesign |
+|---|---|---|
+| `fits_simple`, `fits_bitpix`, `fits_naxis`, `fits_bscale`, `fits_bzero`, `fits_extend` | `SIMPLE`, `BITPIX`, `NAXIS`, `BSCALE`, `BZERO`, `EXTEND` | FITS file structure (FITS reader) |
+| `jd_avg_orig` | `JDA-ORIG`, `JDA-ORn` | Recorded Julian date per exposure. DESIGN.md treats it as a parsing intermediate, but the header writes it, so it needs a place |
+| `detector`, `licence` | `DETNAM`, `LICENCE` | Configuration |
+| `fits_acknowledgements` | `COMMENT` lines in the Acknowledgements section | Configuration |
+| `fn_scan` | `FN-SCNn` | Filenames of the scans of the plate |
+| `fn_pre` | `FN-PRE` | Preview filename |
+| `fn_cover`, `fn_log` | `FN-COVER`, `FN-LOGn` | Logpage filenames (cover first) |
+| `date` | `DATE` | File change date; `insert_wcs()` overwrites it with the current time |
+| `fits_history` | `HISTORY` | Existing history lines |
+
+### Behaviour of the old header code
+
+The expected header contains these details; the new code must reproduce
+them:
+
+- Keyword order, section separators and section titles follow
+  `PlateHeader._default_order`. Keywords not in that list (here the
+  `MOCKINT`, `MOCKFLT`, `MOCKSTR` keywords from the configuration) come after
+  the final separator.
+- Comments come from `PlateHeader._default_comments`, with numbered keywords
+  using the `n` entry (`EXPTIMn` → `EXPTIM2`); `[FITS keyword comments]` in
+  the configuration overrides them (`OBSERVER`).
+- `[Integer values]`, `[Float values]` and `[String values]` set keywords
+  with fixed values.
+- Strings are passed through `unidecode` (and German transliteration if
+  `german_transliteration` is set; not set here).
+- A missing value is written as an empty card (`KEY     =`, with comment);
+  an empty string as `' '`.
+- Empty COMMENT and HISTORY cards are dropped, so the empty line between
+  acknowledgement paragraphs disappears.
+- `insert_wcs()` inserts the WCS cards after the WCS separator, copies
+  HISTORY cards, drops COMMENT cards and skips keywords already in the
+  header (`NAXIS1` here).
+
+### Writing the header test for the redesigned code
+
+Outline:
+
+```python
+data = json.load(open('tests/ver4/header/mock_header.json'))
+plate, scan = ...   # new Plate (with Exposure objects) and Scan from
+                    # data['plate'] and data['scan']
+cfg = ...           # configuration with data['config'] and the header_only
+                    # values that become configuration
+header = PlateHeader.from_metadata(plate, scan, cfg, ...)   # with the
+                    # fixed version and time, and the other header_only values
+expected = open('tests/ver4/header/header.txt').read()
+assert header.tostring(sep='\n') + '\n' == expected
+
+header.insert_wcs(wcs_from(data['wcs']))
+expected = open('tests/ver4/header/header_wcs.txt').read()
+assert header.tostring(sep='\n') + '\n' == expected
+```
+
+The JSON was checked by rebuilding the old `Plate` from it alone and running
+the old header code: both header files were reproduced exactly.

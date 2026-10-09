@@ -628,6 +628,7 @@ future blend-aware matcher (section 10) can mark several stars per source in
 | `test_timeutils.py` | ST→UT, HJD, evening dates |
 | `test_config.py` | Parsing, unknown-key errors |
 | `test_crossmatch.py` | `NearestMatcher` gives the same results as the old `crossmatch_gaia` |
+| `test_header.py` | `PlateHeader.from_metadata()` with the mock inputs in `tests/ver4/header/mock_header.json` gives exactly `header.txt`, and after `insert_wcs()` `header_wcs.txt` (see `tests/ver4/README.md`) |
 | Reference-plate comparison | Old code (git worktree at `ed2a193`) and new code produce the same sources CSV output for one or two reference plates (DR5 column names, floats within a tolerance); run where the external programs are installed |
 
 ### 7.2 Database tests
