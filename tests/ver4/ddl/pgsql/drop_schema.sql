@@ -1,0 +1,22 @@
+DROP TABLE IF EXISTS applause_dr4.archive;
+DROP TABLE IF EXISTS applause_dr4.plate;
+DROP TABLE IF EXISTS applause_dr4.exposure;
+DROP TABLE IF EXISTS applause_dr4.exposure_sub;
+DROP TABLE IF EXISTS applause_dr4.scan;
+DROP TABLE IF EXISTS applause_dr4.preview;
+DROP TABLE IF EXISTS applause_dr4.logbook;
+DROP TABLE IF EXISTS applause_dr4.logpage;
+DROP TABLE IF EXISTS applause_dr4.plate_logpage;
+DROP TABLE IF EXISTS applause_dr4.source;
+DROP TABLE IF EXISTS applause_dr4.source_calib;
+DROP TABLE IF EXISTS applause_dr4.source_xmatch;
+DROP TABLE IF EXISTS applause_dr4.solution_set;
+DROP TABLE IF EXISTS applause_dr4.solution;
+DROP TABLE IF EXISTS applause_dr4.solution_healpix;
+DROP TABLE IF EXISTS applause_dr4.scanner_pattern;
+DROP TABLE IF EXISTS applause_dr4.phot_calib;
+DROP TABLE IF EXISTS applause_dr4.phot_calib_curve;
+DROP TABLE IF EXISTS applause_dr4.process;
+DROP TABLE IF EXISTS applause_dr4.process_log;
+
+DROP schema applause_dr4 CASCADE;

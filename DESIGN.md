@@ -637,12 +637,20 @@ The database tests need no database server.
 1. Generated SQL. Before any refactoring, capture the `get_schema_sql()`
    output of the current code (`create_schema`, `drop_schema`,
    `create_indexes`, `drop_indexes`) for DR4, PostgreSQL and MySQL, and commit
-   it as `tests/golden/ddl/`. `ddl.py` must reproduce it from the neutral DR4
+   it as `tests/ver4/ddl/`. `ddl.py` must reproduce it from the neutral DR4
    YAML (compared statement by statement, whitespace normalised).
 2. SQLite round trip. Create the DR5 schema in an in-memory SQLite database,
    write an archive, a plate with several exposures and sub-exposures, a
    scan, previews and logpages, read them back and compare. Write the archive
    twice to check the upsert.
+3. Same SQL as the DR4 code. `tests/ver4/queries/*/mock.sql` holds the SQL
+   that every `PlateDB` write, update and lookup method of the current code
+   sends, called with mock data that fill every column; the inputs are in
+   `tests/ver4/mock_data.json`. The test runs the same calls through the new
+   database layer with the DR4 schema (neutral format) and DR4 column names,
+   records the SQL with the cursor and rendering in `tests/ver4/sqlrender.py`,
+   and compares it with `mock.sql`. Any difference must be a deliberate,
+   documented change. See `tests/ver4/README.md`.
 
 ## 8. Order of work
 
