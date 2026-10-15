@@ -207,7 +207,9 @@ Lookups:
   `get_plate_id_wfpdb(wfpdb_id)` if nothing was found. `write_plate_logpage`
   repeats the plate lookup for every logpage, followed by the logpage lookup.
 - Lookups compare with `=%s` also when the value is `NULL`, which never
-  matches in SQL.
+  matches in SQL. The redesigned code does not send a lookup whose key is
+  `None` (DESIGN.md section 5.1). No lookup in `mock.sql` has a `NULL` key,
+  so `mock.sql` is not affected.
 
 Values:
 
@@ -228,6 +230,11 @@ Table-creation SQL (`ddl/`):
 - MySQL `drop_indexes.sql` is identical to the PostgreSQL one
   (`DROP INDEX IF EXISTS name`, which MySQL does not accept).
 - PostgreSQL `DROP INDEX` statements have no schema prefix.
+
+The redesigned `ddl.py` corrects both (DESIGN.md section 5.3): MySQL
+`DROP INDEX name ON table`, and PostgreSQL with the schema prefix. The test
+compares the other files exactly; for `drop_indexes.sql` it expects the
+corrected statements, with the same index names in the same order.
 
 ## Plate header
 
@@ -266,8 +273,8 @@ The header code writes the pyplate version and the current UTC time:
 
 The generator replaced the version with `mock-version` and the time with
 `2001-02-03T04:05:06` (both in `mock_header.json`). The redesigned header
-code needs a way to set both, for example arguments or attributes that
-default to the package version and the current time.
+code takes them as the optional `version` and `now` arguments of
+`PlateHeader.from_metadata()` and `insert_wcs()` (DESIGN.md section 4.5).
 
 ### mock_header.json
 
@@ -312,17 +319,17 @@ for real data. In the mock data they are consistent by construction.
 The other `header_only` values have no column, and the redesign has to
 decide where they come from (see DESIGN.md section 4.1):
 
-| Old key | FITS keyword | Likely source after the redesign |
+| Old key | FITS keyword | Source after the redesign (DESIGN.md sections 3, 4.1, 4.5) |
 |---|---|---|
-| `fits_simple`, `fits_bitpix`, `fits_naxis`, `fits_bscale`, `fits_bzero`, `fits_extend` | `SIMPLE`, `BITPIX`, `NAXIS`, `BSCALE`, `BZERO`, `EXTEND` | FITS file structure (FITS reader) |
-| `jd_avg_orig` | `JDA-ORIG`, `JDA-ORn` | Recorded Julian date per exposure. DESIGN.md treats it as a parsing intermediate, but the header writes it, so it needs a place |
-| `detector`, `licence` | `DETNAM`, `LICENCE` | Configuration |
-| `fits_acknowledgements` | `COMMENT` lines in the Acknowledgements section | Configuration |
-| `fn_scan` | `FN-SCNn` | Filenames of the scans of the plate |
-| `fn_pre` | `FN-PRE` | Preview filename |
-| `fn_cover`, `fn_log` | `FN-COVER`, `FN-LOGn` | Logpage filenames (cover first) |
-| `date` | `DATE` | File change date; `insert_wcs()` overwrites it with the current time |
-| `fits_history` | `HISTORY` | Existing history lines |
+| `fits_simple`, `fits_bitpix`, `fits_naxis`, `fits_bscale`, `fits_bzero`, `fits_extend` | `SIMPLE`, `BITPIX`, `NAXIS`, `BSCALE`, `BZERO`, `EXTEND` | Defaults in `PlateHeader`, overwritten from the FITS file when one is read; the test passes the values from `header_only` |
+| `jd_avg_orig` | `JDA-ORIG`, `JDA-ORn` | New DR5 exposure column `jd_mid_orig` (one value per exposure, in order) |
+| `detector`, `licence` | `DETNAM`, `LICENCE` | `[Header]` config section: `detector`, `licence` |
+| `fits_acknowledgements` | `COMMENT` lines in the Acknowledgements section | `[Header]` config section: `acknowledgements` |
+| `fn_scan` | `FN-SCNn` | Filenames of `plate.scans` |
+| `fn_pre` | `FN-PRE` | Filename of the preview in `plate.previews` |
+| `fn_cover`, `fn_log` | `FN-COVER`, `FN-LOGn` | Filenames of `plate.logpages` (cover first) |
+| `date` | `DATE` | Set by `PlateHeader` from the current time (fixed in the test); `insert_wcs()` sets it again |
+| `fits_history` | `HISTORY` | Existing history lines, taken from the FITS file; the test passes them from `header_only` |
 
 ### Behaviour of the old header code
 
@@ -348,6 +355,22 @@ them:
   HISTORY cards, drops COMMENT cards and skips keywords already in the
   header (`NAXIS1` here).
 
+### Intended differences in the header
+
+The redesigned header writes `TZ-ORIG` from the new plate column `tz_orig`
+(DESIGN.md sections 4.2 and 4.5); the old code never writes it.
+`mock_header.json` has no `tz_orig`, so the test sets `plate.tz_orig = 'ST'`
+and expects one extra card in `header.txt` and `header_wcs.txt`, between
+`TME-OR2` and `JDA-ORIG`:
+
+```
+TZ-ORIG = 'ST      '           / time zone of the recorded time (ST = sidereal) 
+```
+
+The position and the comment are the ones the old keyword order and default
+comments already have for `TZ-ORIG`. Other differences should be treated as
+regressions unless they are deliberate and documented here.
+
 ### Writing the header test for the redesigned code
 
 Outline:
@@ -355,16 +378,17 @@ Outline:
 ```python
 data = json.load(open('tests/ver4/header/mock_header.json'))
 plate, scan = ...   # new Plate (with Exposure objects) and Scan from
-                    # data['plate'] and data['scan']
+                    # data['plate'] and data['scan']; plate.tz_orig = 'ST'
 cfg = ...           # configuration with data['config'] and the header_only
                     # values that become configuration
 header = PlateHeader.from_metadata(plate, scan, cfg, ...)   # with the
                     # fixed version and time, and the other header_only values
-expected = open('tests/ver4/header/header.txt').read()
+expected = with_tz_orig(open('tests/ver4/header/header.txt').read())
+                    # the TZ-ORIG card inserted after TME-OR2
 assert header.tostring(sep='\n') + '\n' == expected
 
 header.insert_wcs(wcs_from(data['wcs']))
-expected = open('tests/ver4/header/header_wcs.txt').read()
+expected = with_tz_orig(open('tests/ver4/header/header_wcs.txt').read())
 assert header.tostring(sep='\n') + '\n' == expected
 ```
 
@@ -391,7 +415,9 @@ The POT015 records were selected from
 Latin-1, which the old `read_wfpdb()` cannot read (it opens files as UTF-8),
 so the subset is stored as UTF-8. The non-ASCII emulsion field `÷àñà` is
 probably Cyrillic text in cp1251 read as Latin-1. The redesigned WFPDB
-reader should take the file encoding from the configuration.
+reader takes the file encoding from `[WFPDB] encoding` (DESIGN.md section 3;
+the CSV sections have `csv_encoding`). Because the subset is UTF-8, the test
+configuration can leave the default.
 
 `compute_values()` sets the key `date` (FITS keyword `DATE`) to the current
 UTC time. The generator replaced it with `2001-02-03T04:05:06` (`utcnow` in
@@ -448,21 +474,20 @@ these files:
 | Scan CSV | `datescan` | `scan_date` |
 
 Unchanged: `numexp`, `exptime`, `observer`, `ra_orig`, `dec_orig`,
-`object_name`, `object_type_code`, `scan_author`, the `[Keyword values]`
+`object_name`, `object_type_code`, `scan_author`, `tz_orig` (now a plate
+column in DR5, see DESIGN.md sections 4.2 and 5.4), the `[Keyword values]`
 keys, `csv_list_delimiter`, `csv_timezone`, `evening_date`, and `[Archive]`.
 In the plate CSV of the mock archive, `method_code` goes to the plate, which
 wins over the exposure when both have the column (DESIGN.md section 4.2); the
 old code wrote the same value to the plate and to every exposure.
 
-Not yet covered by the design, to be decided before the test can be written:
+Other settings in these files (DESIGN.md sections 3 and 4.2):
 
-- `my_plates.csv` gives the time zone per row (`tz_orig = 8`), but `tz_orig`
-  is not a column and DESIGN.md section 3 has only the per-file
-  `csv_timezone` setting.
-- `[WFPDB] maindata_timezone` and `exptime_minutes` are not in the
-  configuration sections of DESIGN.md section 3.
-- `my_archive.conf` has no `[Archive]` section, so `archive_id` is `None`;
-  the new `ArchiveReader` needs an `archive_id`.
+- `[WFPDB] maindata_timezone` and `exptime_minutes` keep their names and
+  meaning in the new `[WFPDB]` section.
+- `my_archive.conf` has no `[Archive]` section, so `archive_id` is `None`.
+  `ArchiveReader` accepts that for reading; only writing to the database
+  requires `archive_id`.
 
 ### Intended differences
 
@@ -475,6 +500,11 @@ The redesigned code is expected to differ from `expected.json` here:
 - Scans: `plate_num` is `None` in the old code; the new code links scans to
   plates by `plate_num`.
 - `archive_id`: set by `ArchiveReader` for every record.
+- `tz_orig`: in `other` in `expected.json`; in the redesigned code it is the
+  plate column `tz_orig`, with the same values (`Europe/Berlin`, `UT`, `ST`).
+  Exception: the old code sets it for WFPDB records only when a time is
+  recorded, so POT015 record 004252 (no time) has none; with the file
+  default of DESIGN.md section 4.2 it gets `ST`.
 
 Other differences should be treated as regressions unless they are
 deliberate and documented.

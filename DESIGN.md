@@ -27,6 +27,7 @@ Terms used:
 | 9 | Crossmatching moves to its own package with a single matcher (`NearestMatcher`, the current behaviour). |
 | 10 | Photometry is not restructured. It only gets the changes needed to work with the new inputs, result classes and DR5 column names; it is reworked later (section 10). |
 | 11 | `process/` remains. Long functions outside photometry are split, steps pass explicit inputs, the number of class attributes goes down, and dead code is removed. |
+| 12 | Python 3.10 or later: `requires-python = ">=3.10"` in `pyproject.toml`, set in step 1. The design uses union types (`X \| None`) and dataclass features from 3.10. |
 
 ## 2. Package layout
 
@@ -118,12 +119,14 @@ The INI file is parsed once into frozen dataclasses:
 | `ProgramsConfig` | paths to `sex`, `psfex`, `scamp`, `solve-field`, `wcs-to-tan` |
 | `DatabaseConfig` | `rdbms`, host / port / socket / file, user, password, schema |
 | `ArchiveConfig` | `[Archive]` columns + list of logbook sections |
-| `CsvConfig` | for each CSV file: column → position, `csv_list_delimiter`, `csv_timezone` |
+| `CsvConfig` | for each CSV file: column → position, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8) |
+| `WfpdbConfig` | `[WFPDB]`: `maindata_timezone` (default time zone of the recorded times, see 4.2), `exptime_minutes` (exposure times in minutes; default false), `encoding` (encoding of the WFPDB files; default UTF-8) |
 | `MetadataConfig` | `evening_date`, `[Keyword values]`, `[Keyword lookup]` |
 | `ExtractionConfig` | thresholds, filter, PSF settings, `circular_film` |
 | `SolveConfig` | `sip`, `skip_bright`, `distort`, `plate_epoch`, solve settings |
 | `CrossmatchConfig` | match-radius settings |
 | `PipelineConfig` | which steps and outputs are switched on |
+| `HeaderConfig` | `[Header]`: values written only to the FITS header, the same for every plate of the archive: `detector`, `licence`, `acknowledgements` |
 
 - A `Config` object holds all the sections. Each component receives only its
   own section(s). This replaces every `assign_conf()` method and its
@@ -208,11 +211,12 @@ Values that have no column:
 
 | Kind | Examples | Where it goes |
 |---|---|---|
-| Parsing intermediates | `tz_orig`, UT/ST start/end strings, `jd_avg_orig` | Local to the readers |
+| Parsing intermediates | UT/ST start/end strings | Local to the readers |
 | Derived values | object-type text, method text, sexagesimal RA/Dec, ISO dates for FITS | Read-only properties or `PlateHeader` |
-| Settings written only to the header | `licence`, `detector`, acknowledgements | `PlateHeader` reads them from config |
-| Links to other tables | former `fn_pre`, `fn_cover`, `fn_log` | `plate.previews`, `plate.logpages` |
-| Raw FITS structure | `bitpix`, `bscale`, `bzero` | Local to the FITS reader; `Scan` gets `naxis1/2`, `minval`, `maxval` |
+| Settings written only to the header | `licence`, `detector`, acknowledgements | `PlateHeader` reads them from the `[Header]` config section |
+| Links to other tables | former `fn_scan`, `fn_pre`, `fn_cover`, `fn_log` | `plate.scans`, `plate.previews`, `plate.logpages` |
+| Raw FITS structure | `SIMPLE`, `BITPIX`, `NAXIS`, `BSCALE`, `BZERO`, `EXTEND`, existing `HISTORY` | Defaults in `PlateHeader`, overwritten from the FITS file when one is read; `Scan` gets `naxis1/2`, `minval`, `maxval` |
+| File change date | `DATE` | Set by `PlateHeader` from the current time |
 
 ### 4.2 Archive and ArchiveReader
 
@@ -238,7 +242,10 @@ class ArchiveReader:
 ```
 
 - `archive_id` is set in one place only: `ArchiveReader` copies it into every
-  record it creates; input files never supply it.
+  record it creates; input files never supply it. It is optional for reading:
+  without an `[Archive]` section the records have `archive_id = None`. It is
+  required for writing: `PlateDB` refuses to write a record without
+  `archive_id` and says so (the column is `NOT NULL`).
 - The order of precedence is unchanged: WFPDB maindata → quality → observer →
   notes → plate CSV → scan CSV → `[Keyword values]` → `[Keyword lookup]`.
 - How a CSV column maps to a class: a plate CSV fills `Plate` and `Exposure`,
@@ -247,6 +254,13 @@ class ArchiveReader:
   `exposure.method_code`).
 - Database IDs are never read from input files. They are set when the record
   is written, or looked up in the database.
+- Time zone of the recorded times: `Plate.tz_orig` (a DR5 column, see 5.4)
+  holds `UT`, `ST` or an IANA zone name such as `Europe/Berlin`. A value from
+  a CSV column mapped to `tz_orig` (per row) wins; otherwise the reader uses
+  the default of the input file: `csv_timezone` for a CSV file,
+  `[WFPDB] maindata_timezone` for WFPDB files. `[Keyword values]` is not used for it,
+  because those values override CSV values. WFPDB time strings keep the zone
+  prefix of the current code (`ST 19:52:08`).
 
 ### 4.3 Exposures and sub-exposures
 
@@ -296,11 +310,25 @@ The current `Plate.compute_values()` (570 lines) becomes:
 ### 4.5 PlateHeader
 
 `PlateHeader(fits.Header)` is built with
-`PlateHeader.from_metadata(plate, scan, cfg)`. One table in `header.py` lists,
+`PlateHeader.from_metadata(plate, scan, cfg, version=None, now=None)`. One table in `header.py` lists,
 for each FITS keyword: the source field, a per-exposure flag (`DT-OBSn`, …)
 and the comment. That table replaces the old `_keyword_meta` and most of the
 300-line `PlateHeader.__init__`. WCS insertion and writing to a file or FITS
 stay as methods.
+
+The header writes the pyplate version and the current UTC time (`HISTORY`
+lines and `DATE`). `from_metadata()` and `insert_wcs()` take optional
+`version` and `now` arguments, which default to the package version and the
+current UTC time; tests pass fixed values.
+
+The recorded Julian date (`JDA-ORIG`, `JDA-ORn`) comes from the new DR5
+column `exposure.jd_mid_orig` (see 5.4).
+
+New compared with the current code: the header writes `TZ-ORIG` from
+`plate.tz_orig` (see 4.2), at the place the current keyword order already
+reserves for it (after `TME-ORn`, before `JDA-ORIG`) and with the existing
+default comment. This is a deliberate difference from the DR4 header; see
+`tests/ver4/README.md`.
 
 ## 5. Database
 
@@ -327,9 +355,16 @@ class Backend(Protocol):
   scans, previews and plate–logpage links;
 - `write_logbook(logbook)`, `write_logpage(logpage)`;
 - result writers, called from `process/output.py`;
-- ID lookups by `plate_num`, `wfpdb_id`, `filename_scan` and so on.
+- ID lookups by `plate_num`, `wfpdb_id`, `filename_scan` and so on. A lookup
+  whose key is `None` is not sent and returns "not found" (the current code
+  sends `WHERE key = NULL`, which never matches).
 
 `to_row()` supplies the columns, so all hand-written column loops go away.
+
+The database layer does not depend on a particular schema version: it writes
+the columns that the schema YAML and the given rows have. It must keep
+working with `applause_dr4.yaml` and rows with DR4 column names after the
+code has moved to DR5, so that the DR4 SQL test (7.2 point 3) keeps running.
 
 Upsert syntax for each backend:
 
@@ -361,7 +396,8 @@ The MySQL backend uses the form the production server supports.
   - no schema prefix;
   - WAL mode and a busy timeout, so `parallel_run()` workers can write one
     after another;
-  - `INSERT … RETURNING` (SQLite ≥ 3.35) or `lastrowid`;
+  - SQLite 3.35 or later is required, so inserts use `INSERT … RETURNING`
+    as in PostgreSQL;
   - timestamps stored as ISO text;
   - also used for the in-memory database tests.
 
@@ -392,8 +428,12 @@ tables:
   backend.
 - Primary keys: generated as `ALTER TABLE … ADD CONSTRAINT` for PostgreSQL
   and MySQL, and inside `CREATE TABLE` for SQLite.
+- `DROP INDEX` is generated correctly for each backend: `DROP INDEX name ON
+  table` for MySQL, with the schema prefix for PostgreSQL. The current code
+  writes the PostgreSQL form without prefix for both.
 - Check: DR4, converted to this format, must generate the same PostgreSQL and
-  MySQL SQL as the current code.
+  MySQL SQL as the current code, except the `DROP INDEX` statements above
+  (`drop_indexes.sql`), which differ on purpose.
 
 ### 5.4 DR5 content changes compared with DR4
 
@@ -402,6 +442,8 @@ tables:
 | `gaiaedr3_id` → `gaia_id`, `gaiaiedr3_gmag` → `gaia_gmag` (fixes the typo), `gaiaedr3_bp_rp` → `gaia_bp_rp`, `gaiaedr3_dist` → `gaia_dist`, `gaiaedr3_neighbors` → `gaia_neighbors` | `source_calib`, `source_xmatch` |
 | `num_gaia_edr3` → `num_gaia` | `solution`, `phot_calib`, `process` |
 | new `gaia_release varchar(10)` | `process` |
+| new `jd_mid_orig double`: Julian date of the mid-point of the exposure as recorded in the input (the current code writes it only to the FITS header, as `JDA-ORIG`) | `exposure` |
+| new `tz_orig varchar(40)`: time zone of the recorded times (`UT`, `ST` or an IANA zone name); the current code reads it but does not store it | `plate` |
 | `exposure_sub` name kept; `flag_xmatch` kept | — |
 
 The schema additions for blends and photometry methods are decided with those
@@ -639,7 +681,8 @@ The database tests need no database server.
    output of the current code (`create_schema`, `drop_schema`,
    `create_indexes`, `drop_indexes`) for DR4, PostgreSQL and MySQL, and commit
    it as `tests/ver4/ddl/`. `ddl.py` must reproduce it from the neutral DR4
-   YAML (compared statement by statement, whitespace normalised).
+   YAML (compared statement by statement, whitespace normalised), except the
+   corrected `DROP INDEX` statements (5.3).
 2. SQLite round trip. Create the DR5 schema in an in-memory SQLite database,
    write an archive, a plate with several exposures and sub-exposures, a
    scan, previews and logpages, read them back and compare. Write the archive
@@ -667,8 +710,6 @@ The database tests need no database server.
 1. Name of the `process` row class: `ProcessRecord` (keeps `Process` for the
    orchestrator) or rename the orchestrator (for example `PlateProcess`) and
    call the record `Process`.
-2. SQLite minimum version: require 3.35 for `RETURNING`, or fall back to
-   `lastrowid`.
 
 ## 10. Future developments
 
