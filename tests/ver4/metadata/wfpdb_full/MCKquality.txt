@@ -1,0 +1,2 @@
+MCK001 000001  temperature: n/a; calmness: 2
+MCK001 000003  good; temperature: 12.5; calmness: 3; sharpness: 2; transparency: 4; sky conditions: hazy; seeing: 3 arcsec

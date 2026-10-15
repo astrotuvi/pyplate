@@ -22,6 +22,7 @@ inputs through the new code and check that the results are unchanged.
 | `gen_mock_header.py` | Generates `header/` |
 | `metadata/` | Archive inputs (old-format configuration, WFPDB and CSV files) and `expected.json`, the metadata the old code computes from them |
 | `gen_metadata_regression.py` | Generates `metadata/expected.json` |
+| `make_metadata_inputs.py` | Creates the FITS files and images in `metadata/` (inputs, committed; needs no pyplate) |
 
 ## Regenerating the reference files
 
@@ -37,6 +38,9 @@ PYTHONPATH=. python tests/ver4/gen_mock_queries.py
 PYTHONPATH=. python tests/ver4/gen_mock_header.py
 PYTHONPATH=. python tests/ver4/gen_metadata_regression.py
 ```
+
+`make_metadata_inputs.py` is not part of the regeneration: the FITS files and
+images it made are committed inputs. Run it only to recreate them.
 
 After the redesign, check out the old code in a separate worktree to run
 them, for example `git worktree add ../pyplate-dr4 ed2a193`, and copy the
@@ -397,10 +401,10 @@ the old header code: both header files were reproduced exactly.
 
 ## Metadata regression
 
-`gen_metadata_regression.py` reads three archives with the old `Archive`
-(`read_wfpdb()` or `read_csv()`, then `get_platemeta()` for each plate),
-runs `Plate.compute_values()`, and writes the results to
-`metadata/expected.json`.
+`gen_metadata_regression.py` reads five archives with the old `Archive`
+(`read_wfpdb()` and/or `read_csv()`, then `get_platemeta()` for each plate,
+`get_previewmeta()`, `get_logbookmeta()` and `get_logpagemeta()`), runs
+`Plate.compute_values()`, and writes the results to `metadata/expected.json`.
 
 ### Inputs
 
@@ -409,6 +413,8 @@ runs `Plate.compute_values()`, and writes the results to
 | `pot015` | `pot015.conf` | `wfpdb/POT015maindata_st.txt` | Real WFPDB maindata: 8 records of the AIP Potsdam series POT015 (Kapteyn Selected Areas). Sidereal times converted to UT, including a time `24:24:16`; precession of the recorded coordinates; heliocentric JD; exposure times in minutes; object type and method codes (direct photograph, objective prism); a record without time and exposure time and with time flag `M`; a non-ASCII emulsion field |
 | `my_archive` | `my_archive.conf` | `csv/my_plates.csv`, `csv/my_scans.csv` | Copy of `tests/data`: times in UT, local time (`Europe/Berlin`) and sidereal time, given per row; a plate with two exposures, the second with two sub-exposures; four scans |
 | `mock` | `mock_archive.conf` | `csv/mock_plates.csv` | Plates `m1`–`m5`: the `numexp` rules in DESIGN.md section 4.3. Plate `m6`: two exposures with their own coordinates, the second with two sub-exposures. `evening_date = true` |
+| `full` | `full_archive.conf` | `wfpdb_full/` (maindata, quality, notes, observer), `csv/full_*.csv` (plates, scans, previews, logpages), `fits/`, `previews/`, `logpages/`, `covers/` | Mock WFPDB archive with all four WFPDB files: quality values (including a non-numeric temperature), notes with exposure times, objects, coordinates, focus, observer notes, recorded JD and free text, observer names; `[Keyword lookup]` (`j. mets` → `Jaan Mets`); a plate observed after midnight with `evening_date`; a plate number with suffix (`2A`); coordinate and time flags. Values read from FITS files (scan columns, minimum and maximum pixel value, file size and time); preview and logpage images (JPEG with and without EXIF date, PNG, TIFF), with and without `[Image] logpage_exif_timezone`; a cover image found in `cover_dir`; logbooks from configuration sections; plate–logpage links (`fn_cover`, `fn_log`) |
+| `times` | `times_archive.conf` | `csv/times_plates.csv` | Start and end times given as UT or sidereal time in their own columns; local time zones; times after midnight with `evening_date`, including two exposures; a plate with both a local time and a UT column |
 
 The POT015 records were selected from
 `AIP/Mimosa/digiplates/pyheaders/POT015maindata_st.TXT`. That file is in
@@ -419,19 +425,39 @@ reader takes the file encoding from `[WFPDB] encoding` (DESIGN.md section 3;
 the CSV sections have `csv_encoding`). Because the subset is UTF-8, the test
 configuration can leave the default.
 
+`wfpdb_latin1/POT015maindata_st.txt` holds the same 8 records with the
+original Latin-1 bytes. The old code cannot read it, so there is no separate
+reference: the test reads it with `pot015.conf` (new format) plus
+`encoding = latin-1`, and expects exactly the results of archive `pot015`.
+
 `compute_values()` sets the key `date` (FITS keyword `DATE`) to the current
 UTC time. The generator replaced it with `2001-02-03T04:05:06` (`utcnow` in
 `expected.json`).
 
+The old code takes `file_datetime` of scans, previews and logpages from the
+file modification time, which git does not keep. The generator sets the
+modification time of every file in `fits/`, `previews/`, `logpages/` and
+`covers/` to `2002-03-04T05:06:07` UTC (`file_mtime` in `expected.json`)
+before reading; the test must do the same. `make_metadata_inputs.py`
+recreates these files (FITS with astropy, images with Pillow).
+
 ### expected.json
 
 ```
-{"utcnow": ..., "archives": [
-  {"name": ..., "conf": ..., "input": ...,
+{"utcnow": ..., "file_mtime": ..., "archives": [
+  {"name": ..., "conf": ..., "dirs": {"csv_dir": "csv", ...},
    "plates": [{"input_id": ..., "columns": {...}, "other": {...}}, ...],
    "scans": [{"input_filename": ..., "columns": {...}, "plate_num": ...,
-              "other": {...}}, ...]}]}
+              "other": {...}}, ...],
+   "previews": [{"input_filename": ..., "columns": {...},
+                 "input_plate_id": ..., "plate_num": ..., "wfpdb_id": ...}],
+   "logbooks": [{"input_id": ..., "columns": {...}}],
+   "logpages": [{"input_filename": ..., "columns": {...},
+                 "logbook_num": ...}]}]}
 ```
+
+- `dirs`: the `[Files]` directory settings the generator set, relative to
+  `tests/ver4/metadata`.
 
 - `input_id`: the plate identifier the old code used (its metadata key
   `plate_id`: the CSV identifier, or for WFPDB `POT015_000317`).
@@ -443,7 +469,13 @@ UTC time. The generator replaced it with `2001-02-03T04:05:06` (`utcnow` in
   would write. These tables have the same columns in DR5.
 - `other`: metadata keys without a database column that have a value, by old
   key (for example `ra`, `dec`, `object_type`, `method`, `tz_orig`,
-  `st_start_orig`).
+  `st_start_orig`, `jd_avg_orig`, `fn_cover`, `fn_log`).
+- Previews, logbooks, logpages: `columns` holds the values the old
+  `write_preview()`, `write_logbook()` and `write_logpage()` would write
+  (without the IDs these methods set or look up). For previews,
+  `input_plate_id` is the plate identifier in the preview CSV, and
+  `plate_num` and `wfpdb_id` are the keys used to look up the plate; for
+  logpages, `logbook_num` is the key used to look up the logbook.
 - NaN and infinity are written as `{"nan": true}` and `{"inf": 1 or -1}`
   (`sqlrender.decode()` converts them back).
 
@@ -457,6 +489,20 @@ results:
   exposure 1.
 - A value that is not a list (for example `method_code`, `flag_time`) is
   written to every exposure.
+
+Other details of the old code visible in the results:
+
+- `flag_coord` from WFPDB maindata is not stripped (`' '` when empty), while
+  `flag_time` is (`''`).
+- A non-numeric WFPDB quality temperature (`n/a`) becomes `None`.
+- Plate `t4` gives a local time and a UT time; the old code uses the local
+  time (22:00 Berlin → 21:00 UT) and ignores the UT column (20:00).
+- Image dates: without an EXIF time zone the EXIF date is kept as
+  `2015-06-07 08:09:10`; with `[Image] logpage_exif_timezone` it is converted
+  to UTC and written as `2016-01-02T08:20:30`.
+- A TIFF file with a DateTime tag cannot be read: Pillow returns the tag as a
+  tuple, which the old code indexes as a string. The TIFF input has no
+  DateTime tag.
 
 ### Configuration for the redesigned code
 
@@ -472,6 +518,7 @@ these files:
 | CSV sections | `tme_orig` | `time_orig_end` |
 | Scan CSV | `filename` | `filename_scan` |
 | Scan CSV | `datescan` | `scan_date` |
+| Preview CSV | `plate_id` | `plate_num` |
 
 Unchanged: `numexp`, `exptime`, `observer`, `ra_orig`, `dec_orig`,
 `object_name`, `object_type_code`, `scan_author`, `tz_orig` (now a plate
@@ -480,6 +527,21 @@ keys, `csv_list_delimiter`, `csv_timezone`, `evening_date`, and `[Archive]`.
 In the plate CSV of the mock archive, `method_code` goes to the plate, which
 wins over the exposure when both have the column (DESIGN.md section 4.2); the
 old code wrote the same value to the plate and to every exposure.
+
+Not yet decided in DESIGN.md (found with the `full` and `times` archives):
+
+- CSV keys for the plate–logpage links (`fn_cover`, `fn_log` in the plate
+  CSV): they are not columns; DESIGN.md section 4.1 only says they become
+  `plate.logpages`.
+- CSV keys for start and end times given as UT or sidereal time in their own
+  columns (`ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig`):
+  parsing intermediates, not columns.
+- `[WFPDB] notes_timezone` and `[Image] logpage_exif_timezone` /
+  `preview_exif_timezone`: not in the configuration sections of DESIGN.md
+  section 3.
+- WFPDB file names (`wfpdb_maindata`, `wfpdb_quality`, `wfpdb_notes`,
+  `wfpdb_observer`) and the image directories (`fits_dir`, `preview_dir`,
+  `logpage_dir`, `cover_dir`) presumably stay in `[Files]`.
 
 Other settings in these files (DESIGN.md sections 3 and 4.2):
 
@@ -515,10 +577,11 @@ Outline:
 
 ```python
 data = json.load(open('tests/ver4/metadata/expected.json'))
-
+set_file_times(data['file_mtime'])    # files in fits/, previews/,
+                                      # logpages/, covers/
 for archive in data['archives']:
-    reader = ArchiveReader(new_format_config(archive))  # inputs from
-                                                        # tests/ver4/metadata
+    reader = ArchiveReader(new_format_config(archive))  # directories from
+                                                        # archive['dirs']
     for expected in archive['plates']:
         plate = reader.get_plate(plate_num=...)         # from input_id
         plate.compute_values()  # with the clock fixed to data['utcnow']
@@ -526,6 +589,10 @@ for archive in data['archives']:
                                                         # sub-exposures in order
         # derived values: plate.exposures[i].ra string etc. against
         # expected['other']['ra'][i] and so on
+    # scans, previews, logbooks and logpages the same way
+
+# Latin-1 input: pot015 with encoding = latin-1 on wfpdb_latin1/ gives the
+# results of archive pot015
 ```
 
 Compare values exactly. The old code rounds the computed values (JD to 5
