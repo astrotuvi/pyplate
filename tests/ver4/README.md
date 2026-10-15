@@ -528,20 +528,14 @@ In the plate CSV of the mock archive, `method_code` goes to the plate, which
 wins over the exposure when both have the column (DESIGN.md section 4.2); the
 old code wrote the same value to the plate and to every exposure.
 
-Not yet decided in DESIGN.md (found with the `full` and `times` archives):
-
-- CSV keys for the plate–logpage links (`fn_cover`, `fn_log` in the plate
-  CSV): they are not columns; DESIGN.md section 4.1 only says they become
-  `plate.logpages`.
-- CSV keys for start and end times given as UT or sidereal time in their own
-  columns (`ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig`):
-  parsing intermediates, not columns.
-- `[WFPDB] notes_timezone` and `[Image] logpage_exif_timezone` /
-  `preview_exif_timezone`: not in the configuration sections of DESIGN.md
-  section 3.
-- WFPDB file names (`wfpdb_maindata`, `wfpdb_quality`, `wfpdb_notes`,
-  `wfpdb_observer`) and the image directories (`fits_dir`, `preview_dir`,
-  `logpage_dir`, `cover_dir`) presumably stay in `[Files]`.
+Unchanged as well, although they are not columns (DESIGN.md sections 3 and
+4.2): the plate CSV keys `fn_cover` and `fn_log` (logpage links) and
+`ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig` (start and end
+times as UT or sidereal time); `[WFPDB] notes_timezone`; the `[Image]`
+settings `logpage_exif_timezone` and `preview_exif_timezone`; and in
+`[Files]` the WFPDB file names (`wfpdb_maindata`, `wfpdb_quality`,
+`wfpdb_notes`, `wfpdb_observer`) and the directories (`fits_dir`,
+`preview_dir`, `logpage_dir`, `cover_dir`).
 
 Other settings in these files (DESIGN.md sections 3 and 4.2):
 

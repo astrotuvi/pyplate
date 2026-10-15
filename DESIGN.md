@@ -115,12 +115,13 @@ The INI file is parsed once into frozen dataclasses:
 
 | Section dataclass | Contents |
 |---|---|
-| `FilesConfig` | input and output directories, file names |
+| `FilesConfig` | input and output directories and file names, as in the current code: the CSV and WFPDB file names (`plate_csv`, …, `wfpdb_maindata`, `wfpdb_quality`, `wfpdb_notes`, `wfpdb_observer`) and the directories (`csv_dir`, `wfpdb_dir`, `fits_dir`, `preview_dir`, `logpage_dir`, `cover_dir`, …) |
 | `ProgramsConfig` | paths to `sex`, `psfex`, `scamp`, `solve-field`, `wcs-to-tan` |
 | `DatabaseConfig` | `rdbms`, host / port / socket / file, user, password, schema |
 | `ArchiveConfig` | `[Archive]` columns + list of logbook sections |
-| `CsvConfig` | for each CSV file: column → position, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8) |
-| `WfpdbConfig` | `[WFPDB]`: `maindata_timezone` (default time zone of the recorded times, see 4.2), `exptime_minutes` (exposure times in minutes; default false), `encoding` (encoding of the WFPDB files; default UTF-8) |
+| `CsvConfig` | for each CSV file: column → position, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8). Plate CSV sections also accept the link keys `fn_cover` and `fn_log` and the time keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig` (see 4.2) |
+| `WfpdbConfig` | `[WFPDB]`: `maindata_timezone` (default time zone of the recorded times, see 4.2), `notes_timezone` (time zone of the times in the WFPDB notes file), `exptime_minutes` (exposure times in minutes; default false), `encoding` (encoding of the WFPDB files; default UTF-8) |
+| `ImageConfig` | `[Image]`: `logpage_exif_timezone`, `preview_exif_timezone` (time zone of the EXIF dates in logpage and preview images) |
 | `MetadataConfig` | `evening_date`, `[Keyword values]`, `[Keyword lookup]` |
 | `ExtractionConfig` | thresholds, filter, PSF settings, `circular_film` |
 | `SolveConfig` | `sip`, `skip_bright`, `distort`, `plate_epoch`, solve settings |
@@ -135,7 +136,9 @@ The INI file is parsed once into frozen dataclasses:
   section raises an error naming the section and key. In metadata sections
   (`[Archive]`, logbook sections, CSV sections, `[Keyword values]`) the
   accepted keys are the column names of the target classes, plus the parsing
-  settings. The exception is a lookup section named in `[Keyword lookup]`,
+  settings and the documented link and time keys of plate CSV sections
+  (`fn_cover`, `fn_log`, `ut_start_orig`, `ut_end_orig`, `st_start_orig`,
+  `st_end_orig`; see 4.2). The exception is a lookup section named in `[Keyword lookup]`,
   whose keys are data values rather than settings.
 
 Example:
@@ -214,7 +217,7 @@ Values that have no column:
 | Parsing intermediates | UT/ST start/end strings | Local to the readers |
 | Derived values | object-type text, method text, sexagesimal RA/Dec, ISO dates for FITS | Read-only properties or `PlateHeader` |
 | Settings written only to the header | `licence`, `detector`, acknowledgements | `PlateHeader` reads them from the `[Header]` config section |
-| Links to other tables | former `fn_scan`, `fn_pre`, `fn_cover`, `fn_log` | `plate.scans`, `plate.previews`, `plate.logpages` |
+| Links to other tables | former `fn_scan`, `fn_pre`, `fn_cover`, `fn_log` | `plate.scans`, `plate.previews`, `plate.logpages`; in plate CSV files the logpages are still given with `fn_cover` and `fn_log` (4.2) |
 | Raw FITS structure | `SIMPLE`, `BITPIX`, `NAXIS`, `BSCALE`, `BZERO`, `EXTEND`, existing `HISTORY` | Defaults in `PlateHeader`, overwritten from the FITS file when one is read; `Scan` gets `naxis1/2`, `minval`, `maxval` |
 | File change date | `DATE` | Set by `PlateHeader` from the current time |
 
@@ -254,6 +257,16 @@ class ArchiveReader:
   `exposure.method_code`).
 - Database IDs are never read from input files. They are set when the record
   is written, or looked up in the database.
+- Plate–logpage links: a plate CSV gives the logpage filenames of a plate
+  with the keys `fn_cover` (cover image) and `fn_log` (list of logbook
+  pages), as in the current code. They are not columns: the reader turns them
+  into `plate.logpages`, cover first, and the list position gives
+  `logpage_order`.
+- Start and end times given as UT or sidereal time in their own CSV columns:
+  the keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig`
+  keep their names. They are not columns: the reader combines them into
+  `time_orig_start` / `time_orig_end` with a `UT ` or `ST ` prefix, as the
+  current code does.
 - Time zone of the recorded times: `Plate.tz_orig` (a DR5 column, see 5.4)
   holds `UT`, `ST` or an IANA zone name such as `Europe/Berlin`. A value from
   a CSV column mapped to `tz_orig` (per row) wins; otherwise the reader uses
