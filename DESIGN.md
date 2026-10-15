@@ -624,7 +624,7 @@ future blend-aware matcher (section 10) can mark several stars per source in
 |---|---|
 | `test_schema_consistency.py` | Every record and result class's columns equal its DR5 table |
 | `test_metadata.py` (ported) | Readers, the `numexp` cases in 4.3, sub-exposures, time computations |
-| `test_metadata_regression.py` | New results equal old `compute_values` results (renamed columns) on `tests/data` + WFPDB / multi-exposure samples |
+| `test_metadata_regression.py` | New results equal the old `compute_values` results in `tests/ver4/metadata/expected.json` (WFPDB, `tests/data` and mock archives; see `tests/ver4/README.md`) |
 | `test_timeutils.py` | ST→UT, HJD, evening dates |
 | `test_config.py` | Parsing, unknown-key errors |
 | `test_crossmatch.py` | `NearestMatcher` gives the same results as the old `crossmatch_gaia` |

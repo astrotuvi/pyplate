@@ -2,9 +2,9 @@
 
 This directory holds output of the code before the redesign (DESIGN.md),
 with the inputs needed to produce it again: the SQL that the database code
-sends for the `applause_dr4` schema, and a plate FITS header. After the
-redesign, tests run the same inputs through the new code and check that the
-SQL and the header are unchanged.
+sends for the `applause_dr4` schema, a plate FITS header, and the metadata
+computed from archive input files. After the redesign, tests run the same
+inputs through the new code and check that the results are unchanged.
 
 ## Contents
 
@@ -20,6 +20,8 @@ SQL and the header are unchanged.
 | `header/header.txt`, `header/header_wcs.txt` | Plate FITS header from mock metadata, before and after the WCS is inserted |
 | `header/mock_header.json` | The inputs of that header |
 | `gen_mock_header.py` | Generates `header/` |
+| `metadata/` | Archive inputs (old-format configuration, WFPDB and CSV files) and `expected.json`, the metadata the old code computes from them |
+| `gen_metadata_regression.py` | Generates `metadata/expected.json` |
 
 ## Regenerating the reference files
 
@@ -33,14 +35,16 @@ connection. From the repository root:
 PYTHONPATH=. python tests/ver4/gen_ddl.py
 PYTHONPATH=. python tests/ver4/gen_mock_queries.py
 PYTHONPATH=. python tests/ver4/gen_mock_header.py
+PYTHONPATH=. python tests/ver4/gen_metadata_regression.py
 ```
 
 After the redesign, check out the old code in a separate worktree to run
 them, for example `git worktree add ../pyplate-dr4 ed2a193`, and copy the
 `tests/ver4` scripts there.
 
-The rest of this file first describes the SQL reference, then the header
-reference (section "Plate header").
+The rest of this file describes the SQL reference, then the header
+reference (section "Plate header") and the metadata reference (section
+"Metadata regression").
 
 ## How the SQL was recorded
 
@@ -366,3 +370,133 @@ assert header.tostring(sep='\n') + '\n' == expected
 
 The JSON was checked by rebuilding the old `Plate` from it alone and running
 the old header code: both header files were reproduced exactly.
+
+## Metadata regression
+
+`gen_metadata_regression.py` reads three archives with the old `Archive`
+(`read_wfpdb()` or `read_csv()`, then `get_platemeta()` for each plate),
+runs `Plate.compute_values()`, and writes the results to
+`metadata/expected.json`.
+
+### Inputs
+
+| Archive | Configuration | Input files | Covers |
+|---|---|---|---|
+| `pot015` | `pot015.conf` | `wfpdb/POT015maindata_st.txt` | Real WFPDB maindata: 8 records of the AIP Potsdam series POT015 (Kapteyn Selected Areas). Sidereal times converted to UT, including a time `24:24:16`; precession of the recorded coordinates; heliocentric JD; exposure times in minutes; object type and method codes (direct photograph, objective prism); a record without time and exposure time and with time flag `M`; a non-ASCII emulsion field |
+| `my_archive` | `my_archive.conf` | `csv/my_plates.csv`, `csv/my_scans.csv` | Copy of `tests/data`: times in UT, local time (`Europe/Berlin`) and sidereal time, given per row; a plate with two exposures, the second with two sub-exposures; four scans |
+| `mock` | `mock_archive.conf` | `csv/mock_plates.csv` | Plates `m1`–`m5`: the `numexp` rules in DESIGN.md section 4.3. Plate `m6`: two exposures with their own coordinates, the second with two sub-exposures. `evening_date = true` |
+
+The POT015 records were selected from
+`AIP/Mimosa/digiplates/pyheaders/POT015maindata_st.TXT`. That file is in
+Latin-1, which the old `read_wfpdb()` cannot read (it opens files as UTF-8),
+so the subset is stored as UTF-8. The non-ASCII emulsion field `÷àñà` is
+probably Cyrillic text in cp1251 read as Latin-1. The redesigned WFPDB
+reader should take the file encoding from the configuration.
+
+`compute_values()` sets the key `date` (FITS keyword `DATE`) to the current
+UTC time. The generator replaced it with `2001-02-03T04:05:06` (`utcnow` in
+`expected.json`).
+
+### expected.json
+
+```
+{"utcnow": ..., "archives": [
+  {"name": ..., "conf": ..., "input": ...,
+   "plates": [{"input_id": ..., "columns": {...}, "other": {...}}, ...],
+   "scans": [{"input_filename": ..., "columns": {...}, "plate_num": ...,
+              "other": {...}}, ...]}]}
+```
+
+- `input_id`: the plate identifier the old code used (its metadata key
+  `plate_id`: the CSV identifier, or for WFPDB `POT015_000317`).
+- `columns`: the values the old `PlateDB.write_plate()` would write, taken
+  with `Plate.get_value()` exactly as `write_plate()` does, in DR4 column
+  names: `plate` columns and `exposures`, each with `exposure_num`, the
+  `exposure` columns and `subexposures` (`subexposure_num` and the
+  `exposure_sub` columns). For scans, the columns the old `write_scan()`
+  would write. These tables have the same columns in DR5.
+- `other`: metadata keys without a database column that have a value, by old
+  key (for example `ra`, `dec`, `object_type`, `method`, `tz_orig`,
+  `st_start_orig`).
+- NaN and infinity are written as `{"nan": true}` and `{"inf": 1 or -1}`
+  (`sqlrender.decode()` converts them back).
+
+How the old code fills exposures (from `Plate.get_value()`), visible in the
+results:
+
+- A list with one value is used for all exposures, except the computed time
+  values (`ut_*`, `jd_*`, `year_*`, `hjd_*`), which are `None` for exposures
+  after the first. For example, plate `m1` has one coordinate for three
+  exposures, so `ra_icrs` is repeated, but `hjd_mid` is only set for
+  exposure 1.
+- A value that is not a list (for example `method_code`, `flag_time`) is
+  written to every exposure.
+
+### Configuration for the redesigned code
+
+The configuration files are in the old format. With the clean break (DESIGN.md
+section 3) the test needs new-format equivalents. The renames that apply to
+these files:
+
+| Section | Old key | New key |
+|---|---|---|
+| CSV sections | `plate_id` | `plate_num` |
+| CSV sections | `date_orig` | `date_orig_start` |
+| CSV sections | `tms_orig` | `time_orig_start` |
+| CSV sections | `tme_orig` | `time_orig_end` |
+| Scan CSV | `filename` | `filename_scan` |
+| Scan CSV | `datescan` | `scan_date` |
+
+Unchanged: `numexp`, `exptime`, `observer`, `ra_orig`, `dec_orig`,
+`object_name`, `object_type_code`, `scan_author`, the `[Keyword values]`
+keys, `csv_list_delimiter`, `csv_timezone`, `evening_date`, and `[Archive]`.
+In the plate CSV of the mock archive, `method_code` goes to the plate, which
+wins over the exposure when both have the column (DESIGN.md section 4.2); the
+old code wrote the same value to the plate and to every exposure.
+
+Not yet covered by the design, to be decided before the test can be written:
+
+- `my_plates.csv` gives the time zone per row (`tz_orig = 8`), but `tz_orig`
+  is not a column and DESIGN.md section 3 has only the per-file
+  `csv_timezone` setting.
+- `[WFPDB] maindata_timezone` and `exptime_minutes` are not in the
+  configuration sections of DESIGN.md section 3.
+- `my_archive.conf` has no `[Archive]` section, so `archive_id` is `None`;
+  the new `ArchiveReader` needs an `archive_id`.
+
+### Intended differences
+
+The redesigned code is expected to differ from `expected.json` here:
+
+- `plate_num`: the old code leaves it `None` for CSV plates (the identifier
+  is in its `plate_id` key, see `input_id`). With the new configuration it
+  is the CSV identifier (`plate1`, `m1`, ...). For WFPDB plates the old value
+  (`317`, from the WFPDB record) stays.
+- Scans: `plate_num` is `None` in the old code; the new code links scans to
+  plates by `plate_num`.
+- `archive_id`: set by `ArchiveReader` for every record.
+
+Other differences should be treated as regressions unless they are
+deliberate and documented.
+
+### Writing the metadata test for the redesigned code
+
+Outline:
+
+```python
+data = json.load(open('tests/ver4/metadata/expected.json'))
+
+for archive in data['archives']:
+    reader = ArchiveReader(new_format_config(archive))  # inputs from
+                                                        # tests/ver4/metadata
+    for expected in archive['plates']:
+        plate = reader.get_plate(plate_num=...)         # from input_id
+        plate.compute_values()  # with the clock fixed to data['utcnow']
+        compare(plate, decode(expected['columns']))     # exposures and
+                                                        # sub-exposures in order
+        # derived values: plate.exposures[i].ra string etc. against
+        # expected['other']['ra'][i] and so on
+```
+
+Compare values exactly. The old code rounds the computed values (JD to 5
+decimals, years to 8); a change in rounding is a change in results.
