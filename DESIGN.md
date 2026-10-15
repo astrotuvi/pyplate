@@ -696,12 +696,30 @@ The database tests need no database server.
    and compares it with `mock.sql`. Any difference must be a deliberate,
    documented change. See `tests/ver4/README.md`.
 
+### 7.3 Tests of new behaviour
+
+The references in `tests/ver4` check that the new code does the same as the
+current code. The following parts of step 1 are new or differ on purpose, so
+the references do not cover them; each needs its own unit tests, written
+together with the code:
+
+| Test | What it checks |
+|---|---|
+| Archive upsert | The SQL that `write_archive()` sends for PostgreSQL and MySQL equals expected SQL written by hand (5.1); SQLite runs it in the round trip (7.2 point 2) |
+| Rules of `PlateDB` | A lookup whose key is `None` sends no SQL and returns "not found"; a record without `archive_id` is refused with a clear error (4.2, 5.1) |
+| New DR5 columns | `tz_orig`: a value from the CSV row wins over the file default (`csv_timezone`, `[WFPDB] maindata_timezone`); `jd_mid_orig` is read and written; the header writes `TZ-ORIG` and `JDA-ORIG` from them (4.2, 4.5) |
+| DR5 schema content | The neutral `applause_dr5.yaml` equals `applause_dr4.yaml` plus exactly the changes listed in 5.4, so accidental edits are found |
+| DR5 SQL for PostgreSQL and MySQL | The generated DR5 SQL is saved once, reviewed, and compared in later runs, because only SQLite executes DR5 in the tests |
+| Batches | Writing about 2,500 source rows sends `executemany` in batches of 1000 rows with no row lost or repeated |
+| NumPy values | The backends pass NumPy numbers to the database driver as plain Python values (the current PostgreSQL code registers converters for them) |
+| Encodings | WFPDB and CSV files are read with `[WFPDB] encoding` and `csv_encoding`; the Latin-1 copy of the POT015 records gives the results of archive `pot015` (see `tests/ver4/README.md`) |
+
 ## 8. Order of work
 
 | Step | Content | Check |
 |---|---|---|
 | 0 | Capture the reference SQL files (7.2) and the old code's output for the reference plates | — |
-| 1 | `config.py`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend | 7.1 metadata / config / schema tests, 7.2 |
+| 1 | `config.py`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; new-format configuration files for the archives and the header in `tests/ver4` (the references use the old format) | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`; 7.2; 7.3 |
 | 2 | `ProcessContext`, result classes, `output.py`, dead code removed, photometry adapted (6.6) | reference-plate comparison (7.1) |
 | 3 | Long functions split (6.4), `solve/` package, `crossmatch/` with `NearestMatcher` | reference-plate comparison, `test_crossmatch.py` |
 
