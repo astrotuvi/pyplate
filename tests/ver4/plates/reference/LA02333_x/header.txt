@@ -1,0 +1,342 @@
+SIMPLE  =                    T / file conforms to FITS standard                 
+BITPIX  =                   16 / number of bits per data pixel                  
+NAXIS   =                    2 / number of data axes                            
+NAXIS1  =                 8648 / length of data axis 1                          
+NAXIS2  =                11456 / length of data axis 2                          
+BSCALE  =                  1.0 / physical_value = BZERO + BSCALE * array_value  
+BZERO   =                32768 / physical_value = BZERO + BSCALE * array_value  
+MINVAL  =               4635.0 / minimum image value                            
+MAXVAL  =              65533.0 / maximum image value                            
+EXTEND  =                    T / file may contain extensions                    
+        --------------------------------------- Original data of the observation
+DATEORIG= '1928-08-19'         / recorded date of the observation               
+TMS-ORIG= '22:35:00'           / recorded time of the start of exposure 1       
+TMS-OR1 = '22:35:00'           / recorded time of the start of exposure 1       
+TMS-OR2 = '22:48:00'           / recorded time of the start of exposure 2       
+TMS-OR3 = '23:01:00'           / recorded time of the start of exposure 3       
+TMS-OR4 = '23:15:00'           / recorded time of the start of exposure 4       
+TME-ORIG= '22:43:00'           / recorded time of the end of exposure 1         
+TME-OR1 = '22:43:00'           / recorded time of the end of exposure 1         
+TME-OR2 = '22:56:00'           / recorded time of the end of exposure 2         
+TME-OR3 = '23:09:00'           / recorded time of the end of exposure 3         
+TME-OR4 = '23:20:00'           / recorded time of the end of exposure 4         
+JDA-ORIG=                      / recorded Julian date, mid-point of exposure 1  
+TIMEFLAG= '        '           / quality flag of recorded time                  
+RA-ORIG = '01:30.9 '           / recorded right ascension of exposure 1         
+DEC-ORIG= '+71:00.0'           / recorded declination of exposure 1             
+COORFLAG= '        '           / quality flag of recorded coordinates           
+OBJECT  = '        '           / observed object or field (exposure 1)          
+OBJTYPE = '        '           / object type                                    
+EXPTIME =                  480 / [s] exposure time of exposure 1                
+NUMEXP  =                    4 / number of exposures of the plate               
+EXPTIM1 =                  480 / [s] exposure time of exposure 1                
+EXPTIM2 =                  480 / [s] exposure time of exposure 2                
+EXPTIM3 =                  480 / [s] exposure time of exposure 3                
+EXPTIM4 =                  480 / [s] exposure time of exposure 4                
+OBSERVAT= 'Hamburger Sternwarte' / observatory name                             
+SITENAME= 'Hamburg-Bergedorf, Germany' / observatory site                       
+SITELONG=               10.242 / [deg] East longitude of the observatory        
+SITELAT =               53.482 / [deg] latitude of the observatory              
+SITEELEV=                   41 / [m] elevation of the observatory               
+TELESCOP= 'Lippert-Astrograph' / telescope name                                 
+OTA-NAME= 'Triplet K'          / optical tube assembly (OTA)                    
+OTA-DIAM=                  0.3 / [m] diameter of the OTA                        
+OTA-APER=                  0.3 / [m] clear aperture of the OTA                  
+FOCLEN  =                  1.5 / [m] focal length of the OTA                    
+PLTSCALE=                137.5 / [arcsec/mm] plate scale of the OTA             
+INSTRUME= '        '           / instrument                                     
+DETNAM  = 'photographic plate' / detector                                       
+METHOD  = 'direct photograph, multi-exposure' / method of observation           
+FILTER  = '        '           / filter type                                    
+PRISM   = '        '           / objective prism                                
+PRISMANG= '        '           / prism angle "deg:min"                          
+DISPERS =                      / [Angstrom/mm] dispersion                       
+GRATING = '        '           / grating                                        
+FOCUS   =                      / focus position                                 
+TEMPERAT=                      / [deg C] air temperature (degrees Celsius)      
+CALMNESS= '        '           / sky calmness (scale 1-5)                       
+SHARPNES= '        '           / sky sharpness (scale 1-5)                      
+TRANSPAR= '        '           / sky transparency (scale 1-5)                   
+SKYCOND = '        '           / other sky conditions                           
+OBSERVER= '        '           / observer name                                  
+OBSNOTES= '        '           / observer notes                                 
+NOTES   = '+3x8m   '           / miscellaneous notes                            
+BIBCODE = '        '           / bibcode of a related paper                     
+        ----------------------------------------------------- Photographic plate
+PLATENUM= 'LA02333 '           / plate number in archive                        
+PNUMORIG= '        '           / original plate number in archive               
+WFPDB-ID= 'HAM030B002333'      / plate identification in the WFPDB              
+SERIES  = '        '           / plate series                                   
+PLATEFMT= '09x12   '           / plate format in cm                             
+PLATESZ1=                    9 / [cm] plate size along axis 1                   
+PLATESZ2=                   12 / [cm] plate size along axis 2                   
+EMULSION= '        '           / photographic emulsion type                     
+DEVELOP = '        '           / plate development details                      
+PQUALITY= '        '           / quality of plate                               
+PLATNOTE= '        '           / plate notes                                    
+        --------------------------------------- Computed data of the observation
+DATE-OBS= '1928-08-20T00:01:42' / UT date of the start of exposure 1            
+DT-OBS1 = '1928-08-20T00:01:42' / UT date of the start of exposure 1            
+DT-OBS2 = '1928-08-20T00:14:40' / UT date of the start of exposure 2            
+DT-OBS3 = '1928-08-20T00:27:38' / UT date of the start of exposure 3            
+DT-OBS4 = '1928-08-20T00:41:36' / UT date of the start of exposure 4            
+DATE-AVG= '1928-08-20T00:05:41' / UT date of the mid-point of exposure 1        
+DT-AVG1 = '1928-08-20T00:05:41' / UT date of the mid-point of exposure 1        
+DT-AVG2 = '1928-08-20T00:18:40' / UT date of the mid-point of exposure 2        
+DT-AVG3 = '1928-08-20T00:31:37' / UT date of the mid-point of exposure 3        
+DT-AVG4 = '1928-08-20T00:44:05' / UT date of the mid-point of exposure 4        
+DATE-END= '1928-08-20T00:09:41' / UT date of the end of exposure 1              
+DT-END1 = '1928-08-20T00:09:41' / UT date of the end of exposure 1              
+DT-END2 = '1928-08-20T00:22:39' / UT date of the end of exposure 2              
+DT-END3 = '1928-08-20T00:35:37' / UT date of the end of exposure 3              
+DT-END4 = '1928-08-20T00:46:35' / UT date of the end of exposure 4              
+YEAR    =        1928.63381569 / decimal year of the start of exposure 1        
+YEAR1   =        1928.63381569 / decimal year of the start of exposure 1        
+YEAR2   =        1928.63384034 / decimal year of the start of exposure 2        
+YEAR3   =          1928.633865 / decimal year of the start of exposure 3        
+YEAR4   =        1928.63389155 / decimal year of the start of exposure 4        
+YEAR-AVG=        1928.63382328 / decimal year of the mid-point of exposure 1    
+YR-AVG1 =        1928.63382328 / decimal year of the mid-point of exposure 1    
+YR-AVG2 =        1928.63384793 / decimal year of the mid-point of exposure 2    
+YR-AVG3 =        1928.63387259 / decimal year of the mid-point of exposure 3    
+YR-AVG4 =        1928.63389629 / decimal year of the mid-point of exposure 4    
+YEAR-END=        1928.63383087 / decimal year of the end of exposure 1          
+YR-END1 =        1928.63383087 / decimal year of the end of exposure 1          
+YR-END2 =        1928.63385552 / decimal year of the end of exposure 2          
+YR-END3 =        1928.63388017 / decimal year of the end of exposure 3          
+YR-END4 =        1928.63390103 / decimal year of the end of exposure 4          
+JD      =        2425478.50118 / Julian date at the start of exposure 1         
+JD1     =        2425478.50118 / Julian date at the start of exposure 1         
+JD2     =        2425478.51019 / Julian date at the start of exposure 2         
+JD3     =        2425478.51919 / Julian date at the start of exposure 3         
+JD4     =        2425478.52889 / Julian date at the start of exposure 4         
+JD-AVG  =        2425478.50395 / Julian date at the mid-point of exposure 1     
+JD-AVG1 =        2425478.50395 / Julian date at the mid-point of exposure 1     
+JD-AVG2 =        2425478.51296 / Julian date at the mid-point of exposure 2     
+JD-AVG3 =        2425478.52196 / Julian date at the mid-point of exposure 3     
+JD-AVG4 =        2425478.53062 / Julian date at the mid-point of exposure 4     
+JD-END  =        2425478.50672 / Julian date at the end of exposure 1           
+JD-END1 =        2425478.50672 / Julian date at the end of exposure 1           
+JD-END2 =        2425478.51573 / Julian date at the end of exposure 2           
+JD-END3 =        2425478.52473 / Julian date at the end of exposure 3           
+JD-END4 =        2425478.53235 / Julian date at the end of exposure 4           
+HJD-AVG =        2425478.50384 / heliocentric JD at the mid-point of exposure 1 
+RA      = '01:36:25.4'         / right ascension of pointing (J2000) "h:m:s"    
+DEC     = '71:22:03.7'         / declination of pointing (J2000) "d:m:s"        
+RA_DEG  =               24.106 / [deg] right ascension of pointing (J2000)      
+DEC_DEG =              71.3677 / [deg] declination of pointing (J2000)          
+        ------------------------------------------------------------------- Scan
+SCANNER = 'Epson Expression 10000XL' / scanner name                             
+SCANRES1=                 2400 / [dpi] scan resolution along axis 1             
+SCANRES2=                 2400 / [dpi] scan resolution along axis 2             
+PIXSIZE1=              10.5833 / [um] pixel size along axis 1                   
+PIXSIZE2=              10.5833 / [um] pixel size along axis 2                   
+SCANSOFT= '        '           / scanning software                              
+SCANGAM =                      / scan gamma value                               
+SCANFOC = '        '           / scan focus                                     
+WEDGE   = '        '           / type of photometric step-wedge                 
+DATESCAN= '        '           / scan date and time                             
+SCANAUTH= '        '           / author of scan                                 
+SCANNOTE= '        '           / scan notes                                     
+        ------------------------------------------------------------- Data files
+FILENAME= 'LA02333_x.fits'     / filename of the plate scan                     
+FN-SCN1 = 'LA02333_x.fits'     / filename of scan 1                             
+FN-WEDGE= '        '           / filename of the wedge scan                     
+FN-PRE  = 'LA02333_pre.jpg'    / filename of the preview image                  
+FN-COVER= 'LA02333_cover.jpg'  / filename of the plate cover image              
+FN-LOG1 = 'LA-PV03-LA02331_02340.jpg' / filename of logbook image 1             
+FN-LOG2 = 'LA-LB15-1928-08-19a.jpg' / filename of logbook image 2               
+FN-LOG3 = 'LA-LB15-1928-08-19b.jpg' / filename of logbook image 3               
+FN-LOG4 = 'LA-LB15-1928-08-19c.jpg' / filename of logbook image 4               
+FN-LOG5 = 'LA-LB15-1928-08-19d.jpg' / filename of logbook image 5               
+FN-LOG6 = 'LA-LB15-1928-08-19e.jpg' / filename of logbook image 6               
+FN-LOG7 = 'LA-LB15-1928-08-19f.jpg' / filename of logbook image 7               
+ORIGIN  = 'Hamburger Sternwarte (Universitaet Hamburg)'                         
+DATE    = '2001-02-03T04:05:06' / last change of this file                      
+        -------------------------------------------------------------------- WCS
+WCSNAME = 'Solution_1'                                                          
+HISTORY   Astrometric solution by SCAMP version 2.15.0 (2026-04-17)             
+EXTNAME = '        '           / TABLE NAME                                     
+EQUINOX =        2000.00000000 / Mean equinox                                   
+RADESYS = 'ICRS    '           / Astrometric system                             
+CTYPE1  = 'RA---TPV'           / WCS projection type for this axis              
+CTYPE2  = 'DEC--TPV'           / WCS projection type for this axis              
+CUNIT1  = 'deg     '           / Axis unit                                      
+CUNIT2  = 'deg     '           / Axis unit                                      
+CRVAL1  =   2.462950278307E+01 / World coordinate on this axis                  
+CRVAL2  =   7.158387058081E+01 / World coordinate on this axis                  
+CRPIX1  =   4.324500000000E+03 / Reference pixel on this axis                   
+CRPIX2  =   5.728500000000E+03 / Reference pixel on this axis                   
+CD1_1   =   3.992667953370E-04 / Linear projection matrix                       
+CD1_2   =   6.890546912850E-06 / Linear projection matrix                       
+CD2_1   =  -6.890546912850E-06 / Linear projection matrix                       
+CD2_2   =   3.992667953370E-04 / Linear projection matrix                       
+PV1_0   =  -1.185412215576E-03 / Projection distortion parameter                
+PV1_1   =   1.001467011031E+00 / Projection distortion parameter                
+PV1_2   =   1.631537374003E-04 / Projection distortion parameter                
+PV1_4   =   8.876121507151E-04 / Projection distortion parameter                
+PV1_5   =  -1.136507790628E-04 / Projection distortion parameter                
+PV1_6   =   4.012480828068E-04 / Projection distortion parameter                
+PV1_7   =  -5.126789031603E-04 / Projection distortion parameter                
+PV1_8   =  -1.311003374197E-05 / Projection distortion parameter                
+PV1_9   =  -1.050526855245E-04 / Projection distortion parameter                
+PV1_10  =  -1.239628199160E-05 / Projection distortion parameter                
+PV2_0   =   4.613594499442E-04 / Projection distortion parameter                
+PV2_1   =   1.000435228411E+00 / Projection distortion parameter                
+PV2_2   =   7.614675853670E-04 / Projection distortion parameter                
+PV2_4   =  -3.203296427906E-04 / Projection distortion parameter                
+PV2_5   =   8.080887284675E-05 / Projection distortion parameter                
+PV2_6   =  -8.708678768220E-05 / Projection distortion parameter                
+PV2_7   =  -1.415432155980E-04 / Projection distortion parameter                
+PV2_8   =  -6.802986594903E-06 / Projection distortion parameter                
+PV2_9   =  -6.330750103376E-06 / Projection distortion parameter                
+PV2_10  =  -5.019452857902E-06 / Projection distortion parameter                
+FGROUPNO=                    1 / SCAMP field group label                        
+ASTIRMS1=   0.000000000000E+00 / Astrom. dispersion RMS (intern., high S/N)     
+ASTIRMS2=   0.000000000000E+00 / Astrom. dispersion RMS (intern., high S/N)     
+ASTRRMS1=   5.630802881368E-05 / Astrom. dispersion RMS (ref., high S/N)        
+ASTRRMS2=   5.053427734251E-05 / Astrom. dispersion RMS (ref., high S/N)        
+ASTINST =                    1 / SCAMP astrometric instrument label             
+FLXSCALE=   0.000000000000E+00 / SCAMP relative flux scale                      
+MAGZEROP=           0.00000000 / SCAMP zero-point                               
+PHOTIRMS=           0.00000000 / mag dispersion RMS (internal, high S/N)        
+PHOTINST=                    1 / SCAMP photometric instrument label             
+PHOTLINK=                    F / True if linked to a photometric field          
+        ..................................................... WCS A (solution 2)
+WCSNAMEA= 'Solution_2'                                                          
+EQUINOXA=               2000.0 / Mean equinox                                   
+RADESYSA= 'ICRS    '           / Astrometric system                             
+CTYPE1A = 'RA---TPV'           / WCS projection type for this axis              
+CTYPE2A = 'DEC--TPV'           / WCS projection type for this axis              
+CUNIT1A = 'deg     '           / Axis unit                                      
+CUNIT2A = 'deg     '           / Axis unit                                      
+CRVAL1A =       24.76923659822 / World coordinate on this axis                  
+CRVAL2A =       71.58282488411 / World coordinate on this axis                  
+CRPIX1A =               4324.5 / Reference pixel on this axis                   
+CRPIX2A =               5728.5 / Reference pixel on this axis                   
+CD1_1A  =     0.00039927110358 / Linear projection matrix                       
+CD1_2A  =    6.87958855621E-06 / Linear projection matrix                       
+CD2_1A  =   -6.87958855621E-06 / Linear projection matrix                       
+CD2_2A  =     0.00039927110358 / Linear projection matrix                       
+PV1_0A  =   -0.001198913891459 / Projection distortion parameter                
+PV1_1A  =       1.001435794814 / Projection distortion parameter                
+PV1_2A  =   0.0001622445205414 / Projection distortion parameter                
+PV1_4A  =   0.0008892767747966 / Projection distortion parameter                
+PV1_5A  =  -0.0001188126149109 / Projection distortion parameter                
+PV1_6A  =   0.0004039395003848 / Projection distortion parameter                
+PV1_7A  =  -0.0005061510281428 / Projection distortion parameter                
+PV1_8A  =  -1.407896788669E-05 / Projection distortion parameter                
+PV1_9A  =  -0.0001082132790317 / Projection distortion parameter                
+PV1_10A =  -6.262096791138E-06 / Projection distortion parameter                
+PV2_0A  =     0.00051437656863 / Projection distortion parameter                
+PV2_1A  =        1.00038925859 / Projection distortion parameter                
+PV2_2A  =   0.0007326965201985 / Projection distortion parameter                
+PV2_4A  =   -0.000320784791294 / Projection distortion parameter                
+PV2_5A  =   9.410704345278E-05 / Projection distortion parameter                
+PV2_6A  =   -8.26337037934E-05 / Projection distortion parameter                
+PV2_7A  =  -0.0001330247693962 / Projection distortion parameter                
+PV2_8A  =  -5.167511052395E-06 / Projection distortion parameter                
+PV2_9A  =  -1.938391951314E-06 / Projection distortion parameter                
+PV2_10A =   5.655552105326E-07 / Projection distortion parameter                
+        ..................................................... WCS B (solution 3)
+WCSNAMEB= 'Solution_3'                                                          
+EQUINOXB=               2000.0 / Mean equinox                                   
+RADESYSB= 'ICRS    '           / Astrometric system                             
+CTYPE1B = 'RA---TPV'           / WCS projection type for this axis              
+CTYPE2B = 'DEC--TPV'           / WCS projection type for this axis              
+CUNIT1B = 'deg     '           / Axis unit                                      
+CUNIT2B = 'deg     '           / Axis unit                                      
+CRVAL1B =       24.56065333797 / World coordinate on this axis                  
+CRVAL2B =       71.58429195765 / World coordinate on this axis                  
+CRPIX1B =               4324.5 / Reference pixel on this axis                   
+CRPIX2B =               5728.5 / Reference pixel on this axis                   
+CD1_1B  =    0.000399246648441 / Linear projection matrix                       
+CD1_2B  =    6.91572928121E-06 / Linear projection matrix                       
+CD2_1B  =   -6.91572928121E-06 / Linear projection matrix                       
+CD2_2B  =    0.000399246648441 / Linear projection matrix                       
+PV1_0B  =    -0.00120229063086 / Projection distortion parameter                
+PV1_1B  =       1.001548138775 / Projection distortion parameter                
+PV1_2B  =   0.0001273394545411 / Projection distortion parameter                
+PV1_4B  =   0.0008866261730648 / Projection distortion parameter                
+PV1_5B  =  -0.0001185759519568 / Projection distortion parameter                
+PV1_6B  =   0.0003990455739015 / Projection distortion parameter                
+PV1_7B  =  -0.0005144220528136 / Projection distortion parameter                
+PV1_8B  =  -1.385998637305E-05 / Projection distortion parameter                
+PV1_9B  =  -0.0001188304764857 / Projection distortion parameter                
+PV1_10B =  -7.793143074563E-06 / Projection distortion parameter                
+PV2_0B  =   0.0004797032665711 / Projection distortion parameter                
+PV2_1B  =       1.000479971019 / Projection distortion parameter                
+PV2_2B  =   0.0007870621971335 / Projection distortion parameter                
+PV2_4B  =  -0.0003201095722882 / Projection distortion parameter                
+PV2_5B  =   8.396156702344E-05 / Projection distortion parameter                
+PV2_6B  =  -8.480482464704E-05 / Projection distortion parameter                
+PV2_7B  =   -0.000138746613574 / Projection distortion parameter                
+PV2_8B  =  -1.009778723094E-05 / Projection distortion parameter                
+PV2_9B  =   -1.32112537677E-05 / Projection distortion parameter                
+PV2_10B =  -2.949786096473E-07 / Projection distortion parameter                
+        ..................................................... WCS C (solution 4)
+WCSNAMEC= 'Solution_4'                                                          
+EQUINOXC=               2000.0 / Mean equinox                                   
+RADESYSC= 'ICRS    '           / Astrometric system                             
+CTYPE1C = 'RA---TPV'           / WCS projection type for this axis              
+CTYPE2C = 'DEC--TPV'           / WCS projection type for this axis              
+CUNIT1C = 'deg     '           / Axis unit                                      
+CUNIT2C = 'deg     '           / Axis unit                                      
+CRVAL1C =       24.49734651688 / World coordinate on this axis                  
+CRVAL2C =       71.58517599115 / World coordinate on this axis                  
+CRPIX1C =               4324.5 / Reference pixel on this axis                   
+CRPIX2C =               5728.5 / Reference pixel on this axis                   
+CD1_1C  =    0.000399254800817 / Linear projection matrix                       
+CD1_2C  =    6.91655901274E-06 / Linear projection matrix                       
+CD2_1C  =   -6.91655901274E-06 / Linear projection matrix                       
+CD2_2C  =    0.000399254800817 / Linear projection matrix                       
+PV1_0C  =   -0.001232858098307 / Projection distortion parameter                
+PV1_1C  =       1.001515026283 / Projection distortion parameter                
+PV1_2C  =   0.0001538616623492 / Projection distortion parameter                
+PV1_4C  =    0.000880895822476 / Projection distortion parameter                
+PV1_5C  =  -0.0001196524124371 / Projection distortion parameter                
+PV1_6C  =   0.0004051617696143 / Projection distortion parameter                
+PV1_7C  =  -0.0005112767721464 / Projection distortion parameter                
+PV1_8C  =  -1.722750422684E-05 / Projection distortion parameter                
+PV1_9C  =  -0.0001117538000353 / Projection distortion parameter                
+PV1_10C =  -8.338312224757E-06 / Projection distortion parameter                
+PV2_0C  =   0.0005253609315003 / Projection distortion parameter                
+PV2_1C  =       1.000463618874 / Projection distortion parameter                
+PV2_2C  =   0.0007466214940873 / Projection distortion parameter                
+PV2_4C  =  -0.0003263515146058 / Projection distortion parameter                
+PV2_5C  =     9.0131466917E-05 / Projection distortion parameter                
+PV2_6C  =  -8.392052956911E-05 / Projection distortion parameter                
+PV2_7C  =  -0.0001422707952105 / Projection distortion parameter                
+PV2_8C  =  -3.619309498216E-06 / Projection distortion parameter                
+PV2_9C  =  -1.375710653251E-05 / Projection distortion parameter                
+PV2_10C =   2.166758779489E-06 / Projection distortion parameter                
+        ---------------------------------------------------------------- Licence
+LICENCE = 'https://creativecommons.org/publicdomain/zero/1.0/'                  
+        ------------------------------------------------------- Acknowledgements
+COMMENT The digitized image is provided by Dr. Karl Remeis-Sternwarte, Bamberg  
+COMMENT (Friedrich-Alexander-Universitaet Erlangen-Nuernberg). Funding for      
+COMMENT APPLAUSE has been provided by DFG (German Research Foundation), Leibniz 
+COMMENT Institute for Astrophysics Potsdam (AIP), Dr. Karl Remeis-Sternwarte,   
+COMMENT Bamberg (Friedrich-Alexander-Universitaet Erlangen-Nuernberg), Hamburger
+COMMENT Sternwarte (Unversity Hamburg) and Tartu Observatory (University of     
+COMMENT Tartu). We thank Thueringer Landessternwarte Tautenburg (TLS),          
+COMMENT Astrophysikalisches Institut und Universitaetsternwarte Jena (University
+COMMENT of Jena) and the Vatican Observatory for providing digitized Material   
+COMMENT for inclusion into the archive.                                         
+        ---------------------------------------------------------------- History
+HISTORY Created by the Astrometry.net suite.                                    
+HISTORY For more details, see http://astrometry.net.                            
+HISTORY Git URL https://github.com/dstndstn/astrometry.net                      
+HISTORY Git revision 0.70                                                       
+HISTORY Git date Wed_Dec_7_11:52:34_2016_-0500                                  
+HISTORY This WCS header was created by the program "blind".                     
+HISTORY ImageMagick 6.6.9-7 2014-03-06 Q16 http://www.imagemagick.org           
+HISTORY Header updated with PyPlate v3.0.1 at 2017-12-23T13:35:17               
+HISTORY WCS added with PyPlate v3.0.1 at 2017-12-23T13:41:04                    
+HISTORY Header updated with PyPlate vreference-version at 2001-02-03T04:05:06   
+HISTORY WCS added with PyPlate vreference-version at 2001-02-03T04:05:06        
+        -------------------------------------------------------------- Checksums
+CHECKSUM= 'PUBgQRBgPRBgPRBg'                                                    
+DATASUM = '2662112963'                                                          
+        ------------------------------------------------------------------------
+END                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        

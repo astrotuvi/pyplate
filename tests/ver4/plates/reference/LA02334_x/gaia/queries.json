@@ -1,0 +1,32 @@
+[
+ {
+  "key": {
+   "query": "SELECT source_id,ra,dec,ref_epoch,pmra,pmdec,phot_g_mean_mag,phot_bp_mean_mag,phot_rp_mean_mag,bp_rp FROM {} WHERE {} AND phot_g_mean_mag >= 0 AND phot_g_mean_mag < 12 AND astrometric_params_solved=31",
+   "ra": "24.639416",
+   "dec": "71.574301",
+   "radius": "2.866730"
+  },
+  "file": "gaia_01.vot",
+  "rows": 2337
+ },
+ {
+  "key": {
+   "query": "SELECT source_id,ra,dec,ref_epoch,pmra,pmdec,phot_g_mean_mag,phot_bp_mean_mag,phot_rp_mean_mag,bp_rp FROM {} WHERE {} AND phot_rp_mean_mag + 1.66596 * bp_rp >= 0 AND phot_rp_mean_mag + 1.66596 * bp_rp < 15 AND astrometric_params_solved=31",
+   "ra": "24.639416",
+   "dec": "71.574301",
+   "radius": "2.866730"
+  },
+  "file": "gaia_02.vot",
+  "rows": 7743
+ },
+ {
+  "key": {
+   "query": "SELECT source_id,ra,dec,ref_epoch,pmra,pmdec,phot_g_mean_mag,phot_bp_mean_mag,phot_rp_mean_mag,bp_rp FROM {} WHERE {} AND phot_rp_mean_mag + 1.66596 * bp_rp >= 15 AND phot_rp_mean_mag + 1.66596 * bp_rp < 15.74497 AND astrometric_params_solved=31",
+   "ra": "24.639416",
+   "dec": "71.574301",
+   "radius": "2.866730"
+  },
+  "file": "gaia_03.vot",
+  "rows": 5841
+ }
+]

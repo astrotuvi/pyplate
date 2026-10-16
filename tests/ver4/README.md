@@ -23,6 +23,9 @@ inputs through the new code and check that the results are unchanged.
 | `metadata/` | Archive inputs (old-format configuration, WFPDB and CSV files) and `expected.json`, the metadata the old code computes from them |
 | `gen_metadata_regression.py` | Generates `metadata/expected.json` |
 | `make_metadata_inputs.py` | Creates the FITS files and images in `metadata/` (inputs, committed; needs no pyplate) |
+| `plates/` | Configuration of the reference-plate run (`plates.conf`; `paths.local.example` as template for the local paths) and the published summary of the reference run (`reference/`) |
+| `run_reference_plates.py` | Runs the old pipeline on the reference plates and saves the results (section "Reference plates") |
+| `compare_reference_plates.py` | Compares two reference-plate runs |
 
 ## Regenerating the reference files
 
@@ -47,8 +50,9 @@ them, for example `git worktree add ../pyplate-dr4 ed2a193`, and copy the
 `tests/ver4` scripts there.
 
 The rest of this file describes the SQL reference, then the header
-reference (section "Plate header") and the metadata reference (section
-"Metadata regression").
+reference (section "Plate header"), the metadata reference (section
+"Metadata regression") and the reference plates (section "Reference
+plates").
 
 ## How the SQL was recorded
 
@@ -591,3 +595,126 @@ for archive in data['archives']:
 
 Compare values exactly. The old code rounds the computed values (JD to 5
 decimals, years to 8); a change in rounding is a change in results.
+
+## Reference plates
+
+`run_reference_plates.py` runs the old pipeline end to end on two real
+plates and saves its results, so that the redesigned pipeline can be run on
+the same plates and compared. It needs the external programs (SExtractor,
+PSFEx, SCAMP, astrometry.net), the astrometry.net index files and Gaia
+files, the plate scans and the metadata CSV files, so it runs only on a
+machine that has them.
+
+### Plates
+
+| Scan | Plate | Exposures | Header of the scan |
+|---|---|---|---|
+| `LA02333_x.fits` | Hamburg Lippert-Astrograph LA02333, field at RA 01:30.9, Dec +71°, 1928-08-19/20 | 4 × 480 s (method code 2) | Header and WCS written by pyplate 3.0.1 in 2017; kept unchanged (checksum in the manifest) |
+| `LA02334_x.fits` | LA02334, same field and night | 1 × 480 s (method code 1) | Raw (10 cards) |
+
+The old code reads metadata from the scan header before the CSV files. For
+LA02333 this gives empty strings (`''`) instead of `None` for about 17 text
+fields, the old `CHECKSUM`/`DATASUM` values and the old `HISTORY` lines; no
+times, coordinates, exposure data or WCS values come from the header. The
+redesigned FITS reader may store `None` instead of `''` for these: compare
+them as equal, or document the difference.
+
+### Configuration
+
+| File | In git | Contents |
+|---|---|---|
+| `plates/plates.conf` | yes | The DR5 development configuration without paths and without the `[DB_pgsql]` section; `output_header_fits` off (the old code would call `PlateDB.update_scan()` without a database), `output_sources_csv` off (the full source table is saved instead) |
+| `plates/paths.local` | no (`*.local` in `.gitignore`) | Machine-specific paths: `[Reference] output_dir` (where results go), the input directories in `[Files]`, `filter_path` in `[Solve]`, the programs in `[Programs]` |
+| `plates/paths.local.example` | yes | Template for `paths.local` |
+
+The driver reads `plates.conf` and then `paths.local`. It sets the output
+directories of the pipeline (work, logs, headers, WCS) inside the run
+directory, so runs do not touch other output.
+
+### What the driver does
+
+It runs `PlatePipeline.single_image()` for each scan. Unlike a script that
+calls the `Process` steps directly, `single_image()` builds the plate header
+from the metadata, so both plates get their epoch (1928.63) and `METHOD`
+from the CSV metadata, not from the scan header (a raw scan would otherwise
+get the configuration default 1970, for which there is no index file).
+
+The pyplate code is not changed; methods are wrapped at run time:
+
+| Wrapped | Saved |
+|---|---|
+| `StarCatalog.query_gaia_tap()` | Every Gaia query result (`gaia/gaia_NN.vot`, VOTable binary2) and its parameters (`gaia/queries.json`). With `--replay-gaia RUN` the saved results of another run are returned instead of querying the archive; the run stops if a query differs |
+| `SourceTable.crossmatch_gaia()` | For every call `NN`: the Gaia stars (`crossmatch/xmatch_NN_catalog_in.fits`), the solutions used (`xmatch_NN_solution.json`), the match columns (`xmatch_NN_matches.fits`) and the neighbour table (`xmatch_NN_neighbors.fits`); for the first call also the source table before matching (`xmatch_01_sources_in.fits`) |
+| `Process.finish()` | Before the scratch directory is removed: the full source table (`sources.fits`), the scanner pattern and HEALPix tables, and `summary.json` with the process values, all astrometric solutions (with WCS headers), the photometric calibration and its curves evaluated on 0.1 mag steps, and statistics of the main source columns |
+| `PlateDB` | A recording database (`sqlrender.RecordingCursor`), so the result writes run without a database server. The scan lookup returns the mock IDs 9001/9002, the process gets ID 1, and all other lookups find nothing (in particular no plate epoch). `results.sql` holds all SQL; `results_small.sql` leaves out HEALPix and source tables |
+
+Fixed values: the header and metadata time is `2001-02-03T04:05:06`, the
+pyplate version written to headers and the process table is
+`reference-version`, and the host name is `reference-host`. The process
+duration in `results.sql` is real (the comparison ignores it), as are the
+log times.
+
+### Running
+
+From the repository root, on the machine with the data:
+
+```
+PYTHONPATH=. python tests/ver4/run_reference_plates.py run1
+PYTHONPATH=. python tests/ver4/run_reference_plates.py run2 --replay-gaia run1
+python tests/ver4/compare_reference_plates.py run1 run2
+PYTHONPATH=. python tests/ver4/run_reference_plates.py run1 --publish
+```
+
+`run1` queries the Gaia archive (TAP, `gaiaedr3.gaia_source` at
+gaia.aip.de); `run2` reuses those results, so differences between the runs
+come from the pipeline only. A run directory is never overwritten.
+
+Result of the first two runs (2026-10-16): with the same Gaia results, the
+old pipeline is deterministic. All source columns, all crossmatch outputs,
+all values in `summary.json` and all lines of `results.sql` are identical,
+except in the FITS header written by astrometry.net for each solution
+(`header_anet`): its `DATE` card, and `COMMENT` cards with the work directory
+and the CPU time. The comparison ignores `COMMENT`, `HISTORY` and `DATE`
+cards and the process duration, and then finds no differences. The
+redesigned code is therefore compared exactly, apart from the intended
+differences below.
+
+| Plate | Sources | Solutions | Calibration iterations | Gaia queries | Crossmatch calls |
+|---|---|---|---|---|---|
+| LA02333 | 29,969 | 4 | 4 | 3 | 3 |
+| LA02334 | 18,714 | 1 | 4 | 3 | 3 |
+
+### Where the results are
+
+| Location | Contents |
+|---|---|
+| `<output_dir>/<run>/` (outside git) | Everything: `manifest.json`, and per plate `sources.fits`, `summary.json`, `results.sql`, `results_small.sql`, `header.txt`, `crossmatch/`, `gaia/`, logs, headers, WCS files |
+| `plates/reference/` (in git, made with `--publish`) | The manifest and, per plate, `summary.json`, `header.txt`, `results_small.sql` and `gaia/queries.json` (about 640 kB in all). The `COMMENT` and `HISTORY` cards of the stored solution headers are left out (they hold local paths, split over several cards by astrometry.net), and other local paths are replaced by placeholders such as `${output_dir}`; publishing stops if a home-directory path remains |
+
+The manifest records the pyplate commit, the Python, package and program
+versions, and SHA-256 checksums of the inputs (scans, metadata CSV files,
+`plates.conf`, the astrometry.net index files of the plate year,
+`gaiaedr3_pyplate.fits`) and of every output file, by name only. It shows
+whether a later run used the same inputs and whether the external results
+are still the ones that were recorded. Back up the external directory; it is
+not in git.
+
+### Comparing the redesigned code
+
+The redesigned pipeline is run on the same scans, with `--replay-gaia` of
+the reference run or an equivalent replay of `gaia/gaia_NN.vot`, and its
+results are written in the same layout. `compare_reference_plates.py
+--dr5` maps the DR5 column names (`gaia_*`, `num_gaia`) back to DR4 before
+comparing.
+
+Intended differences:
+
+- Crossmatch epoch: the old `extract_sources()` creates the `SourceTable`
+  without the configuration, so `crossmatch_gaia()` moves the Gaia stars to
+  the default epoch 1950, not to the plate epoch (1928.63); see
+  `source_table_plate_epoch` in `xmatch_NN_solution.json`. The redesigned code
+  uses the plate epoch, so matches change for stars with large proper motion,
+  and with them the calibration.
+- DR5 column names, `tz_orig` and `TZ-ORIG`, and the metadata differences of
+  section "Metadata regression".
+- For LA02333, empty strings from the scan header (see "Plates").

@@ -5,6 +5,7 @@ test of the redesigned code must use them unchanged. See README.md.
 """
 import math
 import os
+import re
 from collections import defaultdict
 
 import numpy as np
@@ -122,6 +123,16 @@ def render(sql, params, rdbms):
     for p, rest in zip(params, parts[1:]):
         out += literal(p, rdbms) + rest
     return out
+
+
+def strip_header_comments(text):
+    """
+    Remove COMMENT and HISTORY cards from FITS headers stored as text with
+    literal \\n separators (as in recorded SQL and in JSON files). These
+    cards hold local paths, times and CPU times, e.g. in the headers written
+    by astrometry.net.
+    """
+    return re.sub(r'\\n(?:COMMENT|HISTORY) .*?(?=\\n|$)', '', text)
 
 
 def format_queries(rdbms, blocks):

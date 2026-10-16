@@ -1,0 +1,178 @@
+SIMPLE  =                    T / file conforms to FITS standard                 
+BITPIX  =                   16 / number of bits per data pixel                  
+NAXIS   =                    2 / number of data axes                            
+NAXIS1  =                 8648 / length of data axis 1                          
+NAXIS2  =                11476 / length of data axis 2                          
+BSCALE  =                  1.0 / physical_value = BZERO + BSCALE * array_value  
+BZERO   =                32768 / physical_value = BZERO + BSCALE * array_value  
+MINVAL  =               5711.0 / minimum image value                            
+MAXVAL  =              65535.0 / maximum image value                            
+EXTEND  =                    T / file may contain extensions                    
+        --------------------------------------- Original data of the observation
+DATEORIG= '1928-08-19'         / recorded date of the observation               
+TMS-ORIG= '23:43:00'           / recorded time of the start of exposure 1       
+TME-ORIG= '23:51:00'           / recorded time of the end of exposure 1         
+JDA-ORIG=                      / recorded Julian date, mid-point of exposure 1  
+TIMEFLAG= '        '           / quality flag of recorded time                  
+RA-ORIG = '01:30.9 '           / recorded right ascension of exposure 1         
+DEC-ORIG= '+71:00.0'           / recorded declination of exposure 1             
+COORFLAG= '        '           / quality flag of recorded coordinates           
+OBJECT  = '        '           / observed object or field (exposure 1)          
+OBJTYPE = '        '           / object type                                    
+EXPTIME =                  480 / [s] exposure time of exposure 1                
+NUMEXP  =                    1 / number of exposures of the plate               
+OBSERVAT= 'Hamburger Sternwarte' / observatory name                             
+SITENAME= 'Hamburg-Bergedorf, Germany' / observatory site                       
+SITELONG=               10.242 / [deg] East longitude of the observatory        
+SITELAT =               53.482 / [deg] latitude of the observatory              
+SITEELEV=                   41 / [m] elevation of the observatory               
+TELESCOP= 'Lippert-Astrograph' / telescope name                                 
+OTA-NAME= 'Triplet K'          / optical tube assembly (OTA)                    
+OTA-DIAM=                  0.3 / [m] diameter of the OTA                        
+OTA-APER=                  0.3 / [m] clear aperture of the OTA                  
+FOCLEN  =                  1.5 / [m] focal length of the OTA                    
+PLTSCALE=                137.5 / [arcsec/mm] plate scale of the OTA             
+INSTRUME= '        '           / instrument                                     
+DETNAM  = 'photographic plate' / detector                                       
+METHOD  = 'direct photograph'  / method of observation                          
+FILTER  = '        '           / filter type                                    
+PRISM   = '        '           / objective prism                                
+PRISMANG= '        '           / prism angle "deg:min"                          
+DISPERS =                      / [Angstrom/mm] dispersion                       
+GRATING = '        '           / grating                                        
+FOCUS   =                      / focus position                                 
+TEMPERAT=                      / [deg C] air temperature (degrees Celsius)      
+CALMNESS= '        '           / sky calmness (scale 1-5)                       
+SHARPNES= '        '           / sky sharpness (scale 1-5)                      
+TRANSPAR= '        '           / sky transparency (scale 1-5)                   
+SKYCOND = '        '           / other sky conditions                           
+OBSERVER= '        '           / observer name                                  
+OBSNOTES= '        '           / observer notes                                 
+NOTES   = '        '           / miscellaneous notes                            
+BIBCODE = '        '           / bibcode of a related paper                     
+        ----------------------------------------------------- Photographic plate
+PLATENUM= 'LA02334 '           / plate number in archive                        
+PNUMORIG= '        '           / original plate number in archive               
+WFPDB-ID= 'HAM030B002334'      / plate identification in the WFPDB              
+SERIES  = '        '           / plate series                                   
+PLATEFMT= '09x12   '           / plate format in cm                             
+PLATESZ1=                    9 / [cm] plate size along axis 1                   
+PLATESZ2=                   12 / [cm] plate size along axis 2                   
+EMULSION= '        '           / photographic emulsion type                     
+DEVELOP = '        '           / plate development details                      
+PQUALITY= '        '           / quality of plate                               
+PLATNOTE= '        '           / plate notes                                    
+        --------------------------------------- Computed data of the observation
+DATE-OBS= '1928-08-20T01:09:31' / UT date of the start of exposure 1            
+DATE-AVG= '1928-08-20T01:13:30' / UT date of the mid-point of exposure 1        
+DATE-END= '1928-08-20T01:17:30' / UT date of the end of exposure 1              
+YEAR    =        1928.63394463 / decimal year of the start of exposure 1        
+YEAR-AVG=        1928.63395222 / decimal year of the mid-point of exposure 1    
+YEAR-END=        1928.63395981 / decimal year of the end of exposure 1          
+JD      =        2425478.54828 / Julian date at the start of exposure 1         
+JD-AVG  =        2425478.55105 / Julian date at the mid-point of exposure 1     
+JD-END  =        2425478.55382 / Julian date at the end of exposure 1           
+HJD-AVG =        2425478.55094 / heliocentric JD at the mid-point of exposure 1 
+RA      = '01:36:25.4'         / right ascension of pointing (J2000) "h:m:s"    
+DEC     = '71:22:03.7'         / declination of pointing (J2000) "d:m:s"        
+RA_DEG  =               24.106 / [deg] right ascension of pointing (J2000)      
+DEC_DEG =              71.3677 / [deg] declination of pointing (J2000)          
+        ------------------------------------------------------------------- Scan
+SCANNER = 'Epson Expression 10000XL' / scanner name                             
+SCANRES1=                 2400 / [dpi] scan resolution along axis 1             
+SCANRES2=                 2400 / [dpi] scan resolution along axis 2             
+PIXSIZE1=              10.5833 / [um] pixel size along axis 1                   
+PIXSIZE2=              10.5833 / [um] pixel size along axis 2                   
+SCANSOFT= '        '           / scanning software                              
+SCANGAM =                      / scan gamma value                               
+SCANFOC = '        '           / scan focus                                     
+WEDGE   = '        '           / type of photometric step-wedge                 
+DATESCAN= '        '           / scan date and time                             
+SCANAUTH= '        '           / author of scan                                 
+SCANNOTE= '        '           / scan notes                                     
+        ------------------------------------------------------------- Data files
+FILENAME= 'LA02334_x.fits'     / filename of the plate scan                     
+FN-SCN1 = 'LA02334_y.fits'     / filename of scan 1                             
+FN-SCN2 = 'LA02334_x.fits'     / filename of scan 2                             
+FN-WEDGE= '        '           / filename of the wedge scan                     
+FN-PRE  = 'LA02334_pre.jpg'    / filename of the preview image                  
+FN-COVER= 'LA02334_cover.jpg'  / filename of the plate cover image              
+FN-LOG1 = 'LA-PV03-LA02331_02340.jpg' / filename of logbook image 1             
+FN-LOG2 = 'LA-LB15-1928-08-19a.jpg' / filename of logbook image 2               
+FN-LOG3 = 'LA-LB15-1928-08-19b.jpg' / filename of logbook image 3               
+FN-LOG4 = 'LA-LB15-1928-08-19c.jpg' / filename of logbook image 4               
+FN-LOG5 = 'LA-LB15-1928-08-19d.jpg' / filename of logbook image 5               
+FN-LOG6 = 'LA-LB15-1928-08-19e.jpg' / filename of logbook image 6               
+FN-LOG7 = 'LA-LB15-1928-08-19f.jpg' / filename of logbook image 7               
+ORIGIN  = 'Hamburger Sternwarte (Universitaet Hamburg)'                         
+DATE    = '2001-02-03T04:05:06' / last change of this file                      
+        -------------------------------------------------------------------- WCS
+HISTORY   Astrometric solution by SCAMP version 2.15.0 (2026-04-17)             
+EXTNAME = '        '           / TABLE NAME                                     
+EQUINOX =        2000.00000000 / Mean equinox                                   
+RADESYS = 'ICRS    '           / Astrometric system                             
+CTYPE1  = 'RA---TPV'           / WCS projection type for this axis              
+CTYPE2  = 'DEC--TPV'           / WCS projection type for this axis              
+CUNIT1  = 'deg     '           / Axis unit                                      
+CUNIT2  = 'deg     '           / Axis unit                                      
+CRVAL1  =   2.462943373588E+01 / World coordinate on this axis                  
+CRVAL2  =   7.157582682148E+01 / World coordinate on this axis                  
+CRPIX1  =   4.324500000000E+03 / Reference pixel on this axis                   
+CRPIX2  =   5.738500000000E+03 / Reference pixel on this axis                   
+CD1_1   =   3.992686235330E-04 / Linear projection matrix                       
+CD1_2   =   6.380541874490E-06 / Linear projection matrix                       
+CD2_1   =  -6.380541874490E-06 / Linear projection matrix                       
+CD2_2   =   3.992686235330E-04 / Linear projection matrix                       
+PV1_0   =  -1.187252933151E-03 / Projection distortion parameter                
+PV1_1   =   1.001232173290E+00 / Projection distortion parameter                
+PV1_2   =   2.636204237530E-05 / Projection distortion parameter                
+PV1_4   =   9.553172368079E-04 / Projection distortion parameter                
+PV1_5   =  -9.571211520174E-05 / Projection distortion parameter                
+PV1_6   =   3.429613553942E-04 / Projection distortion parameter                
+PV1_7   =  -4.235995196252E-04 / Projection distortion parameter                
+PV1_8   =   3.674280573780E-05 / Projection distortion parameter                
+PV1_9   =  -8.902928202910E-05 / Projection distortion parameter                
+PV1_10  =  -9.248185824828E-07 / Projection distortion parameter                
+PV2_0   =   5.809845180137E-04 / Projection distortion parameter                
+PV2_1   =   1.000506460841E+00 / Projection distortion parameter                
+PV2_2   =   8.241169586273E-04 / Projection distortion parameter                
+PV2_4   =  -4.316014333389E-04 / Projection distortion parameter                
+PV2_5   =   7.627264279059E-05 / Projection distortion parameter                
+PV2_6   =  -6.386965877751E-05 / Projection distortion parameter                
+PV2_7   =  -1.059069257130E-04 / Projection distortion parameter                
+PV2_8   =  -1.909761342320E-05 / Projection distortion parameter                
+PV2_9   =  -1.540576240761E-05 / Projection distortion parameter                
+PV2_10  =  -2.297294377642E-05 / Projection distortion parameter                
+FGROUPNO=                    1 / SCAMP field group label                        
+ASTIRMS1=   0.000000000000E+00 / Astrom. dispersion RMS (intern., high S/N)     
+ASTIRMS2=   0.000000000000E+00 / Astrom. dispersion RMS (intern., high S/N)     
+ASTRRMS1=   6.402922183314E-05 / Astrom. dispersion RMS (ref., high S/N)        
+ASTRRMS2=   6.390275968557E-05 / Astrom. dispersion RMS (ref., high S/N)        
+ASTINST =                    1 / SCAMP astrometric instrument label             
+FLXSCALE=   0.000000000000E+00 / SCAMP relative flux scale                      
+MAGZEROP=           0.00000000 / SCAMP zero-point                               
+PHOTIRMS=           0.00000000 / mag dispersion RMS (internal, high S/N)        
+PHOTINST=                    1 / SCAMP photometric instrument label             
+PHOTLINK=                    F / True if linked to a photometric field          
+        ---------------------------------------------------------------- Licence
+LICENCE = 'https://creativecommons.org/publicdomain/zero/1.0/'                  
+        ------------------------------------------------------- Acknowledgements
+COMMENT The digitized image is provided by Dr. Karl Remeis-Sternwarte, Bamberg  
+COMMENT (Friedrich-Alexander-Universitaet Erlangen-Nuernberg). Funding for      
+COMMENT APPLAUSE has been provided by DFG (German Research Foundation), Leibniz 
+COMMENT Institute for Astrophysics Potsdam (AIP), Dr. Karl Remeis-Sternwarte,   
+COMMENT Bamberg (Friedrich-Alexander-Universitaet Erlangen-Nuernberg), Hamburger
+COMMENT Sternwarte (Unversity Hamburg) and Tartu Observatory (University of     
+COMMENT Tartu). We thank Thueringer Landessternwarte Tautenburg (TLS),          
+COMMENT Astrophysikalisches Institut und Universitaetsternwarte Jena (University
+COMMENT of Jena) and the Vatican Observatory for providing digitized Material   
+COMMENT for inclusion into the archive.                                         
+        ---------------------------------------------------------------- History
+HISTORY ImageMagick 6.6.9-7 2014-03-06 Q16 http://www.imagemagick.org           
+HISTORY Header updated with PyPlate vreference-version at 2001-02-03T04:05:06   
+HISTORY WCS added with PyPlate vreference-version at 2001-02-03T04:05:06        
+        -------------------------------------------------------------- Checksums
+CHECKSUM= '        '                                                            
+DATASUM = '        '                                                            
+        ------------------------------------------------------------------------
+END                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
