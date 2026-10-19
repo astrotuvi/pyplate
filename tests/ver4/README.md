@@ -705,7 +705,7 @@ not in git.
 The redesigned pipeline is run on the same scans, with `--replay-gaia` of
 the reference run or an equivalent replay of `gaia/gaia_NN.vot`, and its
 results are written in the same layout. Its configuration is made with
-`python -m pyplate.ini2toml plates/plates.conf plates/paths.local <file>.toml`;
+`python -m pyplate.config.ini2toml plates/plates.conf plates/paths.local <file>.toml`;
 the result holds the local paths, so it stays outside git, like
 `paths.local`. `compare_reference_plates.py
 --dr5` maps the DR5 column names (`gaiadr4_*`, `num_gaia_dr4`) back to DR4

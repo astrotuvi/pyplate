@@ -27,7 +27,9 @@ Terms used:
 | 9 | Crossmatching moves to its own package with a single matcher (`NearestMatcher`, the current behaviour). |
 | 10 | Photometry is not restructured. It only gets the changes needed to work with the new inputs, result classes and DR5 column names; it is reworked later (section 10). |
 | 11 | `process/` remains. Long functions outside photometry are split, steps pass explicit inputs, the number of class attributes goes down, and dead code is removed. |
-| 12 | Python 3.11 or later: `requires-python = ">=3.11"` in `pyproject.toml`, set in step 1. The design uses union types (`X \| None`), dataclass features from 3.10 and `tomllib` from 3.11. |
+| 12 | Python 3.12 or later: `requires-python = ">=3.12"` in `pyproject.toml`, set in step 1. The design uses union types (`X \| None`), dataclass features from 3.10 and `tomllib` from 3.11; 3.12 is the minimum because NumPy (from 2.5) and SciPy (from 1.18) require it. |
+| 13 | Type hints are added to code as each step writes or rewrites it, not in a separate pass. Public signatures and dataclass fields are annotated; local variables are not. The syntax is that of 3.12 (`X \| None`, `list[str]`, and `type` statements or `def f[T]` where an alias or a generic is needed), without `typing.Optional` or `from __future__ import annotations`. NumPy and Astropy types are written plainly (`np.ndarray`, `Table`, `fits.Header`), without `numpy.typing` shapes or dtypes. mypy may be run locally but is not a required check. |
+| 14 | Docstrings are written in NumPy style (napoleon in `docs/conf.py`) for the code each step writes or rewrites; unchanged code keeps its docstrings until its step. Public modules, classes, methods and functions have a summary line and, where they add to the signature, `Parameters`, `Returns` and `Raises` sections; private helpers have one only when the logic is not obvious. Types are not repeated in docstrings: they come from the type hints, shown by `autodoc_typehints = "description"` (set in step 1). Record classes name their table and refer to `applause_dr5.yaml` for the column descriptions; only attributes without a column are documented in the class. |
 
 ## 2. Package layout
 
@@ -35,8 +37,11 @@ Terms used:
 pyplate/
   __init__.py
   _version.py
-  config.py                 typed config sections, parsed once from the TOML file
-  ini2toml.py               converts INI configurations to TOML (3.1)
+  config/
+    __init__.py             re-exports Config and load_config()
+    sections.py             the section dataclasses
+    loader.py               reads the TOML file, validates keys, builds Config
+    ini2toml.py             converts INI configurations to TOML (3.1)
   image.py                  PlateConverter (TIFF → FITS, previews)
   metadata/
     __init__.py             re-exports the public classes
@@ -100,7 +105,7 @@ pyplate/
 
 Removed:
 
-- `conf.py`, replaced by `config.py`;
+- `conf.py`, replaced by the `config` subpackage;
 - the Python 2 compatibility code (`unicode`, `ConfigParser`, `unicodecsv`);
 - the aliases `ArchiveMeta`, `PlateMeta`, `LogbookMeta`, `LogpageMeta`, `PreviewMeta`;
 - `Process.get_reference_catalogs()` (about 360 lines, never called) and the
@@ -113,7 +118,7 @@ Removed:
   `subfield_distort`, `max_recursion_depth`, `force_recursion_depth`;
 - the stale `tests/test_db_*.py` and `tests/test_schema.py` scripts.
 
-## 3. Configuration (`config.py`)
+## 3. Configuration (`config/`)
 
 The TOML file is read once with `tomllib` into frozen dataclasses. The
 section names stay as in the INI files (`[Archive]`, `[Files]`,
@@ -197,9 +202,9 @@ site_longitude = 13.06417
 
 ### 3.1 Converting INI configurations (`ini2toml`)
 
-`python -m pyplate.ini2toml old.conf [more.conf ...] new.toml` converts the
+`python -m pyplate.config.ini2toml old.conf [more.conf ...] new.toml` converts the
 current INI configurations (old keys) to TOML with the new keys. It is the
-only support for INI: `config.py` reads TOML only.
+only support for INI: `load_config()` reads TOML only.
 
 - Several input files are merged in order, as `ConfigParser.read()` does, so
   a configuration split into a shared part and local paths (as in
@@ -257,8 +262,9 @@ class DbRecord:
 | `Logbook` | `logbook` | — |
 | `Logpage` | `logpage` | — |
 
-- The fields are written out explicitly, which gives typing, editor
-  completion and docstrings. A test checks them against `applause_dr5.yaml`.
+- The fields are written out explicitly, which gives typing and editor
+  completion. A test checks them against `applause_dr5.yaml`, which also
+  holds the column descriptions (decision 14).
 - `plate_logpage` is written from `plate.logpages`, with `logpage_order`
   taken from the list position.
 
@@ -792,7 +798,7 @@ together with the code:
 | Step | Content | Check |
 |---|---|---|
 | 0 | Capture the reference SQL files (7.2) and the old code's output for the reference plates | — |
-| 1 | `config.py`, `ini2toml`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; TOML configuration files for the archives, the header and the reference plates in `tests/ver4`, made with `ini2toml` (the references use the old INI format); `process/` adapted to the new config, metadata and database layer only as much as needed for the pipeline to keep running | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`, reference-plate comparison; 7.2; 7.3 |
+| 1 | `config` subpackage with `ini2toml`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; TOML configuration files for the archives, the header and the reference plates in `tests/ver4`, made with `ini2toml` (the references use the old INI format); `process/` adapted to the new config, metadata and database layer only as much as needed for the pipeline to keep running | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`, reference-plate comparison; 7.2; 7.3 |
 | 2 | `ProcessContext`, result classes, `Process` renamed to `PlateProcess`, `output.py`, dead code removed, photometry adapted (6.6) | reference-plate comparison (7.1) |
 | 3 | Long functions split (6.4), `solve/` package, `crossmatch/` with `NearestMatcher` | reference-plate comparison, `test_crossmatch.py` |
 
