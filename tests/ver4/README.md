@@ -431,7 +431,7 @@ configuration can leave the default.
 
 `wfpdb_latin1/POT015maindata_st.txt` holds the same 8 records with the
 original Latin-1 bytes. The old code cannot read it, so there is no separate
-reference: the test reads it with `pot015.conf` (new format) plus
+reference: the test reads it with `pot015.toml` (new format) plus
 `encoding = latin-1`, and expects exactly the results of archive `pot015`.
 
 `compute_values()` sets the key `date` (FITS keyword `DATE`) to the current
@@ -510,9 +510,10 @@ Other details of the old code visible in the results:
 
 ### Configuration for the redesigned code
 
-The configuration files are in the old format. With the clean break (DESIGN.md
-section 3) the test needs new-format equivalents. The renames that apply to
-these files:
+The configuration files are in the old INI format. With the clean break
+(DESIGN.md section 3) the test needs TOML equivalents (`pot015.toml`, ...),
+made with `ini2toml` (DESIGN.md section 3.1), which applies these renames.
+The renames that apply to these files:
 
 | Section | Old key | New key |
 |---|---|---|
@@ -703,9 +704,13 @@ not in git.
 
 The redesigned pipeline is run on the same scans, with `--replay-gaia` of
 the reference run or an equivalent replay of `gaia/gaia_NN.vot`, and its
-results are written in the same layout. `compare_reference_plates.py
---dr5` maps the DR5 column names (`gaia_*`, `num_gaia`) back to DR4 before
-comparing.
+results are written in the same layout. Its configuration is made with
+`python -m pyplate.ini2toml plates/plates.conf plates/paths.local <file>.toml`;
+the result holds the local paths, so it stays outside git, like
+`paths.local`. `compare_reference_plates.py
+--dr5` maps the DR5 column names (`gaiadr4_*`, `num_gaia_dr4`) back to DR4
+before comparing, including `gaiadr4_gmag` to the misspelt DR4 column
+`gaiaiedr3_gmag` in the result SQL.
 
 Intended differences:
 

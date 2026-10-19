@@ -19,7 +19,7 @@ Terms used:
 | 1 | `metadata.py` becomes a `metadata/` subpackage with one module per class. |
 | 2 | Metadata classes `Archive`, `Plate`, `Exposure`, `SubExposure`, `Scan`, `Preview`, `Logbook` and `Logpage` have exactly the columns of their database table as attributes (excluding `timestamp_insert`/`timestamp_update`). No name mapping exists between Python and the database. |
 | 3 | `plate_id` (and every other `*_id`) is the integer database key. `plate_num` is the plate identifier from the input files. |
-| 4 | Clean break for configuration files: no deprecated aliases. A key that is not accepted in its section is an error. |
+| 4 | Clean break for configuration files: no deprecated aliases. A key that is not accepted in its section is an error. The configuration format changes from INI to TOML; `ini2toml` converts the current INI files (3.1). |
 | 5 | The number of exposures is worked out as in the current code: `numexp` from the inputs, adjusted by the number of original start times (4.3). |
 | 6 | Two archive classes: `Archive` (the table row) and `ArchiveReader` (reads the input files). |
 | 7 | Database backends: PostgreSQL, MySQL and a new SQLite backend. |
@@ -27,7 +27,7 @@ Terms used:
 | 9 | Crossmatching moves to its own package with a single matcher (`NearestMatcher`, the current behaviour). |
 | 10 | Photometry is not restructured. It only gets the changes needed to work with the new inputs, result classes and DR5 column names; it is reworked later (section 10). |
 | 11 | `process/` remains. Long functions outside photometry are split, steps pass explicit inputs, the number of class attributes goes down, and dead code is removed. |
-| 12 | Python 3.10 or later: `requires-python = ">=3.10"` in `pyproject.toml`, set in step 1. The design uses union types (`X \| None`) and dataclass features from 3.10. |
+| 12 | Python 3.11 or later: `requires-python = ">=3.11"` in `pyproject.toml`, set in step 1. The design uses union types (`X \| None`), dataclass features from 3.10 and `tomllib` from 3.11. |
 
 ## 2. Package layout
 
@@ -35,7 +35,8 @@ Terms used:
 pyplate/
   __init__.py
   _version.py
-  config.py                 typed config sections, parsed once from the INI file
+  config.py                 typed config sections, parsed once from the TOML file
+  ini2toml.py               converts INI configurations to TOML (3.1)
   image.py                  PlateConverter (TIFF → FITS, previews)
   metadata/
     __init__.py             re-exports the public classes
@@ -71,7 +72,7 @@ pyplate/
   process/
     __init__.py
     context.py              ProcessContext
-    process.py              Process: orchestrator
+    process.py              PlateProcess: orchestrator (was Process); Process: the `process` table row
     pipeline.py             PlatePipeline: single_image(), parallel_run()
     log.py                  ProcessLog
     output.py               writing results to the database / CSV
@@ -79,7 +80,7 @@ pyplate/
     sources.py              SourceTable + coordinate processing, annular bins, edge flags
     catalog.py              StarCatalog (Gaia only)
     artifacts.py            classifying artifacts with the Keras model
-    astrometry.py           AstrometryNetIndex (unchanged)
+    astrometry.py           AstrometryNetIndex (Gaia only; otherwise unchanged)
     photometry.py           PhotometryProcess: current code, adapted only (6.6)
     solve/
       __init__.py
@@ -104,25 +105,34 @@ Removed:
 - the aliases `ArchiveMeta`, `PlateMeta`, `LogbookMeta`, `LogpageMeta`, `PreviewMeta`;
 - `Process.get_reference_catalogs()` (about 360 lines, never called) and the
   UCAC4 / APASS / Tycho-2 attributes and settings in `process.py`, `solve.py`
-  and `sources.py`;
+  and `sources.py`, including the Tycho-2 fallback for astrometric reference
+  stars in `solve.py`, so astrometry and photometry use Gaia only;
+- the Tycho-2 parts of `AstrometryNetIndex` (`download_tycho2()` and
+  building index files with `catalog='tycho'`);
 - the settings left over from the removed sub-field recursion:
   `subfield_distort`, `max_recursion_depth`, `force_recursion_depth`;
 - the stale `tests/test_db_*.py` and `tests/test_schema.py` scripts.
 
 ## 3. Configuration (`config.py`)
 
-The INI file is parsed once into frozen dataclasses:
+The TOML file is read once with `tomllib` into frozen dataclasses. The
+section names stay as in the INI files (`[Archive]`, `[Files]`,
+`["Keyword values"]`, ...); the sections named by other settings become
+nested tables: `[Logbook.<name>]` replaces the logbook sections listed in
+`[Archive] logbooks`, `[CSV."<file name>"]` the CSV sections, and
+`[Lookup.<keyword>]` the `[Keyword lookup]` entries and their sections.
+Lists (`plate_csv`, ...) are arrays.
 
 | Section dataclass | Contents |
 |---|---|
 | `FilesConfig` | input and output directories and file names, as in the current code: the CSV and WFPDB file names (`plate_csv`, …, `wfpdb_maindata`, `wfpdb_quality`, `wfpdb_notes`, `wfpdb_observer`) and the directories (`csv_dir`, `wfpdb_dir`, `fits_dir`, `preview_dir`, `logpage_dir`, `cover_dir`, …) |
 | `ProgramsConfig` | paths to `sex`, `psfex`, `scamp`, `solve-field`, `wcs-to-tan` |
-| `DatabaseConfig` | `rdbms`, host / port / socket / file, user, password, schema |
-| `ArchiveConfig` | `[Archive]` columns + list of logbook sections |
-| `CsvConfig` | for each CSV file: column → position, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8). Plate CSV sections also accept the link keys `fn_cover` and `fn_log` and the time keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig` (see 4.2) |
+| `DatabaseConfig` | `[Database]`: `enable_db_log`, `write_sources_csv`, `write_solution_healpix_csv`, `dr_num`, `process_num_digits`, `source_num_digits`; the nested table `[Database.connection]`: `rdbms`, host / port / socket / file, user, password, database, schema, `yaml`. The results are written to the database when `[Database.connection]` is present (now: when `output_db` names a section) |
+| `ArchiveConfig` | `[Archive]` columns + the `[Logbook.<name>]` tables |
+| `CsvConfig` | for each `[CSV."<file name>"]` table: column → position, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8). Plate CSV tables also accept the link keys `fn_cover` and `fn_log` and the time keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig` (see 4.2) |
 | `WfpdbConfig` | `[WFPDB]`: `maindata_timezone` (default time zone of the recorded times, see 4.2), `notes_timezone` (time zone of the times in the WFPDB notes file), `exptime_minutes` (exposure times in minutes; default false), `encoding` (encoding of the WFPDB files; default UTF-8) |
 | `ImageConfig` | `[Image]`: `logpage_exif_timezone`, `preview_exif_timezone` (time zone of the EXIF dates in logpage and preview images) |
-| `MetadataConfig` | `evening_date`, `[Keyword values]`, `[Keyword lookup]` |
+| `MetadataConfig` | `evening_date`, `["Keyword values"]`, the `[Lookup.<keyword>]` tables |
 | `ExtractionConfig` | thresholds, filter, PSF settings, `circular_film` |
 | `SolveConfig` | `sip`, `skip_bright`, `distort`, `plate_epoch`, solve settings |
 | `CrossmatchConfig` | match-radius settings |
@@ -134,33 +144,35 @@ The INI file is parsed once into frozen dataclasses:
   `try/except configparser.Error` blocks.
 - Validation: each dataclass lists its accepted keys. Any other key in any
   section raises an error naming the section and key. In metadata sections
-  (`[Archive]`, logbook sections, CSV sections, `[Keyword values]`) the
+  (`[Archive]`, logbook tables, CSV tables, `["Keyword values"]`) the
   accepted keys are the column names of the target classes, plus the parsing
-  settings and the documented link and time keys of plate CSV sections
+  settings and the documented link and time keys of plate CSV tables
   (`fn_cover`, `fn_log`, `ut_start_orig`, `ut_end_orig`, `st_start_orig`,
-  `st_end_orig`; see 4.2). The exception is a lookup section named in `[Keyword lookup]`,
-  whose keys are data values rather than settings.
+  `st_end_orig`; see 4.2). The exception is a lookup table, whose keys are
+  data values rather than settings.
 
 Example:
 
-```ini
+```toml
 [Archive]
 archive_id = 7
-archive_name = Lippert-Astrograph
-institute = Hamburger Sternwarte
-logbooks = LB1, LB2
+archive_name = "Lippert-Astrograph"
+institute = "Hamburger Sternwarte"
 
-[LB1]
+[Logbook.LB1]
 logbook_num = 1
-logbook_title = Journal I
+logbook_title = "Journal I"
+
+[Logbook.LB2]
+logbook_num = 2
 
 [Files]
-csv_dir = data
-plate_csv = my_plates.csv
-scan_csv = my_scans.csv
+csv_dir = "data"
+plate_csv = ["my_plates.csv"]
+scan_csv = ["my_scans.csv"]
 
-[my_plates.csv]
-csv_list_delimiter = ;
+[CSV."my_plates.csv"]
+csv_list_delimiter = ";"
 plate_num = 1
 date_orig_start = 2
 time_orig_start = 3
@@ -169,16 +181,56 @@ numexp = 5
 exptime = 6
 observer = 7
 
-[my_scans.csv]
+[CSV."my_scans.csv"]
 filename_scan = 1
 plate_num = 2
 scan_author = 3
 scan_date = 4
 
-[Keyword values]
-observatory = Astrophysikalische Observatorium Potsdam
+["Keyword values"]
+observatory = "Astrophysikalische Observatorium Potsdam"
 site_longitude = 13.06417
+
+[Lookup.observer]
+"j. mets" = "Jaan Mets"
 ```
+
+### 3.1 Converting INI configurations (`ini2toml`)
+
+`python -m pyplate.ini2toml old.conf [more.conf ...] new.toml` converts the
+current INI configurations (old keys) to TOML with the new keys. It is the
+only support for INI: `config.py` reads TOML only.
+
+- Several input files are merged in order, as `ConfigParser.read()` does, so
+  a configuration split into a shared part and local paths (as in
+  `tests/ver4/plates`) gives one file.
+- Keys are renamed as listed in `tests/ver4/README.md` (section
+  "Configuration for the redesigned code"); logbook, CSV and lookup sections
+  move to the `Logbook`, `CSV` and `Lookup` tables; comma-separated lists
+  become arrays.
+- The section named by `[Database] output_db` (for example `[DB_pgsql]`)
+  becomes `[Database.connection]`, and `output_db` goes away.
+- Settings that move to `[Header]`: `detector`, `licence` and
+  `fits_acknowledgements` (as `acknowledgements`) from `[Keyword values]`.
+- Settings of removed features are dropped, and the script lists what it
+  dropped:
+  - `[Database]`: `use_gaia_fits` (the Gaia file is always used),
+    `use_tycho2_fits`, `use_ucac4_db`, `use_apass_db`,
+    `ucac4_db_host`, `ucac4_db_user`, `ucac4_db_name`, `ucac4_db_passwd`,
+    `ucac4_db_table`, `apass_db_host`, `apass_db_user`, `apass_db_name`,
+    `apass_db_passwd`, `apass_db_table`, and the unused `output_db_host`,
+    `output_db_user`, `output_db_name`, `output_db_passwd`;
+  - `[Files]`: `tycho2_dir`;
+  - `[Solve]`: `astref_catalog`, `photref_catalog`, `subfield_distort`,
+    `max_recursion_depth`, `force_recursion_depth`;
+  - the column-name sections named by `ucac4_db_table` and `apass_db_table`.
+- Values are written with the types of the config dataclass fields, so the
+  output has proper booleans and numbers. Any other key that no field
+  accepts (for example a typo) stops the conversion with the section and key
+  named. The TOML text is written
+  by the script itself (no TOML writer is needed: the values are strings,
+  numbers, booleans and lists of these).
+- Comments in the INI files are not carried over.
 
 ## 4. Metadata subpackage
 
@@ -236,7 +288,7 @@ class Archive(DbRecord):
 ```python
 class ArchiveReader:
     def __init__(self, cfg: Config)          # reads WFPDB / CSV files named in the config
-    archive: Archive                         # built from [Archive] + logbook sections
+    archive: Archive                         # built from [Archive] + [Logbook.<name>] tables
     def get_plate(self, plate_num=None, wfpdb_id=None, filename_scan=None) -> Plate
     def iter_plates(self) -> Iterator[Plate]
     def iter_scans(self) -> Iterator[Scan]
@@ -250,11 +302,13 @@ class ArchiveReader:
   required for writing: `PlateDB` refuses to write a record without
   `archive_id` and says so (the column is `NOT NULL`).
 - The order of precedence is unchanged: WFPDB maindata → quality → observer →
-  notes → plate CSV → scan CSV → `[Keyword values]` → `[Keyword lookup]`.
+  notes → plate CSV → scan CSV → `["Keyword values"]` → `[Lookup.<keyword>]`.
 - How a CSV column maps to a class: a plate CSV fills `Plate` and `Exposure`,
   and `Plate` wins where both have the name. A scan CSV fills `Scan`. Writing
   `exposure.<column>` targets the exposure explicitly (for example
-  `exposure.method_code`).
+  `exposure.method_code`). In TOML this is a dotted key, so the exposure
+  columns form an `exposure` sub-table of the CSV table
+  (`[CSV."<file name>".exposure]` is the same).
 - Database IDs are never read from input files. They are set when the record
   is written, or looked up in the database.
 - Plate–logpage links: a plate CSV gives the logpage filenames of a plate
@@ -452,15 +506,20 @@ tables:
 
 | Change | Tables |
 |---|---|
-| `gaiaedr3_id` → `gaia_id`, `gaiaiedr3_gmag` → `gaia_gmag` (fixes the typo), `gaiaedr3_bp_rp` → `gaia_bp_rp`, `gaiaedr3_dist` → `gaia_dist`, `gaiaedr3_neighbors` → `gaia_neighbors` | `source_calib`, `source_xmatch` |
-| `num_gaia_edr3` → `num_gaia` | `solution`, `phot_calib`, `process` |
-| new `gaia_release varchar(10)` | `process` |
+| Gaia DR4 instead of EDR3, with the release kept in the column names: `gaiaedr3_id` → `gaiadr4_id`, `gaiaiedr3_gmag` → `gaiadr4_gmag` (also fixes the typo), `gaiaedr3_bp_rp` → `gaiadr4_bp_rp`, `gaiaedr3_dist` → `gaiadr4_dist`, `gaiaedr3_neighbors` → `gaiadr4_neighbors` | `source_calib`, `source_xmatch` |
+| `num_gaia_edr3` → `num_gaia_dr4` | `solution`, `phot_calib`, `process` |
 | new `jd_mid_orig double`: Julian date of the mid-point of the exposure as recorded in the input (the current code writes it only to the FITS header, as `JDA-ORIG`) | `exposure` |
 | new `tz_orig varchar(40)`: time zone of the recorded times (`UT`, `ST` or an IANA zone name); the current code reads it but does not store it | `plate` |
-| `exposure_sub` name kept; `flag_xmatch` kept | — |
+| `exposure_sub` name kept; `flag_xmatch`, `x_gaia` and `y_gaia` kept | — |
 
 The schema additions for blends and photometry methods are decided with those
 developments (section 10).
+
+The Gaia columns are named for DR4 from step 1, but until the code is
+switched to Gaia DR4 data (a separate change, once the DR4 data model is
+known) they hold Gaia EDR3 values: the TAP queries and
+`gaiaedr3_pyplate.fits` stay as they are, and the reference-plate
+comparison replays the EDR3 query results.
 
 ## 6. Process subpackage
 
@@ -479,7 +538,7 @@ class ProcessContext:
     plate_epoch: float
     work_dir: Path
     log: ProcessLog
-    record: ProcessRecord        # the `process` table row (columns), updated as steps finish
+    record: Process              # the `process` table row (columns), updated as steps finish
 ```
 
 Steps receive the context plus explicit inputs and return result objects.
@@ -489,7 +548,7 @@ dictionaries (`__dict__.update`).
 ### 6.2 Orchestrator
 
 ```python
-class Process:
+class PlateProcess:
     ctx: ProcessContext
     sources: SourceTable | None
     solution: SolutionSet | None
@@ -506,12 +565,13 @@ class Process:
     def finish(self)
 ```
 
-`Process` drops from about 215 attribute assignments to the context plus four
-results. `PlatePipeline.single_image()` runs:
+`PlateProcess` (was `Process`, renamed in step 2) drops from about 215
+attribute assignments to the context plus four results.
+`PlatePipeline.single_image()` runs:
 
 1. `ArchiveReader` → `Plate`
 2. → `PlateHeader`
-3. → `Process`
+3. → `PlateProcess`
 4. → the steps
 5. → `output.write_results(db, process)`
 
@@ -521,7 +581,7 @@ results. `PlatePipeline.single_image()` runs:
 
 | Object | Table |
 |---|---|
-| `ProcessRecord` | `process` |
+| `Process` | `process` |
 | `SolutionSet` (was `PlateSolution`) | `solution_set` |
 | `Solution` (was `AstrometricSolution`) | `solution` |
 | `ScannerPattern` | `scanner_pattern` |
@@ -569,7 +629,7 @@ sources.add_matches(association, refs)
    plate epoch with proper motions and converted to pixel coordinates with
    each solution's WCS. Only stars inside the image are kept. On a plate with
    several exposures a star appears once per solution, so a reference star is
-   identified by `(gaia_id, solution_num)`.
+   identified by `(gaiadr4_id, solution_num)`.
 2. **Radii** (`tolerance.py`): the current SCAMP-sigma logic gives two radii:
    - the match radius (5σ), within which a star can be the match of a source;
    - the search radius (20σ, at least 5″), within which a star counts as a
@@ -581,7 +641,7 @@ sources.add_matches(association, refs)
    It returns an `Association`.
 5. **Copying to the source table**: `SourceTable.add_matches()` copies the
    match and the matched star's catalogue values into the source columns. The
-   number of matches per solution is stored in `Solution.num_gaia`.
+   number of matches per solution is stored in `Solution.num_gaia_dr4`.
    Coordinates are then processed again, as now, because matches may change a
    source's `solution_num`.
 
@@ -605,10 +665,10 @@ row.
 |---|---|
 | `source_num` | plate source |
 | `solution_num` | solution (exposure) the matched star belongs to |
-| `gaia_id` | matched Gaia star |
-| `gaia_dist` | distance between source and star (arcsec) |
+| `gaiadr4_id` | matched Gaia star |
+| `gaiadr4_dist` | distance between source and star (arcsec) |
 | `match_radius` | match radius used (arcsec) |
-| `gaia_neighbors` | number of Gaia stars within the search radius |
+| `gaiadr4_neighbors` | number of Gaia stars within the search radius |
 
 `neighbors`: all source–star pairs within the search radius, including the
 match. This table is written to `source_xmatch` unchanged.
@@ -616,7 +676,7 @@ match. This table is written to `source_xmatch` unchanged.
 | Column | Meaning |
 |---|---|
 | `source_num` | plate source |
-| `gaia_id` | Gaia star |
+| `gaiadr4_id` | Gaia star |
 | `solution_num` | solution the star's position comes from |
 | `dist` | distance between source and star (arcsec) |
 | `x_gaia`, `y_gaia` | star's position on the plate (pixels) |
@@ -627,13 +687,13 @@ the match radius.
 
 `matches`:
 
-| source_num | solution_num | gaia_id | gaia_dist | match_radius | gaia_neighbors |
+| source_num | solution_num | gaiadr4_id | gaiadr4_dist | match_radius | gaiadr4_neighbors |
 |---|---|---|---|---|---|
 | 17 | 1 | 4057…221 | 0.8 | 2.5 | 3 |
 
 `neighbors`:
 
-| source_num | gaia_id | solution_num | dist | x_gaia | y_gaia | flag_xmatch |
+| source_num | gaiadr4_id | solution_num | dist | x_gaia | y_gaia | flag_xmatch |
 |---|---|---|---|---|---|---|
 | 17 | 4057…221 | 1 | 0.8 | 1032.4 | 877.1 | 1 |
 | 17 | 4057…305 | 1 | 4.6 | 1035.0 | 879.9 | 0 |
@@ -643,12 +703,12 @@ the match radius.
 
 | Result | Destination |
 |---|---|
-| `matches` + catalogue values of the matched star (`gaia_gmag`, `gaia_bp_rp`, BP and RP magnitudes) | `SourceTable` columns; written to `source_calib` |
+| `matches` + catalogue values of the matched star (`gaiadr4_gmag`, `gaiadr4_bp_rp`, BP and RP magnitudes) | `SourceTable` columns; written to `source_calib` |
 | `neighbors` | `source_xmatch` |
-| number of matches per solution | `Solution.num_gaia`; written to `solution` |
+| number of matches per solution | `Solution.num_gaia_dr4`; written to `solution` |
 
 Photometry reads the matches from the source table, as now. A source with
-`gaia_neighbors == 1` has a single Gaia star nearby and is a candidate
+`gaiadr4_neighbors == 1` has a single Gaia star nearby and is a candidate
 calibration star.
 
 #### Why a separate object
@@ -667,7 +727,7 @@ future blend-aware matcher (section 10) can mark several stars per source in
 1. Inputs: `PhotometryProcess(ctx, sources, solution)` replaces
    `photproc.__dict__.update(self.__dict__)`. It uses `log`, `basefn`,
    `write_phot_dir`, the plate header, the sources and the solution set.
-2. DR5 column names: `gaiaedr3_*` → `gaia_*`, `num_gaia_edr3` → `num_gaia`.
+2. DR5 column names: `gaiaedr3_*` → `gaiadr4_*`, `num_gaia_edr3` → `num_gaia_dr4`.
 3. Result types: `PlateSolution` → `SolutionSet`. The `phot_calib` dicts are
    converted to `PhotCalib` / `PhotCalibCurve` records in `output.py`.
 
@@ -681,7 +741,7 @@ future blend-aware matcher (section 10) can mark several stars per source in
 | `test_metadata.py` (ported) | Readers, the `numexp` cases in 4.3, sub-exposures, time computations |
 | `test_metadata_regression.py` | New results equal the old `compute_values` results in `tests/ver4/metadata/expected.json` (WFPDB, `tests/data` and mock archives; see `tests/ver4/README.md`) |
 | `test_timeutils.py` | ST→UT, HJD, evening dates |
-| `test_config.py` | Parsing, unknown-key errors |
+| `test_config.py` | Parsing, unknown-key errors; `ini2toml` converts the old-format configurations in `tests/ver4` to exactly their TOML versions |
 | `test_crossmatch.py` | `NearestMatcher` gives the same results as the old `crossmatch_gaia` |
 | `test_header.py` | `PlateHeader.from_metadata()` with the mock inputs in `tests/ver4/header/mock_header.json` gives exactly `header.txt`, and after `insert_wcs()` `header_wcs.txt` (see `tests/ver4/README.md`) |
 | Reference-plate comparison | The old pipeline (`run_reference_plates.py`) and the new code give the same results for the reference plates LA02333 and LA02334: sources, solutions, crossmatch, calibration and the result SQL, compared exactly with `compare_reference_plates.py --dr5` (two runs of the old code with the same Gaia results were identical, apart from times, paths and CPU times in astrometry.net header comments, which the comparison ignores); run on the machine with the external programs and data (see `tests/ver4/README.md`, section "Reference plates") |
@@ -732,15 +792,13 @@ together with the code:
 | Step | Content | Check |
 |---|---|---|
 | 0 | Capture the reference SQL files (7.2) and the old code's output for the reference plates | — |
-| 1 | `config.py`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; new-format configuration files for the archives and the header in `tests/ver4` (the references use the old format) | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`; 7.2; 7.3 |
-| 2 | `ProcessContext`, result classes, `output.py`, dead code removed, photometry adapted (6.6) | reference-plate comparison (7.1) |
+| 1 | `config.py`, `ini2toml`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; TOML configuration files for the archives, the header and the reference plates in `tests/ver4`, made with `ini2toml` (the references use the old INI format); `process/` adapted to the new config, metadata and database layer only as much as needed for the pipeline to keep running | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`, reference-plate comparison; 7.2; 7.3 |
+| 2 | `ProcessContext`, result classes, `Process` renamed to `PlateProcess`, `output.py`, dead code removed, photometry adapted (6.6) | reference-plate comparison (7.1) |
 | 3 | Long functions split (6.4), `solve/` package, `crossmatch/` with `NearestMatcher` | reference-plate comparison, `test_crossmatch.py` |
 
 ## 9. Open items
 
-1. Name of the `process` row class: `ProcessRecord` (keeps `Process` for the
-   orchestrator) or rename the orchestrator (for example `PlateProcess`) and
-   call the record `Process`.
+None.
 
 ## 10. Future developments
 
@@ -797,7 +855,7 @@ Splitting `calibrate_photometry_gaia`: `select_calibration_stars` →
 
 Link to crossmatching:
 
-- `Association.is_single()` replaces the direct `gaia_neighbors == 1` check.
+- `Association.is_single()` replaces the direct `gaiadr4_neighbors == 1` check.
 - `Association.blend_mag(ref_mag)` = −2.5·log10 Σ 10^(−0.4 mᵢ) gives the
   combined reference magnitude of a blend, the same for every reference
   method.

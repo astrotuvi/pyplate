@@ -17,8 +17,8 @@ Compares, for each plate, the run NEW against the run REF:
 The report lists what differs and by how much; it does not decide what is
 acceptable. Runs are given by name (a directory under [Reference]
 output_dir in tests/ver4/plates/paths.local) or by path. With --dr5, the
-DR5 names of the new run (gaia_* instead of gaiaedr3_*) are mapped back to
-the DR4 names before comparing.
+DR5 names of the new run (gaiadr4_* instead of gaiaedr3_*) are mapped back
+to the DR4 names before comparing.
 
 Usage (from the repository root):
 
@@ -46,7 +46,11 @@ PATHS_LOCAL = os.path.join(HERE, 'plates', 'paths.local')
 IGNORED_CARDS = ('COMMENT', 'HISTORY', '', 'DATE')
 
 # DR5 name -> DR4 name, for comparing the redesigned code with the reference
-DR5_TO_DR4 = [('num_gaia', 'num_gaia_edr3'), ('gaia_', 'gaiaedr3_')]
+DR5_TO_DR4 = [('num_gaia_dr4', 'num_gaia_edr3'), ('gaiadr4_', 'gaiaedr3_')]
+
+# In the DR4 schema the G magnitude column of source_calib has a typo; the
+# source table itself uses gaiaedr3_gmag
+SQL_DR5_TO_DR4 = [('gaiadr4_gmag', 'gaiaiedr3_gmag')] + DR5_TO_DR4
 
 
 def run_dir(name):
@@ -280,7 +284,7 @@ def compare_sql(ref_file, new_file, dr5, max_lines):
             text = f.read()
 
         if rename:
-            for new, old in DR5_TO_DR4:
+            for new, old in SQL_DR5_TO_DR4:
                 text = re.sub(r'\b' + new, old, text)
 
         text = re.sub(r'duration=\d+', 'duration=N', text)
