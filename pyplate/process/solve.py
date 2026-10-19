@@ -23,14 +23,9 @@ from scipy.ndimage.filters import generic_filter
 from scipy.linalg import lstsq
 from collections import OrderedDict
 from ..database.database import PlateDB
-from ..conf import read_conf
 from .._version import __version__
+from .settings import conf_attributes
 from .sources import crossmatch_cartesian
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
 
 try:
     from scipy.spatial import cKDTree as KDT
@@ -206,28 +201,14 @@ class PlateSolution:
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
         self.conf = conf
-
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
-
-        for attr in ['write_wcs_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
+        self.archive_id = conf.archive.archive_id
+        self.write_wcs_dir = conf.files.write_wcs_dir
 
     def assign_header(self, header):
         """
@@ -245,8 +226,8 @@ class PlateSolution:
 
         self.platemeta = platemeta
 
-        if self.platemeta['archive_id']:
-            self.archive_id = self.platemeta['archive_id']
+        if self.platemeta.archive_id:
+            self.archive_id = self.platemeta.archive_id
 
     def create_wcs_header(self):
         """
@@ -409,29 +390,20 @@ class AstrometricSolution(OrderedDict):
                 'scamp_sigma_1', 'scamp_sigma_2', 'scamp_sigma_mean',
                 'scamp_chi2', 'scamp_ndeg',
                 'scamp_distort', 'scamp_iteration',
-                'num_gaia_edr3', 'healpix_table']
+                'num_gaia_dr4', 'healpix_table']
 
         for k in keys:
             self[k] = None
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
         self.conf = conf
-
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
+        self.archive_id = conf.archive.archive_id
 
     @staticmethod
     def strip_header_comments(header):
@@ -853,122 +825,13 @@ class SolveProcess:
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
         self.conf = conf
-
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
-
-        for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
-                     'solve_field_path', 'wcs_to_tan_path']:
-            try:
-                setattr(self, attr, conf.get('Programs', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir',
-                     'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir',
-                     'write_db_source_dir', 'write_db_source_calib_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        if self.write_log_dir:
-            self.enable_log = True
-
-        for attr in ['use_gaia_fits', 'use_tycho2_fits',
-                     'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log', 'write_sources_csv']:
-            try:
-                setattr(self, attr, conf.getboolean('Database', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name',
-                     'ucac4_db_passwd', 'ucac4_db_table',
-                     'apass_db_host', 'apass_db_user', 'apass_db_name',
-                     'apass_db_passwd', 'apass_db_table',
-                     'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
-            try:
-                setattr(self, attr, conf.get('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['use_filter', 'use_psf', 'circular_film',
-                     'allow_force', 'repeat_find']:
-            try:
-                setattr(self, attr, conf.getboolean('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['plate_epoch', 'threshold_sigma',
-                     'psf_threshold_sigma', 'psf_model_sigma',
-                     'crossmatch_radius', 'crossmatch_nsigma',
-                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
-            try:
-                setattr(self, attr, conf.getfloat('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['sip', 'skip_bright', 'distort', 'subfield_distort',
-                     'max_recursion_depth', 'force_recursion_depth',
-                     'min_model_sources', 'max_model_sources']:
-            try:
-                setattr(self, attr, conf.getint('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
-            try:
-                setattr(self, attr, conf.get('Solve', attr))
-            except configparser.Error:
-                pass
-
-        # Read UCAC4 and APASS table column names from the dedicated sections,
-        # named after the tables
-        if conf.has_section(self.ucac4_db_table):
-            for attr in self.ucac4_columns.keys():
-                try:
-                    colstr = conf.get(self.ucac4_db_table, attr)
-                    _,typ = self.ucac4_columns[attr]
-                    self.ucac4_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
-
-        if conf.has_section(self.apass_db_table):
-            for attr in self.apass_columns.keys():
-                try:
-                    colstr = conf.get(self.apass_db_table, attr)
-                    _,typ = self.apass_columns[attr]
-                    self.apass_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
+        self.__dict__.update(conf_attributes(conf))
 
     def find_scanner_pattern(self, coords_image, coords_ref):
         """
@@ -1384,15 +1247,15 @@ class SolveProcess:
         num_keep = 1000
 
         try:
-            numexp = self.platemeta['numexp']
+            numexp = self.platemeta.numexp
         except Exception:
             numexp = 1
 
         # Calculate a factor that takes into account how much the longest
         # and shortest exposure times differ
         try:
-            max_exp = np.max(self.platemeta['exptime'])
-            min_exp = np.min(self.platemeta['exptime'])
+            max_exp = np.max([e.exptime for e in self.platemeta.exposures])
+            min_exp = np.min([e.exptime for e in self.platemeta.exposures])
 
             if min_exp > 0:
                 exp_factor = np.log10(max_exp / min_exp) + 1.
@@ -1444,7 +1307,7 @@ class SolveProcess:
         self.num_duplicate_solutions = 0
 
         try:
-            numexp = self.platemeta['numexp']
+            numexp = self.platemeta.numexp
         except Exception:
             numexp = 1
 
@@ -1541,7 +1404,7 @@ class SolveProcess:
 
             # Check the number of remaining solutions
             try:
-                num_remain_exp = self.platemeta['numexp'] - self.num_solutions
+                num_remain_exp = self.platemeta.numexp - self.num_solutions
             except Exception:
                 num_remain_exp = 1 - self.num_solutions
 
@@ -1612,7 +1475,7 @@ class SolveProcess:
         num_astrom_sources = len(self.astrom_sources)
 
         try:
-            num_remain_exp = self.platemeta['numexp'] - self.num_solutions
+            num_remain_exp = self.platemeta.numexp - self.num_solutions
         except Exception:
             num_remain_exp = 1
 
@@ -1811,7 +1674,7 @@ class SolveProcess:
         numexp_condition = False
 
         try:
-            if self.platemeta['numexp'] > 4:
+            if self.platemeta.numexp > 4:
                 numexp_condition = True
         except Exception:
             pass

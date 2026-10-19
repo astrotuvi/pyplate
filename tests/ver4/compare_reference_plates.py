@@ -18,7 +18,8 @@ The report lists what differs and by how much; it does not decide what is
 acceptable. Runs are given by name (a directory under [Reference]
 output_dir in tests/ver4/plates/paths.local) or by path. With --dr5, the
 DR5 names of the new run (gaiadr4_* instead of gaiaedr3_*) are mapped back
-to the DR4 names before comparing.
+to the DR4 names before comparing (and the schema name applause_dr5 in the
+SQL to applause_dr4).
 
 Usage (from the repository root):
 
@@ -49,8 +50,9 @@ IGNORED_CARDS = ('COMMENT', 'HISTORY', '', 'DATE')
 DR5_TO_DR4 = [('num_gaia_dr4', 'num_gaia_edr3'), ('gaiadr4_', 'gaiaedr3_')]
 
 # In the DR4 schema the G magnitude column of source_calib has a typo; the
-# source table itself uses gaiaedr3_gmag
-SQL_DR5_TO_DR4 = [('gaiadr4_gmag', 'gaiaiedr3_gmag')] + DR5_TO_DR4
+# source table itself uses gaiaedr3_gmag. The schema name is mapped too.
+SQL_DR5_TO_DR4 = ([('gaiadr4_gmag', 'gaiaiedr3_gmag'),
+                   ('applause_dr5', 'applause_dr4')] + DR5_TO_DR4)
 
 
 def run_dir(name):
@@ -138,7 +140,9 @@ def compare_summary(ref_file, new_file, dr5, max_lines):
         ref = flatten(json.load(f))
 
     with open(new_file) as f:
-        new = {dr4_name_path(k, dr5): v
+        # The list of source columns holds names as values
+        new = {dr4_name_path(k, dr5):
+               dr4_name(v, dr5) if k.startswith('sources.columns[') else v
                for k, v in flatten(json.load(f)).items()}
 
     missing = sorted(set(ref) - set(new))

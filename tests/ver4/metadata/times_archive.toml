@@ -1,0 +1,30 @@
+[Archive]
+archive_id = 97
+archive_name = "Times mock archive"
+
+[Files]
+plate_csv = ["times_plates.csv"]
+
+[CSV."times_plates.csv"]
+csv_list_delimiter = ";"
+plate_num = 1
+date_orig_start = 2
+time_orig_start = 3
+time_orig_end = 4
+ut_start_orig = 5
+ut_end_orig = 6
+st_start_orig = 7
+st_end_orig = 8
+tz_orig = 9
+exptime = 10
+numexp = 11
+
+[Metadata]
+evening_date = true
+
+["Keyword values"]
+observatory = "Mock Observatory"
+site_name = "Mock Hill"
+site_longitude = 26.72
+site_latitude = 58.27
+site_elevation = 70

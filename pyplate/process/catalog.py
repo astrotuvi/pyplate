@@ -7,13 +7,7 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 #from astroquery.gaia import Gaia
 from .solve import PlateSolution
-from ..conf import read_conf
-from ..database.database import PlateDB
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
+from ..database.database import BACKENDS
 
 
 class StarCatalog(Table):
@@ -38,7 +32,7 @@ class StarCatalog(Table):
 
         self.catalog = catalog
         self.protocol = protocol
-        self.db_section = None
+        self.connection = None
         self.table_name = None
 
         self.log = None
@@ -52,31 +46,18 @@ class StarCatalog(Table):
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
         self.conf = conf
-
-        for attr in ['catalog', 'protocol', 'table_name']:
-            try:
-                setattr(self, attr, conf.get('Catalog', attr))
-            except configparser.Error:
-                pass
-
-        try:
-            self.protocol = self.protocol.upper()
-        except TypeError:
-            pass
+        self.catalog = conf.catalog.catalog
+        self.protocol = conf.catalog.protocol.upper()
+        self.table_name = conf.catalog.table_name
 
         if self.protocol == 'SQL':
-            try:
-                self.db_section = conf.get('Catalog', 'db')
-            except configparser.Error:
-                pass
+            self.connection = conf.catalog.connection
 
     def query_gaia_tap(self, query, skycoord, radius):
         """
@@ -149,11 +130,10 @@ class StarCatalog(Table):
             self.log.write('Gaia SQL query: {}'.format(sql_query),
                            level=4, event=42)
 
-        gaiadb = PlateDB()
-        gaiadb.assign_conf(self.conf, section=self.db_section)
-        gaiadb.open_connection()
+        gaiadb = BACKENDS[self.connection.rdbms](self.connection)
+        gaiadb.connect()
 
-        res = gaiadb.db.execute_select_query(sql_query)
+        res = gaiadb.select_all(sql_query)
         cols = [col.strip() for col in
                 sql_query.split('FROM')[0].split('SELECT')[1].split(',')]
         dtype = ['i8'] + ['f8'] * (len(cols) - 1)
@@ -163,7 +143,7 @@ class StarCatalog(Table):
         else:
             tab = Table(names=cols, dtype=dtype)
 
-        gaiadb.close_connection()
+        gaiadb.close()
 
         return tab
 

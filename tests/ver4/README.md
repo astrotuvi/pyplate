@@ -19,13 +19,19 @@ inputs through the new code and check that the results are unchanged.
 | `gen_mock_queries.py` | Generates `queries/*/mock.sql` and `mock_data.json` |
 | `header/header.txt`, `header/header_wcs.txt` | Plate FITS header from mock metadata, before and after the WCS is inserted |
 | `header/mock_header.json` | The inputs of that header |
+| `header/header.conf`, `header/header.toml` | The configuration sections of `mock_header.json` in the old format, and converted with `ini2toml` (for the test of the redesigned code) |
 | `gen_mock_header.py` | Generates `header/` |
-| `metadata/` | Archive inputs (old-format configuration, WFPDB and CSV files) and `expected.json`, the metadata the old code computes from them |
+| `metadata/` | Archive inputs (old-format configuration, WFPDB and CSV files), `expected.json`, the metadata the old code computes from them, and the configurations converted with `ini2toml` (`*.toml`) |
 | `gen_metadata_regression.py` | Generates `metadata/expected.json` |
 | `make_metadata_inputs.py` | Creates the FITS files and images in `metadata/` (inputs, committed; needs no pyplate) |
-| `plates/` | Configuration of the reference-plate run (`plates.conf`; `paths.local.example` as template for the local paths) and the published summary of the reference run (`reference/`) |
+| `plates/` | Configuration of the reference-plate run (`plates.conf`, converted with `ini2toml` as `plates.toml`; `paths.local.example` as template for the local paths) and the published summary of the reference run (`reference/`) |
 | `run_reference_plates.py` | Runs the old pipeline on the reference plates and saves the results (section "Reference plates") |
 | `compare_reference_plates.py` | Compares two reference-plate runs |
+
+The test of the redesigned code against `queries/` is `tests/test_db_queries.py`,
+against `header/` `tests/test_header.py`, against `metadata/`
+`tests/test_metadata_regression.py`; `tests/run_reference_plates.py` runs the
+redesigned pipeline on the reference plates.
 
 ## Regenerating the reference files
 
@@ -207,7 +213,10 @@ Statements and column order:
   is left.
 - `write_process_end`: `timestamp_end=NOW()` is part of the SQL text.
 - Sources and cross-matches: `executemany` in batches of 1000 rows (the mock
-  data have 2 rows, so batch boundaries are not covered).
+  data have 2 rows, so batch boundaries are not covered). The batches of
+  `source` and `source_calib` alternate. Deliberate difference: the old code
+  also sent an `executemany` with no rows for an empty table; the redesigned
+  code sends nothing.
 
 Lookups:
 
@@ -376,8 +385,30 @@ TZ-ORIG = 'ST      '           / time zone of the recorded time (ST = sidereal)
 ```
 
 The position and the comment are the ones the old keyword order and default
-comments already have for `TZ-ORIG`. Other differences should be treated as
-regressions unless they are deliberate and documented here.
+comments already have for `TZ-ORIG`. With one card more, the blank padding
+after `END` is shorter; the test compares the cards only.
+
+`DATE`: the old code took it from the time of `compute_values()`, which the
+generator set to `2001-01-01T00:00:00` (`header_only`), and the HISTORY line
+from a second reading of the clock. The redesigned header takes both from
+`now`, so the test expects `DATE = now` (in a pipeline run the two times
+were the same within a second).
+
+Differences in the headers of real plates, which the mock header does not
+show (the reference-plate headers in `plates/reference/` show them for
+LA02333):
+
+- With several exposures, every per-exposure keyword is written for each
+  exposure (`DATEORn`, `RA-ORn`, `RAn`, `RA_DEGn`, ...), also when the input
+  gave one value for all exposures. The old code numbered only the values
+  given one by one. (Decision 2: the exposures hold their own values.)
+- `HJD-AVn` for every exposure with coordinates (see "Intended
+  differences" of the metadata).
+- Without `fn_pre` and `fn_scan` in the plate CSV, `FN-PRE` and `FN-SCNn`
+  come from the preview and scan CSV files.
+
+Other differences should be treated as regressions unless they are
+deliberate and documented here.
 
 ### Writing the header test for the redesigned code
 
@@ -549,6 +580,11 @@ Other settings in these files (DESIGN.md sections 3 and 4.2):
 - `my_archive.conf` has no `[Archive]` section, so `archive_id` is `None`.
   `ArchiveReader` accepts that for reading; only writing to the database
   requires `archive_id`.
+- `ini2toml` adds the identifier key of a CSV section (`filename = 1` for
+  the preview and logpage CSV files of `full_archive.conf`) where it is
+  missing, because the old code took the identifier from the first column,
+  and drops `logbook_id = 0` of `[LB1]` (database IDs are not read from
+  input files).
 
 ### Intended differences
 
@@ -564,8 +600,20 @@ The redesigned code is expected to differ from `expected.json` here:
 - `tz_orig`: in `other` in `expected.json`; in the redesigned code it is the
   plate column `tz_orig`, with the same values (`Europe/Berlin`, `UT`, `ST`).
   Exception: the old code sets it for WFPDB records only when a time is
-  recorded, so POT015 record 004252 (no time) has none; with the file
-  default of DESIGN.md section 4.2 it gets `ST`.
+  recorded, so POT015 record 004252 and MCK001_000003 (no time) have none;
+  with the file default of DESIGN.md section 4.2 they get `ST` and `UT`.
+- HJD: computed for every exposure with coordinates and a mid-point. The
+  old code computed it only for the coordinates as given, so plate `m1`
+  (one coordinate for three exposures) has `hjd_mid` for exposure 1 only.
+- Exposure times from the start and end times: the old code took them only
+  when no exposure time was mapped at all, not when the CSV cells were
+  empty; the redesigned code takes them when no exposure has an exposure
+  time (not visible in the test data).
+- Image metadata: the EXIF date of a TIFF file is read (the old code could
+  not read it); GExiv2 is no longer used, only Pillow.
+- Times in the WFPDB files: a local time zone is not written as a prefix of
+  the recorded time (the old code wrote `Europe/Berlin 20:00`, which it
+  could not read back; not in the test data).
 
 Other differences should be treated as regressions unless they are
 deliberate and documented.
@@ -702,15 +750,30 @@ not in git.
 
 ### Comparing the redesigned code
 
-The redesigned pipeline is run on the same scans, with `--replay-gaia` of
-the reference run or an equivalent replay of `gaia/gaia_NN.vot`, and its
-results are written in the same layout. Its configuration is made with
-`python -m pyplate.config.ini2toml plates/plates.conf plates/paths.local <file>.toml`;
-the result holds the local paths, so it stays outside git, like
-`paths.local`. `compare_reference_plates.py
---dr5` maps the DR5 column names (`gaiadr4_*`, `num_gaia_dr4`) back to DR4
-before comparing, including `gaiadr4_gmag` to the misspelt DR4 column
-`gaiaiedr3_gmag` in the result SQL.
+`tests/run_reference_plates.py` runs the redesigned pipeline on the same
+scans, with `--replay-gaia` of the reference run, and writes its results in
+the same layout:
+
+```
+PYTHONPATH=. python tests/run_reference_plates.py new1 --replay-gaia run1
+python tests/ver4/compare_reference_plates.py run1 new1 --dr5
+```
+
+It converts `plates/plates.conf` and `plates/paths.local` with
+`pyplate.config.ini2toml` (without the `[Reference]` section, which only the
+drivers read) and writes the result, with the output directories of the
+run, to `<run>/<plate>/config.toml`; it holds the local paths, so it stays
+outside git, like `paths.local`. The schema is `applause_dr5`.
+`compare_reference_plates.py --dr5` maps the DR5 column names (`gaiadr4_*`,
+`num_gaia_dr4`) back to DR4 before comparing, including `gaiadr4_gmag` to
+the misspelt DR4 column `gaiaiedr3_gmag` and the schema name in the result
+SQL.
+
+Result of step 1 (run `new1`, 2026-10-19, against `run1`): all source
+columns, all crossmatch outputs, all values in `summary.json` (apart from
+the column names) and all lines of `results.sql` are identical. The
+crossmatch epoch is still the old default (it changes in step 3, see
+below), and the plate header has the differences of section "Plate header".
 
 Intended differences:
 

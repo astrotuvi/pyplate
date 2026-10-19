@@ -1,0 +1,141 @@
+[Archive]
+archive_id = 0
+
+[Files]
+plate_csv = ["plate_archive_hamburger_sternwarte_LA_20171128_updated.csv", "parsed_LA_UID_times.csv"]
+scan_csv = ["LA_scans.csv"]
+logbook_csv = ["LA_logbooks.csv"]
+logpage_csv = ["LA_logpages.csv"]
+preview_csv = ["LA_previews.csv"]
+create_checksum = true
+
+[CSV."plate_archive_hamburger_sternwarte_LA_20171128_updated.csv"]
+csv_delimiter = ";"
+csv_quotechar = "\""
+csv_list_delimiter = "|"
+plate_num = 1
+wfpdb_id = 2
+ra_orig = 5
+dec_orig = 7
+object_name = 9
+date_orig_start = 11
+plate_format = 13
+numexp = 15
+exptime = 18
+emulsion = 19
+filter = 21
+observer = 22
+notes = 23
+fn_pre = 25
+fn_cover = 26
+fn_scan = 33
+fn_log = 29
+sky_transparency = 34
+sky_calmness = 35
+sky_sharpness = 36
+ota_name = 37
+ota_diameter = 38
+ota_aperture = 39
+ota_foclen = 40
+ota_scale = 41
+prism = 42
+prism_angle = 43
+method_code = 44
+plate_size1 = 46
+plate_size2 = 47
+
+[CSV."parsed_LA_UID_times.csv"]
+csv_delimiter = ","
+csv_quotechar = "\""
+csv_list_delimiter = ";"
+plate_num = 1
+tz_orig = 2
+time_orig_start = 3
+time_orig_end = 4
+
+[CSV."LA_scans.csv"]
+csv_delimiter = ","
+csv_quotechar = "\""
+filename_scan = 1
+plate_num = 2
+scan_date = 4
+scan_author = 5
+
+[CSV."LA_previews.csv"]
+csv_delimiter = ","
+filename = 1
+plate_num = 2
+preview_type = 3
+
+[CSV."LA_logbooks.csv"]
+csv_delimiter = ","
+logbook_num = 1
+logbook_type = 3
+logbook_title = 4
+
+[CSV."LA_logpages.csv"]
+csv_delimiter = ","
+filename = 1
+logpage_type = 2
+logbook_num = 3
+
+["Keyword values"]
+observatory = "Hamburger Sternwarte"
+site_name = "Hamburg-Bergedorf, Germany"
+site_longitude = 10.242
+site_latitude = 53.482
+site_elevation = 41
+telescope = "Lippert-Astrograph"
+scanner = "Epson Expression 10000XL"
+scan_res1 = 2400
+scan_res2 = 2400
+pixel_size1 = 10.5833
+pixel_size2 = 10.5833
+origin = "Hamburger Sternwarte (Universitaet Hamburg)"
+
+[Header]
+detector = "photographic plate"
+licence = "https://creativecommons.org/publicdomain/zero/1.0/"
+acknowledgements = "The digitized image is provided by Dr. Karl Remeis-Sternwarte, Bamberg\n(Friedrich-Alexander-Universitaet Erlangen-Nuernberg).\nFunding for APPLAUSE has been provided by DFG (German Research Foundation),\nLeibniz Institute for Astrophysics Potsdam (AIP), Dr. Karl Remeis-Sternwarte, Bamberg\n(Friedrich-Alexander-Universitaet Erlangen-Nuernberg),\nHamburger Sternwarte (Unversity Hamburg) and Tartu Observatory (University of Tartu).\nWe thank Thueringer Landessternwarte Tautenburg (TLS),\nAstrophysikalisches Institut und Universitaetsternwarte Jena (University of Jena)\nand the Vatican Observatory for providing digitized Material for inclusion into the archive."
+
+[Pipeline]
+read_wfpdb = false
+read_csv = true
+read_fits = false
+output_header_file = true
+output_header_fits = false
+invert_image = true
+extract_sources = true
+classify_artifacts = true
+solve_plate = true
+output_solution_db = true
+output_wcs_file = true
+crossmatch_gaia = true
+calibrate_photometry = true
+output_calibration_db = true
+output_sources_db = false
+output_sources_csv = false
+processes = 1
+process_max_tasks = 10
+wait_start = 10.0
+
+[Solve]
+use_filter = true
+threshold_sigma = 3.0
+use_psf = false
+psf_threshold_sigma = 15.0
+psf_model_sigma = 15.0
+plate_epoch = 1970.0
+crossmatch_nsigma = 10.0
+crossmatch_nlogarea = 2.0
+crossmatch_maxradius = 20.0
+repeat_find = true
+
+[Catalog]
+catalog = "Gaia"
+protocol = "TAP"
+
+[Database]
+dr_num = 5
+process_num_digits = 6
+source_num_digits = 7

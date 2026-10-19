@@ -23,13 +23,7 @@ from scipy.ndimage.filters import generic_filter
 from scipy.linalg import lstsq
 from collections import OrderedDict
 from ..database.database import PlateDB
-from ..conf import read_conf
 from .._version import __version__
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
 
 try:
     from scipy.spatial import cKDTree as KDT
@@ -137,13 +131,13 @@ _source_meta = OrderedDict([
     ('color_term',          ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
     ('match_radius',        ('f4', '%7.3f', '')),
-    ('gaiaedr3_id',         ('i8', '%d', '')),
-    ('gaiaedr3_gmag',       ('f4', '%7.4f', '')),
-    ('gaiaedr3_bpmag',      ('f4', '%7.4f', '')),
-    ('gaiaedr3_rpmag',      ('f4', '%7.4f', '')),
-    ('gaiaedr3_bp_rp',      ('f4', '%7.4f', '')),
-    ('gaiaedr3_dist',       ('f4', '%6.3f', '')),
-    ('gaiaedr3_neighbors',  ('i4', '%3d', ''))
+    ('gaiadr4_id',         ('i8', '%d', '')),
+    ('gaiadr4_gmag',       ('f4', '%7.4f', '')),
+    ('gaiadr4_bpmag',      ('f4', '%7.4f', '')),
+    ('gaiadr4_rpmag',      ('f4', '%7.4f', '')),
+    ('gaiadr4_bp_rp',      ('f4', '%7.4f', '')),
+    ('gaiadr4_dist',       ('f4', '%6.3f', '')),
+    ('gaiadr4_neighbors',  ('i4', '%3d', ''))
 ])
 
 
@@ -280,12 +274,12 @@ class SourceTable(Table):
         self['nn_dist'] = np.nan
         self['zenith_angle'] = np.nan
         self['airmass'] = np.nan
-        self['gaiaedr3_gmag'] = np.nan
-        self['gaiaedr3_bpmag'] = np.nan
-        self['gaiaedr3_rpmag'] = np.nan
-        self['gaiaedr3_bp_rp'] = np.nan
-        self['gaiaedr3_dist'] = np.nan
-        self['gaiaedr3_neighbors'] = 0
+        self['gaiadr4_gmag'] = np.nan
+        self['gaiadr4_bpmag'] = np.nan
+        self['gaiadr4_rpmag'] = np.nan
+        self['gaiadr4_bp_rp'] = np.nan
+        self['gaiadr4_dist'] = np.nan
+        self['gaiadr4_neighbors'] = 0
         self['natmag'] = np.nan
         self['natmag_error'] = np.nan
         self['bpmag'] = np.nan
@@ -301,121 +295,15 @@ class SourceTable(Table):
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-            
+        from .settings import conf_attributes
+
         self.conf = conf
-
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
-
-        for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
-                     'solve_field_path', 'wcs_to_tan_path']:
-            try:
-                setattr(self, attr, conf.get('Programs', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir', 
-                     'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir',
-                     'write_db_source_dir', 'write_db_source_calib_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        if self.write_log_dir:
-            self.enable_log = True
-
-        for attr in ['use_gaia_fits', 'use_tycho2_fits', 
-                     'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log', 'write_sources_csv']:
-            try:
-                setattr(self, attr, conf.getboolean('Database', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
-                     'ucac4_db_passwd', 'ucac4_db_table',
-                     'apass_db_host', 'apass_db_user', 'apass_db_name', 
-                     'apass_db_passwd', 'apass_db_table',
-                     'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
-            try:
-                setattr(self, attr, conf.get('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['use_filter', 'use_psf', 'circular_film']:
-            try:
-                setattr(self, attr, conf.getboolean('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['plate_epoch', 'threshold_sigma', 
-                     'psf_threshold_sigma', 'psf_model_sigma', 
-                     'crossmatch_radius', 'crossmatch_nsigma', 
-                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
-            try:
-                setattr(self, attr, conf.getfloat('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['sip', 'skip_bright', 'distort', 'subfield_distort', 
-                     'max_recursion_depth', 'force_recursion_depth', 
-                     'min_model_sources', 'max_model_sources']:
-            try:
-                setattr(self, attr, conf.getint('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
-            try:
-                setattr(self, attr, conf.get('Solve', attr))
-            except configparser.Error:
-                pass
-
-        # Read UCAC4 and APASS table column names from the dedicated sections,
-        # named after the tables
-        if conf.has_section(self.ucac4_db_table):
-            for attr in self.ucac4_columns.keys():
-                try:
-                    colstr = conf.get(self.ucac4_db_table, attr)
-                    _,typ = self.ucac4_columns[attr]
-                    self.ucac4_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
-
-        if conf.has_section(self.apass_db_table):
-            for attr in self.apass_columns.keys():
-                try:
-                    colstr = conf.get(self.apass_db_table, attr)
-                    _,typ = self.apass_columns[attr]
-                    self.apass_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
+        self.__dict__.update(conf_attributes(conf))
 
     def copy_from_sextractor(self, xycat):
         """
@@ -587,37 +475,37 @@ class SourceTable(Table):
         ind_gaia = index_ref[ind_ref]
         self['solution_num'][ind_plate] = sol_ref[ind_ref]
         self['match_radius'][ind_plate] = tolerance_arcsec
-        self['gaiaedr3_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
-        self['gaiaedr3_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
-        self['gaiaedr3_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
-        self['gaiaedr3_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
-        self['gaiaedr3_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
-        self['gaiaedr3_dist'][ind_plate] = dist_arcsec
+        self['gaiadr4_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
+        self['gaiadr4_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
+        self['gaiadr4_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
+        self['gaiadr4_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
+        self['gaiadr4_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
+        self['gaiadr4_dist'][ind_plate] = dist_arcsec
         self.num_crossmatch_gaia = len(ind_plate)
 
         # Mask nan values in listed columns
-        for col in ['gaiaedr3_gmag', 'gaiaedr3_bpmag', 'gaiaedr3_rpmag',
-                    'gaiaedr3_bp_rp', 'gaiaedr3_dist']:
+        for col in ['gaiadr4_gmag', 'gaiadr4_bpmag', 'gaiadr4_rpmag',
+                    'gaiadr4_bp_rp', 'gaiadr4_dist']:
             self[col] = MaskedColumn(self[col], mask=np.isnan(self[col]))
 
         # Mask zeros in the ID column
-        col = 'gaiaedr3_id'
+        col = 'gaiadr4_id'
         self[col] = MaskedColumn(self[col], mask=(self[col] == 0))
 
         # Store number of crossmatched sources to each solution
         grp = self.group_by('solution_num').groups
         tab_grp = Table(grp.aggregate(len)['solution_num', 'source_num'])
-        tab_grp.rename_column('source_num', 'num_gaia_edr3')
+        tab_grp.rename_column('source_num', 'num_gaia_dr4')
 
         for i in np.arange(plate_solution.num_solutions):
             solution = solutions[i]
             m = tab_grp['solution_num'] == i + 1
 
             if m.sum() > 0:
-                num_gaia_edr3 = tab_grp['num_gaia_edr3'][m].data[0]
-                solution['num_gaia_edr3'] = num_gaia_edr3
+                num_gaia_dr4 = tab_grp['num_gaia_dr4'][m].data[0]
+                solution['num_gaia_dr4'] = num_gaia_dr4
             else:
-                solution['num_gaia_edr3'] = 0
+                solution['num_gaia_dr4'] = 0
 
         # Crossmatch: find all neighbours for sources
         kdt_ref = KDT(xy_ref)
@@ -646,7 +534,7 @@ class SourceTable(Table):
             # Construct neighbors table
             nbs = Table()
             nbs['source_num'] = self['source_num'][k_plate]
-            nbs['gaiaedr3_id'] = star_catalog['source_id'][index_ref[k_ref]]
+            nbs['gaiadr4_id'] = star_catalog['source_id'][index_ref[k_ref]]
             nbs['dist'] = dist
             nbs['solution_num'] = sol_ref[k_ref]
             nbs['x_gaia'] = xy_ref[k_ref,0]
@@ -656,9 +544,9 @@ class SourceTable(Table):
             # with the source table
             tab = Table()
             tab['source_num'] = self['source_num']
-            tab['gaiaedr3_id'] = MaskedColumn(self['gaiaedr3_id']).filled(0)
+            tab['gaiadr4_id'] = MaskedColumn(self['gaiadr4_id']).filled(0)
             tab['flag_xmatch'] = np.int8(1)
-            jtab = join(nbs, tab, keys=('source_num', 'gaiaedr3_id'),
+            jtab = join(nbs, tab, keys=('source_num', 'gaiadr4_id'),
                         join_type='left')
             jtab['flag_xmatch'] = MaskedColumn(jtab['flag_xmatch']).filled(0)
             self.neighbors_gaia = jtab
@@ -667,10 +555,10 @@ class SourceTable(Table):
             source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
             mask = np.isin(self['source_num'], source_num)
             ind_mask = np.where(mask)[0]
-            self['gaiaedr3_neighbors'][ind_mask] = cnt
+            self['gaiadr4_neighbors'][ind_mask] = cnt
         else:
             # Create empty neighbors table
-            nbs = Table(names=('source_num', 'gaiaedr3_id', 'dist',
+            nbs = Table(names=('source_num', 'gaiadr4_id', 'dist',
                                'solution_num', 'x_gaia', 'y_gaia',
                                'flag_xmatch'),
                         dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8', 'i1'))
@@ -807,22 +695,22 @@ class SourceTable(Table):
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
         if (self.platemeta and 
-                self.platemeta['site_latitude'] and 
-                self.platemeta['site_longitude'] and 
-                (self.platemeta['numexp'] == 1) and
-                self.platemeta['date_avg'] and
-                self.platemeta['date_avg'][0]):
+                self.platemeta.site_latitude and 
+                self.platemeta.site_longitude and 
+                (self.platemeta.numexp == 1) and
+                self.platemeta.exposures and
+                self.platemeta.exposures[0].ut_mid):
             self.log.write('Calculating zenith angle and air mass for sources', 
                            level=3, event=61)
-            lon = self.platemeta['site_longitude']
-            lat = self.platemeta['site_latitude']
+            lon = self.platemeta.site_longitude
+            lat = self.platemeta.site_latitude
             height = 0.
 
-            if self.platemeta['site_elevation']:
-                height = self.platemeta['site_elevation']
+            if self.platemeta.site_elevation:
+                height = self.platemeta.site_elevation
 
             loc = EarthLocation.from_geodetic(lon, lat, height)
-            date_avg = Time(self.platemeta['date_avg'][0], 
+            date_avg = Time(self.platemeta.exposures[0].ut_mid, 
                             format='isot', scale='ut1')
             c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
             self['zenith_angle'][ind_finite] = c_altaz.zen.deg

@@ -1,0 +1,69 @@
+[Archive]
+archive_id = 98
+archive_name = "Full mock archive"
+
+[Logbook.LB1]
+logbook_num = "1"
+logbook_title = "Mock journal I"
+logbook_type = 1
+logbook_notes = "First journal"
+
+[Logbook.LB2]
+logbook_num = "2"
+logbook_title = "Mock journal II"
+logbook_type = 1
+
+[Files]
+wfpdb_maindata = "MCKmaindata.txt"
+wfpdb_quality = "MCKquality.txt"
+wfpdb_notes = "MCKnotes.txt"
+wfpdb_observer = "MCKobserver.txt"
+plate_csv = ["full_plates.csv"]
+scan_csv = ["full_scans.csv"]
+preview_csv = ["full_previews.csv"]
+logpage_csv = ["full_logpages.csv"]
+
+[CSV."full_plates.csv"]
+csv_list_delimiter = ";"
+plate_num = 1
+fn_cover = 2
+fn_log = 3
+series = 4
+
+[CSV."full_scans.csv"]
+filename_scan = 1
+plate_num = 2
+scan_author = 3
+scan_date = 4
+
+[CSV."full_previews.csv"]
+filename = 1
+plate_num = 2
+preview_type = 3
+
+[CSV."full_logpages.csv"]
+filename = 1
+logbook_num = 2
+page_num = 3
+logpage_order = 4
+logpage_type = 5
+
+[WFPDB]
+maindata_timezone = "UT"
+notes_timezone = "UT"
+
+[Image]
+logpage_exif_timezone = "Europe/Tallinn"
+
+[Metadata]
+evening_date = true
+
+["Keyword values"]
+observatory = "Mock Observatory"
+site_name = "Mock Hill"
+site_longitude = 26.72
+site_latitude = 58.27
+site_elevation = 70
+
+[Lookup.observer]
+"j. mets" = "Jaan Mets"

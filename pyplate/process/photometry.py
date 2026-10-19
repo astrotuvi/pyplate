@@ -7,12 +7,6 @@ from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSplin
 from scipy.ndimage.filters import generic_filter
 from scipy.optimize import curve_fit
 from collections import OrderedDict
-from ..conf import read_conf
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
 
 try:
     import statsmodels.api as sm
@@ -57,20 +51,13 @@ class PhotometryProcess:
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-            
         self.conf = conf
-
-        for attr in ['write_phot_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
+        self.write_phot_dir = conf.files.write_phot_dir
 
     def evaluate_color_term(self, sources, solution_num=0):
         """
@@ -87,8 +74,8 @@ class PhotometryProcess:
 
         """
 
-        cat_mag1 = sources['gaiaedr3_bpmag'].data
-        cat_mag2 = sources['gaiaedr3_rpmag'].data
+        cat_mag1 = sources['gaiadr4_bpmag'].data
+        cat_mag2 = sources['gaiadr4_rpmag'].data
         plate_mag = sources['mag_auto'].data
         mag_corr = sources['natmag_correction'].data
         mag_err = sources['magerr_auto'].data
@@ -461,7 +448,7 @@ class PhotometryProcess:
 
         # Store number of Gaia DR2 objects matched with the current solution
         bgaia = (self.sources['solution_num'] == solution_num)
-        self.phot_calib['num_gaia_edr3'] = bgaia.sum()
+        self.phot_calib['num_gaia_dr4'] = bgaia.sum()
 
         # For single exposures, exclude blended sources.
         # For multiple exposures, include them, because otherwise the bright
@@ -479,10 +466,10 @@ class PhotometryProcess:
                     (self.sources['mag_auto'] < 90) &
                     bflags &
                     (self.sources['flag_clean'] == 1) &
-                    ~self.sources['gaiaedr3_bpmag'].mask &
-                    ~self.sources['gaiaedr3_rpmag'].mask &
-                    (self.sources['gaiaedr3_bp_rp'].filled(99.) <= 2) &
-                    (self.sources['gaiaedr3_neighbors'] == 1))
+                    ~self.sources['gaiadr4_bpmag'].mask &
+                    ~self.sources['gaiadr4_rpmag'].mask &
+                    (self.sources['gaiadr4_bp_rp'].filled(99.) <= 2) &
+                    (self.sources['gaiadr4_neighbors'] == 1))
 
         num_calstars = cal_mask.sum()
         self.phot_calib['num_candidate_stars'] = num_calstars
@@ -558,8 +545,8 @@ class PhotometryProcess:
             return
 
         plate_mag_u = self.sources['mag_auto'][ind_calibstar_u].data
-        cat_bmag_u = self.sources['gaiaedr3_bpmag'][ind_calibstar_u].data
-        cat_vmag_u = self.sources['gaiaedr3_rpmag'][ind_calibstar_u].data
+        cat_bmag_u = self.sources['gaiadr4_bpmag'][ind_calibstar_u].data
+        cat_vmag_u = self.sources['gaiadr4_rpmag'][ind_calibstar_u].data
         cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
         self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
@@ -1067,11 +1054,11 @@ class PhotometryProcess:
 
         # Select stars with known external photometry
         bgaia = (sol_mask &
-                 ~self.sources['gaiaedr3_bpmag'].mask &
-                 ~self.sources['gaiaedr3_rpmag'].mask)
+                 ~self.sources['gaiadr4_bpmag'].mask &
+                 ~self.sources['gaiadr4_rpmag'].mask)
 
         if bgaia.sum() > 0:
-            bp_rp = self.sources['gaiaedr3_bp_rp'][bgaia]
+            bp_rp = self.sources['gaiadr4_bp_rp'][bgaia]
             bp_rp_err = 0.
 
             self.sources['rpmag'][bgaia] = (self.sources['natmag'][bgaia]

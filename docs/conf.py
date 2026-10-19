@@ -31,6 +31,7 @@ autodoc_mock_imports = ['numpy', 'scipy', 'statsmodels', 'astropy', 'ephem']
 autosummary_generate = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
+autodoc_typehints = 'description'
 #numpydoc_show_class_members = False
 
 # Add any paths that contain templates here, relative to this directory.

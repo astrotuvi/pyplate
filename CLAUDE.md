@@ -72,29 +72,34 @@ PyPlate is a Python package for processing scanned astronomical photographic pla
 
 ## Commands
 
+Python 3.12 or later. On this machine the conda env `applause` matches the versions of the reference run (tests/ver4/plates/reference/manifest.json); the system `python3` is too old.
+
 ```bash
 pip install -e .            # basic install
 pip install -e .[ml]        # + scikit-learn/tensorflow (artifact classification)
 pip install -e .[pgsql]     # + psycopg2; [mysql] for pymysql
 
-pytest tests/test_metadata.py                        # the only runnable pytest suite
+pytest tests                                         # all tests (no database server needed)
 pytest tests/test_metadata.py::test_plate_ut         # single test
+
+python -m pyplate.config.ini2toml old.conf new.toml  # convert an old INI configuration
 
 cd docs && make html        # Sphinx docs (published on readthedocs)
 ```
 
-`tests/test_db_*.py` and `tests/test_schema.py` are stale scripts (they import `pyplate.config.local` and `pyplate.db_pgsql`, which no longer exist) and need a live database; don't treat their failures as regressions.
+The reference-plate comparison (DESIGN.md 7.1) needs the external programs and data, and runs only on the machine with `tests/ver4/plates/paths.local`: `PYTHONPATH=. python tests/run_reference_plates.py <run> --replay-gaia run1`, then `python tests/ver4/compare_reference_plates.py run1 <run> --dr5`.
 
 The version string lives in `pyplate/_version.py`; `pyproject.toml` reads it via `[tool.setuptools.dynamic]`.
 
 ## Architecture
 
-Four subpackages/modules, all configured from a single INI file read via `conf.read_conf()` (a `ConfigParser`). Nearly every class has an `assign_conf(conf)` method that accepts either a path or a `ConfigParser`, and pulls its attributes from sections like `[Archive]`, `[Files]`, `[Programs]`, `[Database]`, `[Keyword values]`, plus per-CSV-file sections describing column mappings. See `docs/configuration.rst` and `tests/data/my_archive.conf`.
+The package is being redesigned in steps (DESIGN.md, section 8; `tests/ver4` holds the output of the old code that the new code is compared with). Configuration is a TOML file read by `pyplate.config.load_config()` into frozen dataclasses (`Config` with one dataclass per section); every key is validated. See `docs/configuration.rst` and `tests/data/my_archive.toml`.
 
-- **`metadata.py`**: `Archive` reads plate/scan/logbook metadata from WFPDB files or CSVs and produces `Plate` objects (OrderedDicts). `Plate.compute_values()` derives UT/JD/sidereal times, exposures, etc. from the original logbook data (multi-exposure plates store per-exposure lists). `PlateHeader` (subclass of `astropy.io.fits.Header`) builds a standardised FITS header from a `Plate`.
+- **`config/`**: `sections.py` (the dataclasses), `loader.py` (TOML → `Config`, key and type checks), `ini2toml.py` (converts old INI configurations).
+- **`metadata/`**: record classes (`Archive`, `Plate`, `Exposure`, `SubExposure`, `Scan`, `Preview`, `Logbook`, `Logpage`), dataclasses whose fields are exactly the columns of their DR5 tables (`DbRecord.to_row()`/`from_row()`), plus related records (`plate.exposures`, `plate.scans`, ...). `ArchiveReader` reads WFPDB and CSV files (and the scan FITS file) into them; `Plate.compute_values()` computes UT/JD/HJD and ICRS coordinates per exposure (`timeutils.py`). `PlateHeader.from_metadata()` builds the FITS header from the keyword table in `header.py`.
 - **`image.py`**: `PlateConverter` converts raw scans (TIFF) to FITS and previews.
-- **`process/`**: `Process` (`process.py`) is the per-image orchestrator. It composes `SourceTable` (`sources.py`), `StarCatalog` (`catalog.py`, Gaia/Tycho-2/UCAC4/APASS references), `SolveProcess`/`PlateSolution` (`solve.py`, astrometry incl. multi-exposure pattern finding), and `PhotometryProcess` (`photometry.py`). `pipeline.py`'s `PlatePipeline.single_image()` is the canonical end-to-end flow (metadata → header → `setup` → `extract_sources` → `classify_artifacts` → `solve_plate` → crossmatch → `calibrate_photometry` → DB/CSV output → `finish`); `parallel_run()` runs it over many files with multiprocessing.
-- **`database/`**: `PlateDB` (`database.py`) is a backend-neutral facade that delegates to `db_pgsql` or `db_mysql` based on `rdbms`. Table definitions are not hard-coded: they come from a YAML schema (`applause_dr4.yaml`) parsed by `db_yaml.py`, which also generates CREATE/DROP SQL per backend. Schema changes go in the YAML.
+- **`process/`**: `Process` (`process.py`) is the per-image orchestrator. It composes `SourceTable` (`sources.py`), `StarCatalog` (`catalog.py`, Gaia), `SolveProcess`/`PlateSolution` (`solve.py`, astrometry incl. multi-exposure pattern finding), and `PhotometryProcess` (`photometry.py`). Their `assign_conf(cfg)` take a `Config` (`settings.py`, until `ProcessContext` replaces them in step 2). `pipeline.py`'s `PlatePipeline.single_image()` is the canonical end-to-end flow (metadata → header → `setup` → `extract_sources` → `classify_artifacts` → `solve_plate` → crossmatch → `calibrate_photometry` → DB/CSV output → `finish`); `parallel_run()` runs it over many files with multiprocessing.
+- **`database/`**: `PlateDB` (`database.py`) writes records and results the same way for every backend (`db_pgsql`, `db_mysql`, `db_sqlite`; `backend.py`). Table definitions come from the backend-neutral schema YAML (`applause_dr5.yaml`; `applause_dr4.yaml` is kept to check the generated SQL against the old code), read by `schema.py`; `ddl.py` generates the CREATE/DROP/INDEX/TRIGGER SQL per backend. Schema changes go in the YAML.
 
 ### External dependencies
 

@@ -4,78 +4,74 @@ Using PyPlate
 Working with metadata
 ---------------------
 
-An archive is a collection of photographic plates, logbooks, observer notes, 
-etc. In ``PyPlate``, an archive is represented with the ``Archive`` class in
-the ``metadata`` module. An individual plate is represented with the ``Plate``
-and a FITS header with ``PlateHeader`` class.
+An archive is a collection of photographic plates, logbooks, observer notes,
+etc. ``ArchiveReader`` in the ``metadata`` subpackage reads the input files
+of an archive named in the configuration (see :doc:`configuration`). The
+records it returns (``Archive``, ``Plate``, ``Exposure``, ``SubExposure``,
+``Scan``, ``Preview``, ``Logbook``, ``Logpage``) have the columns of their
+database tables as attributes.
 
-Initialise an archive::
+Read the metadata files::
 
-    import pyplate
-    archive = pyplate.metadata.Archive()
+    from pyplate.config import load_config
+    from pyplate.metadata import ArchiveReader
 
-Optionally, specify a configuration file::
+    cfg = load_config('/path/to/pyplate.toml')
+    reader = ArchiveReader(cfg)
 
-    archive.assign_conf('/path/to/conf.cfg')
+Get a plate by its plate number, WFPDB ID or scan file name, and compute its
+times and coordinates::
 
-Importing metadata from files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    plate = reader.get_plate(filename_scan='plate_0001.fits')
+    plate.compute_values(cfg.metadata.evening_date)
 
-Metadata can be conveniently imported from the Wide-Field Plate Database 
-(WFPDB) files and comma-separated values (CSV) files.
+    for exposure in plate.exposures:
+        print(exposure.ut_start, exposure.jd_mid, exposure.ra_icrs)
 
-Import metadata from WFPDB files::
+All plates, scans, previews and logpages of the archive::
 
-    archive.read_wfpdb(wfpdb_dir='/path/to/wfpdb_dir', 
-                       fn_maindata='maindata.txt', fn_quality='quality.txt',
-                       fn_notes='notes.txt', fn_observer='observer.txt')
+    for plate in reader.iter_plates():
+        ...
 
-Import metadata from CSV files::
+Creating a FITS header
+~~~~~~~~~~~~~~~~~~~~~~
 
-    archive.read_csv(csv_dir='/path/to/csv_dir', fn_plate_csv='plates.csv',
-                     fn_scan_csv='scans.csv', fn_logpage_csv='logpages.csv')
+Build the header of a scan from the metadata::
+
+    from pyplate.metadata import PlateHeader
+
+    scan = plate.scans[0]
+    header = PlateHeader.from_metadata(plate, scan, cfg)
+
+Write the header to a FITS file in ``[Files] write_fits_dir`` (the file is
+copied from ``fits_dir`` if it is not there yet), or to a text file in
+``write_header_dir``::
+
+    header.output_to_fits('plate_0001.fits')
+    header.output_to_file('plate_0001.hdr')
 
 
+Writing metadata to the database
+--------------------------------
 
-Creating and managing a FITS header
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``PlateDB`` writes the records to the database in ``[Database.connection]``
+(PostgreSQL, MySQL or SQLite)::
 
-Create an empty header::
+    from pyplate.database import PlateDB
 
-    pheader = pyplate.metadata.PlateHeader()
-    pheader.populate()
+    db = PlateDB(cfg.database, cfg.files)
+    db.open_connection()
+    db.write_archive(reader.archive)
 
-Create header from a FITS file::
+    for plate in reader.iter_plates():
+        plate.compute_values(cfg.metadata.evening_date)
+        db.write_plate(plate)
 
-    pheader = pyplate.metadata.PlateHeader.from_fits('/path/to/file.fits')
+    db.close_connection()
 
-Create header from a text file that contains a FITS header::
-
-    pheader = pyplate.metadata.PlateHeader.from_hdrf('/path/to/file.hdrf')
-
-Update header with metadata::
-
-    pmeta = pyplate.metadata.Plate()
-    pheader.update_from_platemeta(pmeta)
-
-Configure input and output directories::
-
-    pheader.fits_dir = '/path/to/fits_dir'
-    pheader.write_fits_dir = '/path/to/write_fits_dir'
-    pheader.write_header_dir = '/path/to/write_header_dir'
-
-Write header to a FITS file in ``write_fits_dir``::
-
-    pheader.output_to_fits('file.fits')
-
-If the FITS file exists, then its header is updated with ``pheader``. If the 
-file does not exist, then ``PyPlate`` assumes that the file with the same name
-exists in ``fits_dir``. The file is then opened for reading and an output
-file is written to ``write_fits_dir`` with the current header.
-
-Write header to a text file in ``write_header_dir``::
-
-    pheader.output_to_fits('file.hdr')
+``write_plate()`` also writes the exposures, sub-exposures, scans, previews
+and the links to logpages. Create the tables with
+``db.create_schema(execute=True)``.
 
 
 Extracting sources from a plate image and solving astrometry
@@ -94,13 +90,9 @@ Configure process::
     proc.write_wcs_dir = '/path/to/write_wcs_dir'
     proc.write_log_dir = '/path/to/write_log_dir'
 
-Alternatively, specify a configuration file or pass a variable containing 
-configuration::
+Alternatively, assign the configuration::
 
-    proc.assign_conf('/path/to/conf_file.cfg')
-    
-    # Use Archive configuration instead
-    proc.assign_conf(archive.conf)
+    proc.assign_conf(load_config('/path/to/pyplate.toml'))
 
 Set up process::
 
@@ -113,10 +105,6 @@ Extract sources::
 Finish process::
 
     proc.finish()
-
-
-Writing data to database
-------------------------
 
 
 Creating a pipeline

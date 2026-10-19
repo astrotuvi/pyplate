@@ -23,12 +23,12 @@ from scipy.ndimage.filters import generic_filter
 from scipy.linalg import lstsq
 from collections import OrderedDict
 from ..database.database import PlateDB
-from ..conf import read_conf
 from .._version import __version__
 from .sources import SourceTable
 from .catalog import StarCatalog
 from .solve import SolveProcess
 from .photometry import PhotometryProcess
+from .settings import conf_attributes
 
 try:
     import configparser
@@ -369,123 +369,13 @@ class Process:
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-            
         self.conf = conf
-
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
-
-        for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
-                     'solve_field_path', 'wcs_to_tan_path']:
-            try:
-                setattr(self, attr, conf.get('Programs', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir', 
-                     'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir',
-                     'write_db_source_dir', 'write_db_source_calib_dir',
-                     'write_db_source_xmatch_dir',
-                     'write_db_solution_healpix_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        if self.write_log_dir:
-            self.enable_log = True
-
-        for attr in ['use_gaia_fits', 'use_tycho2_fits', 
-                     'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log', 'write_sources_csv',
-                     'write_solution_healpix_csv']:
-            try:
-                setattr(self, attr, conf.getboolean('Database', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
-                     'ucac4_db_passwd', 'ucac4_db_table',
-                     'apass_db_host', 'apass_db_user', 'apass_db_name', 
-                     'apass_db_passwd', 'apass_db_table',
-                     'output_db']:
-            try:
-                setattr(self, attr, conf.get('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['use_filter', 'use_psf', 'circular_film']:
-            try:
-                setattr(self, attr, conf.getboolean('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['plate_epoch', 'threshold_sigma', 
-                     'psf_threshold_sigma', 'psf_model_sigma', 
-                     'crossmatch_radius', 'crossmatch_nsigma', 
-                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
-            try:
-                setattr(self, attr, conf.getfloat('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['sip', 'skip_bright', 'distort', 'subfield_distort', 
-                     'max_recursion_depth', 'force_recursion_depth', 
-                     'min_model_sources', 'max_model_sources']:
-            try:
-                setattr(self, attr, conf.getint('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
-            try:
-                setattr(self, attr, conf.get('Solve', attr))
-            except configparser.Error:
-                pass
-
-        # Read UCAC4 and APASS table column names from the dedicated sections,
-        # named after the tables
-        if conf.has_section(self.ucac4_db_table):
-            for attr in self.ucac4_columns.keys():
-                try:
-                    colstr = conf.get(self.ucac4_db_table, attr)
-                    _,typ = self.ucac4_columns[attr]
-                    self.ucac4_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
-
-        if conf.has_section(self.apass_db_table):
-            for attr in self.apass_columns.keys():
-                try:
-                    colstr = conf.get(self.apass_db_table, attr)
-                    _,typ = self.apass_columns[attr]
-                    self.apass_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
+        self.__dict__.update(conf_attributes(conf))
 
     def assign_header(self, header):
         """
@@ -503,8 +393,8 @@ class Process:
 
         self.platemeta = platemeta
 
-        if self.platemeta['archive_id']:
-            self.archive_id = self.platemeta['archive_id']
+        if self.platemeta.archive_id:
+            self.archive_id = self.platemeta.archive_id
 
     def setup(self):
         """
@@ -537,8 +427,7 @@ class Process:
 
         # Open database connection for logs
         if self.enable_db_log:
-            platedb = PlateDB()
-            platedb.assign_conf(self.conf)
+            platedb = PlateDB(self.conf.database, self.conf.files)
             platedb.open_connection()
 
             self.log.platedb = platedb
@@ -613,8 +502,8 @@ class Process:
 
         self.plate_year = int(self.plate_epoch)
 
-        if self.platemeta is not None and 'numexp' in self.platemeta:
-            num_exposures = self.platemeta['numexp']
+        if self.platemeta is not None:
+            num_exposures = self.platemeta.numexp
         else:
             num_exposures = None
 
@@ -672,8 +561,7 @@ class Process:
 
         """
 
-        platedb = PlateDB()
-        platedb.assign_conf(self.conf)
+        platedb = PlateDB(self.conf.database, self.conf.files)
         platedb.open_connection()
         self.scan_id, self.plate_id = platedb.get_scan_id(self.filename, 
                                                           self.archive_id)
@@ -707,8 +595,7 @@ class Process:
         """
 
         if self.process_id is not None:
-            platedb = PlateDB()
-            platedb.assign_conf(self.conf)
+            platedb = PlateDB(self.conf.database, self.conf.files)
             platedb.open_connection()
             platedb.update_process(self.process_id, **kwargs)
             platedb.close_connection()
@@ -725,8 +612,7 @@ class Process:
         """
 
         if self.process_id is not None:
-            platedb = PlateDB()
-            platedb.assign_conf(self.conf)
+            platedb = PlateDB(self.conf.database, self.conf.files)
             platedb.open_connection()
             duration = (dt.datetime.now()-self.timestamp).seconds
             platedb.write_process_end(self.process_id, 
@@ -1650,8 +1536,7 @@ class Process:
         self.log.write('Open database connection for writing to the '
                        'solution, solution_set, solution_healpix and '
                        'scanner_pattern tables')
-        platedb = PlateDB()
-        platedb.assign_conf(self.conf)
+        platedb = PlateDB(self.conf.database, self.conf.files)
         platedb.open_connection()
 
         if (self.scan_id is not None and self.plate_id is not None and 
@@ -2176,8 +2061,8 @@ class Process:
 
         # If photometric calibration failed for all solutions, then give up
         if len(phot_calib_curves) == 0 or len(cur_faint_limit) == 0:
-            num_gaia_edr3 = self.sources.num_crossmatch_gaia
-            self.db_update_process(num_gaia_edr3=num_gaia_edr3,
+            num_gaia_dr4 = self.sources.num_crossmatch_gaia
+            self.db_update_process(num_gaia_dr4=num_gaia_dr4,
                                    num_iterations=self.num_iterations,
                                    calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
@@ -2318,10 +2203,10 @@ class Process:
 
             iteration += 1
 
-        num_gaia_edr3 = self.sources.num_crossmatch_gaia
+        num_gaia_dr4 = self.sources.num_crossmatch_gaia
 
         if num_calib_solutions == 0:
-            self.db_update_process(num_gaia_edr3=num_gaia_edr3,
+            self.db_update_process(num_gaia_dr4=num_gaia_dr4,
                                    num_iterations=self.num_iterations,
                                    calibrated=0)
             self.log.write('Photometric calibration failed for all solutions',
@@ -2331,7 +2216,7 @@ class Process:
             self.phot_calib_curves = phot_calib_curves
             mag_range = max_cur_faint_limit - min_cur_bright_limit
 
-            self.db_update_process(num_gaia_edr3=num_gaia_edr3,
+            self.db_update_process(num_gaia_dr4=num_gaia_dr4,
                                    color_term=weighted_cur_color_term,
                                    bright_limit=min_cur_bright_limit,
                                    faint_limit=max_cur_faint_limit,
@@ -2367,8 +2252,7 @@ class Process:
 
         self.log.write('Open database connection for writing to the '
                        'phot_cterm and phot_calib tables')
-        platedb = PlateDB()
-        platedb.assign_conf(self.conf)
+        platedb = PlateDB(self.conf.database, self.conf.files)
         platedb.open_connection()
 
         for i, calib in enumerate(self.phot_calib_list):
@@ -2411,8 +2295,7 @@ class Process:
         else:
             self.log.to_db(3, 'Writing sources to the database', event=80)
 
-        platedb = PlateDB()
-        platedb.assign_conf(self.conf)
+        platedb = PlateDB(self.conf.database, self.conf.files)
 
         if write_csv:
             # Create output directories, if missing

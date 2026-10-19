@@ -3,13 +3,7 @@ import glob
 import numpy as np
 from datetime import datetime
 from astropy.io import fits
-from .conf import read_conf
 from ._version import __version__
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
 
 try:
     from PIL import Image
@@ -47,36 +41,17 @@ class PlateConverter:
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
-        for attr in ['tiff_dir', 'write_fits_dir', 'write_wedge_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['scan_exif_timezone']:
-            try:
-                setattr(self, attr, conf.get('Image', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['wedge_height']:
-            try:
-                setattr(self, attr, conf.getint('Image', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['cut_wedge']:
-            try:
-                setattr(self, attr, conf.getboolean('Image', attr))
-            except configparser.Error:
-                pass
+        self.tiff_dir = conf.files.tiff_dir
+        self.write_fits_dir = conf.files.write_fits_dir
+        self.write_wedge_dir = conf.files.write_wedge_dir
+        self.scan_exif_timezone = conf.image.scan_exif_timezone
+        self.wedge_height = conf.image.wedge_height
+        self.cut_wedge = conf.image.cut_wedge
 
     def batch_tiff2fits(self):
         """

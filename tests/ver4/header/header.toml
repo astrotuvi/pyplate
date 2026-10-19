@@ -1,0 +1,16 @@
+[Header]
+detector = "detector0"
+licence = "licence0"
+acknowledgements = "This is the first paragraph of the acknowledgements. It is long enough to be wrapped into more than one line of the FITS header.\n\nThis is the second paragraph."
+
+["Integer values"]
+MOCKINT = 7
+
+["Float values"]
+MOCKFLT = 2.5
+
+["String values"]
+MOCKSTR = "mock string value"
+
+["FITS keyword comments"]
+OBSERVER = "observer (comment from config)"

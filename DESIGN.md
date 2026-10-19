@@ -59,6 +59,7 @@ pyplate/
     codes.py                object-type and method code tables
     header.py               PlateHeader + the one field → FITS keyword table
     readers/
+      values.py             values of one plate collected from the inputs
       wfpdb.py              WFPDB maindata / quality / notes / observer
       csv.py                CSV files mapped by column name
       fits.py               values from an existing FITS header
@@ -80,6 +81,7 @@ pyplate/
     process.py              PlateProcess: orchestrator (was Process); Process: the `process` table row
     pipeline.py             PlatePipeline: single_image(), parallel_run()
     log.py                  ProcessLog
+    settings.py             (step 1 only) attributes from the configuration, until ProcessContext
     output.py               writing results to the database / CSV
     extraction.py           SExtractor / PSFEx runs, building the source table
     sources.py              SourceTable + coordinate processing, annular bins, edge flags
@@ -134,15 +136,16 @@ Lists (`plate_csv`, ...) are arrays.
 | `ProgramsConfig` | paths to `sex`, `psfex`, `scamp`, `solve-field`, `wcs-to-tan` |
 | `DatabaseConfig` | `[Database]`: `enable_db_log`, `write_sources_csv`, `write_solution_healpix_csv`, `dr_num`, `process_num_digits`, `source_num_digits`; the nested table `[Database.connection]`: `rdbms`, host / port / socket / file, user, password, database, schema, `yaml`. The results are written to the database when `[Database.connection]` is present (now: when `output_db` names a section) |
 | `ArchiveConfig` | `[Archive]` columns + the `[Logbook.<name>]` tables |
-| `CsvConfig` | for each `[CSV."<file name>"]` table: column → position, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8). Plate CSV tables also accept the link keys `fn_cover` and `fn_log` and the time keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig` (see 4.2) |
+| `CsvConfig` | for each `[CSV."<file name>"]` table: column → position, `csv_delimiter`, `csv_quotechar`, `csv_list_delimiter`, `csv_timezone` (default time zone of the recorded times, see 4.2), `csv_encoding` (default UTF-8). Plate CSV tables also accept the link keys `fn_cover`, `fn_log`, `fn_pre` and `fn_scan` and the time keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig` (see 4.2); scan and preview tables the link keys `plate_num` and `wfpdb_id`, logpage tables `logbook_num`. The identifier column of each kind (`plate_num`, `filename_scan`, `filename`, `logbook_num`) must be mapped |
 | `WfpdbConfig` | `[WFPDB]`: `maindata_timezone` (default time zone of the recorded times, see 4.2), `notes_timezone` (time zone of the times in the WFPDB notes file), `exptime_minutes` (exposure times in minutes; default false), `encoding` (encoding of the WFPDB files; default UTF-8) |
-| `ImageConfig` | `[Image]`: `logpage_exif_timezone`, `preview_exif_timezone` (time zone of the EXIF dates in logpage and preview images) |
-| `MetadataConfig` | `evening_date`, `["Keyword values"]`, the `[Lookup.<keyword>]` tables |
-| `ExtractionConfig` | thresholds, filter, PSF settings, `circular_film` |
-| `SolveConfig` | `sip`, `skip_bright`, `distort`, `plate_epoch`, solve settings |
-| `CrossmatchConfig` | match-radius settings |
+| `ImageConfig` | `[Image]`: `logpage_exif_timezone`, `preview_exif_timezone` (time zone of the EXIF dates in logpage and preview images); `scan_exif_timezone`, `wedge_height`, `cut_wedge` (TIFF conversion) |
+| `MetadataConfig` | `[Metadata]` (`evening_date`, `german_transliteration`), `["Keyword values"]`, the `[Lookup.<keyword>]` tables (input values matched without regard to case, as the old INI files did) |
+| `ExtractionConfig` | from `[Solve]`: thresholds, filter, PSF settings, `circular_film` |
+| `SolveConfig` | from `[Solve]`: `sip`, `skip_bright`, `distort`, `plate_epoch`, `allow_force`, `repeat_find` |
+| `CrossmatchConfig` | from `[Solve]`: match-radius settings |
+| `CatalogConfig` | `[Catalog]`: `catalog`, `protocol`, `table_name`, and the Gaia database in `[Catalog.connection]` (was the section named by `db`) |
 | `PipelineConfig` | which steps and outputs are switched on |
-| `HeaderConfig` | `[Header]`: values written only to the FITS header, the same for every plate of the archive: `detector`, `licence`, `acknowledgements` |
+| `HeaderConfig` | `[Header]`: values written only to the FITS header, the same for every plate of the archive: `detector`, `licence`, `acknowledgements`; and the fixed keyword values and comments of `["Integer values"]`, `["Float values"]`, `["String values"]`, `["FITS keyword comments"]`, `["FITS keyword order"]` |
 
 - A `Config` object holds all the sections. Each component receives only its
   own section(s). This replaces every `assign_conf()` method and its
@@ -152,9 +155,14 @@ Lists (`plate_csv`, ...) are arrays.
   (`[Archive]`, logbook tables, CSV tables, `["Keyword values"]`) the
   accepted keys are the column names of the target classes, plus the parsing
   settings and the documented link and time keys of plate CSV tables
-  (`fn_cover`, `fn_log`, `ut_start_orig`, `ut_end_orig`, `st_start_orig`,
-  `st_end_orig`; see 4.2). The exception is a lookup table, whose keys are
-  data values rather than settings.
+  (`fn_cover`, `fn_log`, `fn_pre`, `fn_scan`, `ut_start_orig`,
+  `ut_end_orig`, `st_start_orig`, `st_end_orig`; see 4.2). Database IDs
+  (`*_id` except `wfpdb_id`) and `exposure_num` are not accepted. The
+  exception is a lookup table, whose keys are data values rather than
+  settings.
+- Values of metadata columns keep the type of the input: an integer for a
+  float column stays an integer, as the old code read it (so the header
+  writes `SITEELEV = 41`, not `41.0`). Settings of float type are converted.
 
 Example:
 
@@ -228,7 +236,19 @@ only support for INI: `load_config()` reads TOML only.
   - `[Files]`: `tycho2_dir`;
   - `[Solve]`: `astref_catalog`, `photref_catalog`, `subfield_distort`,
     `max_recursion_depth`, `force_recursion_depth`;
-  - the column-name sections named by `ucac4_db_table` and `apass_db_table`.
+  - the column-name sections named by `ucac4_db_table` and `apass_db_table`;
+  - in CSV sections and logbook sections, database IDs (`scan_id`,
+    `preview_id`, `logbook_id`, `logpage_id`), which are not read from input
+    files, and `method` (derived from `method_code`);
+  - keys that the old code never read: `skycond` in CSV sections (the
+    column is `sky_conditions`), `[Programs] build_index_path` and
+    `xy2sky_path`;
+  - `[Parse keywords]` and `[Rename FITS keywords]` (header features that
+    are no longer available), and lookup sections switched off in
+    `[Keyword lookup]`.
+- The section named by `[Catalog] db` becomes `[Catalog.connection]`.
+- A CSV section without its identifier key gets it as column 1, because the
+  old code always took the identifier from the first column.
 - Values are written with the types of the config dataclass fields, so the
   output has proper booleans and numbers. Any other key that no field
   accepts (for example a typo) stops the conversion with the section and key
@@ -275,7 +295,8 @@ Values that have no column:
 | Parsing intermediates | UT/ST start/end strings | Local to the readers |
 | Derived values | object-type text, method text, sexagesimal RA/Dec, ISO dates for FITS | Read-only properties or `PlateHeader` |
 | Settings written only to the header | `licence`, `detector`, acknowledgements | `PlateHeader` reads them from the `[Header]` config section |
-| Links to other tables | former `fn_scan`, `fn_pre`, `fn_cover`, `fn_log` | `plate.scans`, `plate.previews`, `plate.logpages`; in plate CSV files the logpages are still given with `fn_cover` and `fn_log` (4.2) |
+| Links to other tables | former `fn_scan`, `fn_pre`, `fn_cover`, `fn_log` | `plate.scans`, `plate.previews`, `plate.logpages`; in plate CSV files they are still given with `fn_scan`, `fn_pre`, `fn_cover` and `fn_log` (4.2). `plate.logpages[0]` is the cover, or None without one, so the list position stays the `logpage_order` of the old code. `Logpage.logbook_num` (no column) links a logpage to its logbook |
+| Computation intermediates | sexagesimal RA/Dec from the unrounded coordinates, the years of sub-exposures | `Exposure.ra_hms`, `dec_dms`; `SubExposure.year_start`, `year_mid`, `year_end` |
 | Raw FITS structure | `SIMPLE`, `BITPIX`, `NAXIS`, `BSCALE`, `BZERO`, `EXTEND`, existing `HISTORY` | Defaults in `PlateHeader`, overwritten from the FITS file when one is read; `Scan` gets `naxis1/2`, `minval`, `maxval` |
 | File change date | `DATE` | Set by `PlateHeader` from the current time |
 
@@ -321,7 +342,16 @@ class ArchiveReader:
   with the keys `fn_cover` (cover image) and `fn_log` (list of logbook
   pages), as in the current code. They are not columns: the reader turns them
   into `plate.logpages`, cover first, and the list position gives
-  `logpage_order`.
+  `logpage_order`. In the same way `fn_scan` (list of scans) and `fn_pre`
+  (preview) give `plate.scans` and `plate.previews` in the order of the plate
+  CSV; without them, the scans and previews linked to the plate in the scan
+  and preview CSV files are used.
+- The `plate_num` column of a plate CSV identifies the plate; as in the
+  current code it may hold the WFPDB ID. A row found by the WFPDB ID of a
+  plate from WFPDB files does not change `plate_num`.
+- `exposure.method_code` is the plate's `method_code` unless the CSV maps
+  `exposure.method_code`, as the current code wrote the same value to the
+  plate and to every exposure.
 - Start and end times given as UT or sidereal time in their own CSV columns:
   the keys `ut_start_orig`, `ut_end_orig`, `st_start_orig`, `st_end_orig`
   keep their names. They are not columns: the reader combines them into
@@ -361,12 +391,20 @@ per-exposure field with *n* values as in the current code:
 | *n* | Fields | Result |
 |---|---|---|
 | ≥ `numexp` | any | one value per exposure; extra values ignored |
-| 1 | `time_orig_start`, `time_orig_end`, `exptime` | first exposure only, the rest `None` |
+| 1 | `time_orig_start`, `time_orig_end`, `exptime`, `jd_mid_orig`, when the plate has a date | first exposure only, the rest `None` |
+| 1 | computed times (`ut_*`, `jd_*`, `year_*`, `hjd_*`) | first exposure only |
 | 1 | everything else | copied to every exposure |
 | other | any | values by position, missing ones `None` |
 
-`Exposure.num_sub` comes from the `|`-separated times in an exposure's time
-string, with `len(subexposures) == num_sub`.
+Sub-exposures come from the `|`-separated start times of an exposure. As in
+the database, an exposure with one time has no sub-exposures; with more,
+`len(subexposures) == num_sub`.
+
+`Plate.compute_values()` computes the times of the first exposure, and of
+the others only if a start time is given for them (as the current code did).
+If only the first exposure is computed, its `num_sub` applies to all. If no
+exposure has an exposure time, the exposure times come from the start and
+end times.
 
 ### 4.4 Computations
 
@@ -383,7 +421,9 @@ The current `Plate.compute_values()` (570 lines) becomes:
 ### 4.5 PlateHeader
 
 `PlateHeader(fits.Header)` is built with
-`PlateHeader.from_metadata(plate, scan, cfg, version=None, now=None)`. One table in `header.py` lists,
+`PlateHeader.from_metadata(plate, scan, cfg, fits_header=None, version=None, now=None)`;
+`fits_header` (the header of the scan file) gives the FITS structure and the
+existing HISTORY lines. One table in `header.py` lists,
 for each FITS keyword: the source field, a per-exposure flag (`DT-OBSn`, …)
 and the comment. That table replaces the old `_keyword_meta` and most of the
 300-line `PlateHeader.__init__`. WCS insertion and writing to a file or FITS
@@ -408,16 +448,21 @@ default comment. This is a deliberate difference from the DR4 header; see
 ### 5.1 Layers
 
 ```python
-class Backend(Protocol):
+class Backend:
     placeholder: str                         # '%s' or '?'
-    def connect(self, cfg) -> None
+    def connect(self) -> None                # from the ConnectionConfig
     def qualify(self, table) -> str          # schema.table, db.table, or table
-    def execute(self, sql, params) -> Any
+    def execute(self, sql, params) -> None
+    def query(self, sql, params) -> tuple    # first row, fetched before the commit
     def executemany(self, sql, rows) -> None
-    def insert_returning_id(self, table, row, id_col) -> int
-    def upsert(self, table, row, key_cols) -> None
-    def ddl(self, schema: Schema) -> list[str]
+    def insert_returning_id(self, sql, params, id_col) -> int
+    def upsert_sql(self, table, columns, key_cols) -> str
+    def prepare_value(self, column, value)   # MySQL: invalid DATE -> NULL
+    def ddl(self, schema: Schema, mode) -> list[str]
 ```
+
+`PlateDB` builds the SQL text; the backend adds what differs (`RETURNING`
+or `lastrowid`, the upsert clause, the placeholder, `NOW()`).
 
 `PlateDB` works the same for every backend:
 
@@ -459,12 +504,15 @@ ON DUPLICATE KEY UPDATE
 
 From MySQL 8.0.20, `VALUES()` in that clause is deprecated in favour of a row
 alias (`... AS new ON DUPLICATE KEY UPDATE archive_name = new.archive_name`).
-The MySQL backend uses the form the production server supports.
+The MySQL backend uses `VALUES()`, which MariaDB (the production server,
+Aria tables) supports; MariaDB does not have the row alias.
 
 ### 5.2 Backends
 
 - PostgreSQL (`psycopg2`) and MySQL (`pymysql`): unchanged in what they do,
   rewritten to the `Backend` interface.
+- Update triggers for `timestamp_update`: PostgreSQL and SQLite. MySQL has
+  none, as in the DR4 schema.
 - SQLite (standard-library `sqlite3`):
   - no schema prefix;
   - WAL mode and a busy timeout, so `parallel_run()` workers can write one
@@ -494,8 +542,12 @@ tables:
 - Types: `serial`, `tinyint`, `smallint`, `int`, `bigint`, `real`, `double`,
   `bool`, `char(n)`, `varchar(n)`, `text`, `date`, `datetime`, `timestamp`,
   plus `unsigned`, `null` and `default`.
-- Per-backend escape hatch: `pgsql:`, `mysql:` or `sqlite:` keys for the rare
-  column that needs it.
+- Tables: `primary_key`, and `primary_key_name` where the constraint is not
+  named `<table>_pky`. Index names are given without the table name, which
+  the generated SQL puts in front (`plate_ind` → `exposure_plate_ind`).
+- Per-backend escape hatch: `pgsql:`, `mysql:` or `sqlite:` keys give the full
+  column definition. The DR4 tables need it for 41 columns, mostly ID columns
+  that are `NOT NULL` in MySQL only.
 - Generated, not written by hand: `timestamps: true` adds
   `timestamp_insert`/`timestamp_update` and the update triggers for each
   backend.
@@ -517,6 +569,8 @@ tables:
 | new `jd_mid_orig double`: Julian date of the mid-point of the exposure as recorded in the input (the current code writes it only to the FITS header, as `JDA-ORIG`) | `exposure` |
 | new `tz_orig varchar(40)`: time zone of the recorded times (`UT`, `ST` or an IANA zone name); the current code reads it but does not store it | `plate` |
 | `exposure_sub` name kept; `flag_xmatch`, `x_gaia` and `y_gaia` kept | — |
+| Gaia names also in the index names (`gaiadr4_ind`, `gaiadr4_id_ind`) and the primary key of `source_xmatch` | `source_calib`, `source_xmatch` |
+| no index `exposure_ind` on `exposure_id`, a column the table does not have (the DR4 index cannot be created) | `source` |
 
 The schema additions for blends and photometry methods are decided with those
 developments (section 10).
@@ -733,7 +787,9 @@ future blend-aware matcher (section 10) can mark several stars per source in
 1. Inputs: `PhotometryProcess(ctx, sources, solution)` replaces
    `photproc.__dict__.update(self.__dict__)`. It uses `log`, `basefn`,
    `write_phot_dir`, the plate header, the sources and the solution set.
-2. DR5 column names: `gaiaedr3_*` → `gaiadr4_*`, `num_gaia_edr3` → `num_gaia_dr4`.
+2. DR5 column names: `gaiaedr3_*` → `gaiadr4_*`, `num_gaia_edr3` → `num_gaia_dr4`
+   (done in step 1 for all of `process/`, because the step-1 pipeline
+   writes to the DR5 schema).
 3. Result types: `PlateSolution` → `SolutionSet`. The `phot_calib` dicts are
    converted to `PhotCalib` / `PhotCalibCurve` records in `output.py`.
 
@@ -747,14 +803,17 @@ future blend-aware matcher (section 10) can mark several stars per source in
 | `test_metadata.py` (ported) | Readers, the `numexp` cases in 4.3, sub-exposures, time computations |
 | `test_metadata_regression.py` | New results equal the old `compute_values` results in `tests/ver4/metadata/expected.json` (WFPDB, `tests/data` and mock archives; see `tests/ver4/README.md`) |
 | `test_timeutils.py` | ST→UT, HJD, evening dates |
-| `test_config.py` | Parsing, unknown-key errors; `ini2toml` converts the old-format configurations in `tests/ver4` to exactly their TOML versions |
+| `test_config.py` | Parsing, unknown-key errors; `ini2toml` converts the old-format configurations in `tests/ver4` to exactly their TOML versions (`metadata/*.toml`, `header/header.toml`, `plates/plates.toml`) |
 | `test_crossmatch.py` | `NearestMatcher` gives the same results as the old `crossmatch_gaia` |
 | `test_header.py` | `PlateHeader.from_metadata()` with the mock inputs in `tests/ver4/header/mock_header.json` gives exactly `header.txt`, and after `insert_wcs()` `header_wcs.txt` (see `tests/ver4/README.md`) |
-| Reference-plate comparison | The old pipeline (`run_reference_plates.py`) and the new code give the same results for the reference plates LA02333 and LA02334: sources, solutions, crossmatch, calibration and the result SQL, compared exactly with `compare_reference_plates.py --dr5` (two runs of the old code with the same Gaia results were identical, apart from times, paths and CPU times in astrometry.net header comments, which the comparison ignores); run on the machine with the external programs and data (see `tests/ver4/README.md`, section "Reference plates") |
+| Reference-plate comparison | The old pipeline (`run_reference_plates.py`) and the new code give the same results for the reference plates LA02333 and LA02334: sources, solutions, crossmatch, calibration and the result SQL, run with `tests/run_reference_plates.py`, compared exactly with `compare_reference_plates.py --dr5` (two runs of the old code with the same Gaia results were identical, apart from times, paths and CPU times in astrometry.net header comments, which the comparison ignores); run on the machine with the external programs and data (see `tests/ver4/README.md`, section "Reference plates") |
 
 ### 7.2 Database tests
 
 The database tests need no database server.
+
+Test files: `test_ddl.py` (points 1 and the DR5 SQL of 7.3),
+`test_database.py` (point 2 and 7.3), `test_db_queries.py` (point 3).
 
 1. Generated SQL. Before any refactoring, capture the `get_schema_sql()`
    output of the current code (`create_schema`, `drop_schema`,
@@ -798,9 +857,9 @@ together with the code:
 | Step | Content | Check |
 |---|---|---|
 | 0 | Capture the reference SQL files (7.2) and the old code's output for the reference plates | — |
-| 1 | `config` subpackage with `ini2toml`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; TOML configuration files for the archives, the header and the reference plates in `tests/ver4`, made with `ini2toml` (the references use the old INI format); `process/` adapted to the new config, metadata and database layer only as much as needed for the pipeline to keep running | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`, reference-plate comparison; 7.2; 7.3 |
+| 1 | `config` subpackage with `ini2toml`, metadata subpackage, `Archive` / `ArchiveReader`, database layer, neutral YAML, DR5 schema, SQLite backend; TOML configuration files for the archives, the header and the reference plates in `tests/ver4`, made with `ini2toml` (the references use the old INI format); `process/` adapted to the new config, metadata and database layer only as much as needed for the pipeline to keep running, with the DR5 Gaia column names (6.6); the crossmatch epoch stays the old default until step 3 | 7.1 `test_schema_consistency.py`, `test_metadata.py`, `test_metadata_regression.py`, `test_timeutils.py`, `test_config.py`, `test_header.py`, reference-plate comparison; 7.2; 7.3 |
 | 2 | `ProcessContext`, result classes, `Process` renamed to `PlateProcess`, `output.py`, dead code removed, photometry adapted (6.6) | reference-plate comparison (7.1) |
-| 3 | Long functions split (6.4), `solve/` package, `crossmatch/` with `NearestMatcher` | reference-plate comparison, `test_crossmatch.py` |
+| 3 | Long functions split (6.4), `solve/` package, `crossmatch/` with `NearestMatcher`, crossmatch at the plate epoch | reference-plate comparison, `test_crossmatch.py` |
 
 ## 9. Open items
 

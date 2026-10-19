@@ -4,43 +4,64 @@ PyPlate configuration files
 File structure
 --------------
 
-PyPlate supports configuration files with structure similar to Microsoft
-Windows INI files. The configuration files are read with the Python 3 
-built-in ``configparser`` module.
+PyPlate reads its configuration from a `TOML <https://toml.io>`_ file::
 
-Configuration files are divided into sections. Section names are given
-in square brackets. Inside each section, there are keyword-value pairs::
+    from pyplate.config import load_config
+    cfg = load_config('/path/to/pyplate.toml')
+
+The file is divided into sections (TOML tables) with key–value pairs::
 
     [Section]
-    keyword1 = value1
-    keyword2 = value2
+    text = "value"
+    number = 3
+    switch = true
+    names = ["a.csv", "b.csv"]
 
-For metadata files in CSV format, PyPlate supports filenames in section
-names. This way, one can specify the structure of each CSV file.
+Every key is checked: a key that its section does not accept, or a value of
+the wrong type, stops with an error that names the section and the key.
+Section names with spaces are quoted, for example ``["Keyword values"]``.
 
-Example (simple)
-----------------
+Old configuration files in INI format are converted with::
+
+    python -m pyplate.config.ini2toml old.conf [more.conf ...] new.toml
+
+Several INI files are merged in order. The converter renames the keys (see
+`Converting old configuration files`_), lists the settings of removed
+features that it drops, and stops on any other key it does not know.
+
+Example
+-------
 
 Configuration file::
 
-    [Files]
-    csv_dir = /path/to/CSV/dir
-    plate_csv = my_plates.csv
-    scan_csv = my_scans.csv
+    [Archive]
+    archive_id = 7
+    archive_name = "Lippert-Astrograph"
 
-    [my_plates.csv]
-    plate_id = 1
-    date_orig = 2
-    tms_orig = 3
+    [Files]
+    csv_dir = "/path/to/CSV/dir"
+    plate_csv = ["my_plates.csv"]
+    scan_csv = ["my_scans.csv"]
+
+    [CSV."my_plates.csv"]
+    csv_list_delimiter = ";"
+    plate_num = 1
+    date_orig_start = 2
+    time_orig_start = 3
     exptime = 4
     observer = 5
     tz_orig = 6
 
-    [my_scans.csv]
-    filename = 1
-    plate_id = 2
-    datescan = 3
+    [CSV."my_scans.csv"]
+    filename_scan = 1
+    plate_num = 2
+    scan_date = 3
     scan_author = 4
+
+    ["Keyword values"]
+    observatory = "Hamburger Sternwarte"
+    site_longitude = 10.242
+    site_latitude = 53.482
 
 Plate metadata file (my_plates.csv)::
 
@@ -54,219 +75,185 @@ Scan metadata file (my_scans.csv)::
     plate_0002.fits,plate2,Scan Author,2018-10-12
     plate_0003.fits,plate3,Scan Author,2018-10-13
 
-Example (complex)
------------------
+Metadata
+--------
 
-In this example, database credentials and several directory names have been 
-removed.
+The metadata keys are the column names of the database tables (see
+``pyplate/database/applause_dr5.yaml``).
 
-::
+``[Archive]``
+    ``archive_id``, ``archive_name``, ``institute``. ``archive_id`` is
+    copied into every record; it is needed for writing to the database.
 
-    [Archive]
-    archive_id = 101
-    archive_name = Lippert-Astrograph
+``[Logbook.<name>]``
+    One table per logbook, with the columns of the ``logbook`` table
+    (``logbook_num``, ``logbook_title``, ``logbook_type``,
+    ``logbook_notes``). Without such tables, the logbooks come from the
+    logbook CSV file.
 
-    [Pipeline]
-    read_wfpdb = False
-    read_csv = True
-    read_fits = False
-    output_header_file = True
-    output_header_fits = True
-    invert_image = True
-    extract_sources = True
-    solve_plate = True
-    output_solution_db = True
-    output_wcs_file = True
-    get_reference_catalogs = True
-    solve_recursive = True
-    calibrate_photometry = True
-    improve_photometry = True
-    output_calibration_db = True
-    output_sources_db = True
-    output_sources_csv = True
-    processes = 25
-    process_max_tasks = 10
-    wait_start = 10
+``[Files]``
+    The input files: ``csv_dir`` and the lists ``plate_csv``, ``scan_csv``,
+    ``preview_csv``, ``logbook_csv``, ``logpage_csv``; ``wfpdb_dir`` and the
+    WFPDB files ``wfpdb_maindata``, ``wfpdb_quality``, ``wfpdb_notes``,
+    ``wfpdb_observer``; the image directories ``fits_dir``, ``tiff_dir``,
+    ``preview_dir``, ``logpage_dir``, ``cover_dir``; the catalogue
+    directories ``index_dir`` and ``gaia_dir``. Output directories:
+    ``work_dir``, ``write_log_dir``, ``write_header_dir``,
+    ``write_fits_dir``, ``write_wedge_dir``, ``write_wcs_dir``,
+    ``write_source_dir``, ``write_phot_dir``, ``write_db_source_dir``,
+    ``write_db_source_calib_dir``, ``write_db_source_xmatch_dir``,
+    ``write_db_solution_healpix_dir``. ``create_checksum`` adds checksums
+    to the written FITS files.
 
-    [Solve]
-    use_filter = True
-    filter_path = /opt/sextractor/share/sextractor/gauss_3.0_5x5.conv
-    threshold_sigma = 4
-    use_psf = True
-    psf_threshold_sigma = 15
-    psf_model_sigma = 15
-    plate_epoch = 1930
-    crossmatch_nsigma = 10
-    crossmatch_nlogarea = 2
-    crossmatch_maxradius = 20
-    astref_catalog = UCAC4
-    photref_catalog = APASS
+``[CSV."<file name>"]``
+    How a CSV file named in ``[Files]`` is read. Each key gives the
+    position (from 1) of a column in the CSV rows. The keys are the columns
+    of the records the file fills:
 
-    [Database]
-    use_tycho2_fits = True
-    use_ucac4_db = True
-    ucac4_db_host = 
-    ucac4_db_user = 
-    ucac4_db_name = 
-    ucac4_db_passwd = 
-    ucac4_db_table = UCAC4_X_APASSDR9
-    use_apass_db = True
-    apass_db_host = 
-    apass_db_user = 
-    apass_db_name = 
-    apass_db_passwd = 
-    apass_db_table = UCAC4_X_APASSDR9
-    output_db_host = 
-    output_db_user = 
-    output_db_name = 
-    output_db_passwd = 
-    enable_db_log = True
-    write_sources_csv = True
+    - plate CSV: ``plate`` and ``exposure`` columns; ``plate_num``
+      identifies the plate (it may also hold the WFPDB ID). A column of both
+      tables goes to the plate; the ``exposure`` sub-table
+      (``[CSV."<file name>".exposure]``) maps columns to the exposures
+      explicitly. Per-exposure values are separated by
+      ``csv_list_delimiter``, and ``|`` separates the times of
+      sub-exposures. Further keys: ``fn_cover`` and ``fn_log`` (cover and
+      logbook page images), ``fn_pre`` (preview image), ``fn_scan`` (scans),
+      and ``ut_start_orig``, ``ut_end_orig``, ``st_start_orig``,
+      ``st_end_orig`` (start and end times given as UT or sidereal time);
+    - scan CSV: ``scan`` columns, identified by ``filename_scan``, and
+      ``plate_num`` or ``wfpdb_id`` of the plate;
+    - preview CSV: ``preview`` columns, identified by ``filename``, and
+      ``plate_num`` or ``wfpdb_id``;
+    - logbook CSV: ``logbook`` columns, identified by ``logbook_num``;
+    - logpage CSV: ``logpage`` columns, identified by ``filename``, and
+      ``logbook_num``.
 
-    [UCAC4_X_APASSDR9]
-    ucac4_id = UCAC4
-    ucac4_ra = RAJ2000
-    ucac4_dec = DEJ2000
-    ucac4_raerr = e_RAJ2000
-    ucac4_decerr = e_DEJ2000
-    ucac4_pmra = pmRA
-    ucac4_pmdec = pmDE
-    ucac4_mag = amag
-    ucac4_magerr = e_amag
-    ucac4_bmag = Bmag
-    ucac4_bmagerr = e_Bmag
-    ucac4_vmag = Vmag
-    ucac4_vmagerr = e_Vmag
-    apass_ra = RAdeg
-    apass_dec = DEdeg
-    apass_bmag = B
-    apass_bmagerr = e_B
-    apass_vmag = V
-    apass_vmagerr = e_V
-    healpix = HEALPix256
+    Settings: ``csv_delimiter`` (default ``,``), ``csv_quotechar``
+    (default ``"``), ``csv_list_delimiter`` (default ``,``),
+    ``csv_timezone`` (time zone of the recorded times: ``UT``, ``ST`` or a
+    name such as ``Europe/Berlin``; a ``tz_orig`` column wins),
+    ``csv_encoding`` (default ``utf-8``).
 
-    [Programs]
-    sextractor_path = /opt/sextractor/bin/sex
-    scamp_path = /opt/scamp/bin/scamp
-    psfex_path = /opt/psfex/bin/psfex
-    solve_field_path = /opt/astrometry/bin/solve-field
-    build_index_path = /opt/astrometry/bin/build-astrometry-index
-    wcs_to_tan_path = /opt/astrometry/bin/wcs-to-tan
-    xy2sky_path = /opt/wcstools/bin/xy2sky
+``[WFPDB]``
+    ``maindata_timezone`` (time zone of the times in the maindata file),
+    ``notes_timezone`` (of the times in the notes file),
+    ``exptime_minutes`` (exposure times in minutes), ``encoding`` (default
+    ``utf-8``).
 
-    [Files]
-    wfpdb_dir =
-    wfpdb_maindata =
-    wfpdb_notes =
-    wfpdb_observer =
-    wfpdb_quality =
-    csv_dir = /path/to/CSV/dir
-    plate_csv = LA_plates.csv
-    scan_csv = LA_scans.csv
-    logbook_csv = LA_logbooks.csv
-    logpage_csv = LA_logpages.csv
-    preview_csv = LA_previews.csv
-    header_dir =
-    tiff_dir =
-    fits_dir = 
-    preview_dir = 
-    logpage_dir = 
-    cover_dir = 
-    tycho2_dir = 
-    work_dir = 
-    write_fits_dir = 
-    write_wedge_dir = 
-    write_log_dir = 
-    write_header_dir = 
-    write_wcs_dir = 
-    write_source_dir = 
-    write_db_source_dir = 
-    write_db_source_calib_dir = 
-    write_phot_dir =
-    create_checksum = True
+``[Image]``
+    ``logpage_exif_timezone``, ``preview_exif_timezone``,
+    ``scan_exif_timezone`` (time zones of EXIF dates), ``wedge_height`` and
+    ``cut_wedge`` (TIFF conversion).
 
-    [LA_plates.csv]
-    csv_delimiter = ;
-    csv_quotechar = "
-    csv_list_delimiter = |
-    plate_num = 1
-    wfpdb_id = 2
-    ra_orig = 5
-    dec_orig = 7
-    object_name = 9
-    date_orig = 11
-    plate_format = 13
-    skycond = 14
-    numexp = 15
-    prism = 16
-    exptime = 18
-    emulsion = 19
-    filter = 21
-    observer = 22
-    notes = 23
-    fn_pre = 25
-    fn_cover = 26
-    fn_scan = 33
-    fn_log = 29
-    sky_transparency = 34
-    sky_calmness = 35
-    sky_sharpness = 36
-    ota_name = 37
-    ota_diameter = 38
-    ota_aperture = 39
-    ota_foclen = 40
-    ota_scale = 41
-    prism = 42
-    prism_angle = 43
-    method_code = 44
-    method = 45
-    plate_size1 = 46
-    plate_size2 = 47
+``[Metadata]``
+    ``evening_date`` (the recorded dates are dates of the evening, so times
+    before noon belong to the next day), ``german_transliteration`` (in FITS
+    headers, write ä as ae and so on).
 
-    [LA_scans.csv]
-    csv_delimiter = ,
-    csv_quotechar = "
-    filename = 1
-    plate_id = 2
-    plate_num = 2
-    scan_id = 3
-    datescan = 4
-    scan_author = 5
+``["Keyword values"]``
+    Values of ``plate``, ``exposure`` and ``scan`` columns that apply to all
+    plates of the archive. They override the input files.
 
-    [LA_previews.csv]
-    csv_delimiter = ,
-    filename = 1
-    plate_id = 2
-    preview_type = 3
+``[Lookup.<column>]``
+    Replacements of input values of a column, for example::
 
-    [LA_logbooks.csv]
-    csv_delimiter = ,
-    logbook_num = 1
-    logbook_id = 2
-    logbook_type = 3
-    logbook_title = 4
+        [Lookup.observer]
+        "j. mets" = "Jaan Mets"
 
-    [LA_logpages.csv]
-    csv_delimiter = ,
-    filename = 1
-    logpage_type = 2
-    logbook_num = 3
-    logpage_id = 4
+    The input values are matched without regard to case.
 
-    [Keyword values]
-    observatory = Hamburger Sternwarte
-    site_name = Hamburg-Bergedorf, Germany
-    site_longitude = 10.242
-    site_latitude = 53.482
-    site_elevation = 41
-    telescope = Lippert-Astrograph
-    scanner = Epson Expression 10000XL
-    scan_res1 = 2400
-    scan_res2 = 2400
-    pix_size1 = 10.5833
-    pix_size2 = 10.5833
-    origin = Hamburger Sternwarte (Universitaet Hamburg)
-    detector = photographic plate
-    licence = https://creativecommons.org/publicdomain/zero/1.0/
+The order of precedence is: WFPDB maindata, quality, observer and notes
+files, plate CSV files, scan CSV file, ``["Keyword values"]``, lookups.
 
+FITS header
+-----------
 
+``[Header]``
+    ``detector``, ``licence`` and ``acknowledgements``: written to every
+    header of the archive.
+
+``["Integer values"]``, ``["Float values"]``, ``["String values"]``
+    FITS keywords with fixed values.
+
+``["FITS keyword comments"]``
+    Comments of FITS keywords, instead of the default ones.
+
+``["FITS keyword order"]``
+    ``keywords``: the list of keywords in the order they are written, with
+    ``sep:<title>`` for section separators.
+
+Processing
+----------
+
+``[Pipeline]``
+    Steps and outputs of ``PlatePipeline``: ``read_wfpdb``, ``read_csv``,
+    ``read_fits``, ``output_header_file``, ``output_header_fits``,
+    ``invert_image``, ``extract_sources``, ``classify_artifacts``,
+    ``solve_plate``, ``output_solution_db``, ``output_wcs_file``,
+    ``crossmatch_gaia``, ``calibrate_photometry``, ``output_calibration_db``,
+    ``output_sources_db``, ``output_sources_csv``; ``processes``,
+    ``process_max_tasks``, ``wait_start`` for parallel runs.
+
+``[Solve]``
+    Source extraction: ``threshold_sigma``, ``use_filter``, ``filter_path``,
+    ``use_psf``, ``psf_threshold_sigma``, ``psf_model_sigma``,
+    ``min_model_sources``, ``max_model_sources``, ``circular_film``.
+    Astrometry: ``plate_epoch``, ``sip``, ``skip_bright``, ``distort``,
+    ``allow_force``, ``repeat_find``. Crossmatch: ``crossmatch_radius``,
+    ``crossmatch_nsigma``, ``crossmatch_nlogarea``, ``crossmatch_maxradius``.
+
+``[Catalog]``
+    ``catalog`` (``Gaia``), ``protocol`` (``TAP`` or ``SQL``),
+    ``table_name``; with ``SQL``, the database in ``[Catalog.connection]``.
+
+``[Programs]``
+    ``sextractor_path``, ``psfex_path``, ``scamp_path``,
+    ``solve_field_path``, ``wcs_to_tan_path``.
+
+Database
+--------
+
+``[Database]``
+    ``enable_db_log`` (write the process log to the database),
+    ``write_sources_csv`` and ``write_solution_healpix_csv`` (write these
+    tables to CSV files instead), ``dr_num``, ``process_num_digits``,
+    ``source_num_digits`` (digits of the source IDs).
+
+``[Database.connection]``
+    The results are written to this database. ``rdbms`` is ``pgsql``,
+    ``mysql`` or ``sqlite``; further keys ``host``, ``port``, ``socket``,
+    ``user``, ``password``, ``database``; ``file`` for SQLite; ``schema``
+    (schema or database name of the tables) and ``yaml`` (schema file,
+    default ``<schema>.yaml``, ``applause_dr5.yaml`` without a schema).
+
+Converting old configuration files
+----------------------------------
+
+``ini2toml`` renames the old keys in the CSV sections and in
+``[Keyword values]``:
+
+=================  ===================
+Old key            New key
+=================  ===================
+``plate_id``       ``plate_num``
+``date_orig``      ``date_orig_start``
+``tms_orig``       ``time_orig_start``
+``tme_orig``       ``time_orig_end``
+``coord_flag``     ``flag_coord``
+``time_flag``      ``flag_time``
+``jd_avg_orig``    ``jd_mid_orig``
+``filename``       ``filename_scan`` (scan CSV)
+``datescan``       ``scan_date``
+``pix_size1/2``    ``pixel_size1/2``
+``fn_wedge``       ``filename_wedge``
+=================  ===================
+
+and the other metadata keys to their column names. The section named by
+``[Database] output_db`` becomes ``[Database.connection]``, and the section
+named by ``[Catalog] db`` becomes ``[Catalog.connection]``. ``detector``,
+``licence`` and ``fits_acknowledgements`` move from ``[Keyword values]`` to
+``[Header]``. Settings of removed features are dropped: the Tycho-2, UCAC4
+and APASS settings, ``use_gaia_fits``, the sub-field recursion settings,
+database IDs in CSV files (``scan_id``, ``logbook_id``, ...), ``method``
+(derived from ``method_code``), and keys that the old code never read
+(``skycond``, ``build_index_path``, ``xy2sky_path``).
