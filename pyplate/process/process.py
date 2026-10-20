@@ -1,5 +1,6 @@
 """PlateProcess: the steps of processing one plate image, and Process: the
 ``process`` table row."""
+from __future__ import annotations
 import os
 import shutil
 import datetime as dt

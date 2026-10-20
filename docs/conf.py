@@ -27,7 +27,9 @@ sys.path.insert(0, os.path.abspath('..'))
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary', 
               'sphinx.ext.viewcode', 'sphinx.ext.napoleon']
-autodoc_mock_imports = ['numpy', 'scipy', 'statsmodels', 'astropy', 'ephem']
+autodoc_mock_imports = ['numpy', 'scipy', 'statsmodels', 'astropy', 'ephem',
+                        'healpy', 'sklearn', 'keras', 'pyvo', 'astroquery',
+                        'PIL']
 autosummary_generate = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True

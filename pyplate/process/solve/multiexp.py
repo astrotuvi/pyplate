@@ -1,4 +1,5 @@
 """Finding multi-exposure patterns and scanner patterns."""
+from __future__ import annotations
 from collections.abc import Callable
 
 import numpy as np

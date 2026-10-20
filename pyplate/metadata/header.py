@@ -1,4 +1,5 @@
 """PlateHeader: the FITS header of a plate scan, built from the metadata."""
+from __future__ import annotations
 import datetime as dt
 import os
 import re

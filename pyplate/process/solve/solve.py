@@ -1,4 +1,5 @@
 """SolveProcess: finding the astrometric solutions of a plate."""
+from __future__ import annotations
 import os
 import subprocess as sp
 

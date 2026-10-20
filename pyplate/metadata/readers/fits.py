@@ -1,4 +1,5 @@
 """Values from the FITS file of a scan."""
+from __future__ import annotations
 import numpy as np
 from astropy.io import fits
 
