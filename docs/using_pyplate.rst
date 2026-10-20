@@ -77,34 +77,27 @@ and the links to logpages. Create the tables with
 Extracting sources from a plate image and solving astrometry
 ------------------------------------------------------------
 
-Initialise plate process::
+``PlateProcess`` runs the steps on one scan in ``[Files] fits_dir``; the
+directories and settings come from the configuration::
 
-    proc = pyplate.solve.SolveProcess('file.fits')
+    from pyplate.process import PlateProcess, output
 
-Configure process::
-
-    proc.fits_dir = '/path/to/fits_dir'
-    proc.tycho2_dir = '/path/to/tycho2_dir'
-    proc.work_dir = '/path/to/work_dir'
-    proc.write_source_dir = '/path/to/write_source_dir'
-    proc.write_wcs_dir = '/path/to/write_wcs_dir'
-    proc.write_log_dir = '/path/to/write_log_dir'
-
-Alternatively, assign the configuration::
-
-    proc.assign_conf(load_config('/path/to/pyplate.toml'))
-
-Set up process::
-
+    proc = PlateProcess(cfg, 'plate_0001.fits', plate=plate, scan=scan,
+                        header=header)
     proc.setup()
 
-Extract sources::
-
+    proc.invert_plate()
     proc.extract_sources()
-
-Finish process::
+    proc.solve_plate()
+    output.write_wcs_header(proc)
 
     proc.finish()
+
+The steps share ``proc.ctx`` (configuration, metadata, image size, plate
+epoch, log and the ``process`` table row). The results are ``proc.sources``,
+``proc.solution`` and, after ``crossmatch()`` and
+``calibrate_photometry()``, ``proc.phot_calib``. The functions in
+``pyplate.process.output`` write them to the database and to files.
 
 
 Creating a pipeline

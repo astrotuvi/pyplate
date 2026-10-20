@@ -38,10 +38,19 @@ PyPlate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`pipeline` module
-----------------------
+:mod:`process` subpackage
+-------------------------
 
 .. automodule:: pyplate.process.pipeline
     :members:
     :undoc-members:
     :show-inheritance:
+
+.. automodule:: pyplate.process.process
+    :members: PlateProcess, Process
+
+.. automodule:: pyplate.process.context
+    :members:
+
+.. automodule:: pyplate.process.output
+    :members:

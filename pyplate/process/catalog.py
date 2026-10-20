@@ -2,11 +2,11 @@ import os
 import numpy as np
 import pyvo as vo
 import warnings
-from astropy.table import Table, Column, MaskedColumn, vstack, setdiff
+from astropy.table import Table, MaskedColumn, vstack, setdiff
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 #from astroquery.gaia import Gaia
-from .solve import PlateSolution
+from .solve import SolutionSet
 from ..database.database import BACKENDS
 
 
@@ -147,7 +147,7 @@ class StarCatalog(Table):
 
         return tab
 
-    def query_gaia(self, plate_solution=None, skycoord=None, radius=None,
+    def query_gaia(self, solution_set=None, skycoord=None, radius=None,
                    mag_range=[0,20], color_term=None, filename=None,
                    protocol=None):
         """
@@ -156,7 +156,7 @@ class StarCatalog(Table):
 
         Parameters
         ----------
-        plate_solution : :class:`solve.PlateSolution`
+        solution_set : :class:`solve.SolutionSet`
             Plate solution containing one or more astrometric solutions
         skycoord : :class:`astropy.coordinates.SkyCoord`
             Sky coordinates for the query center
@@ -181,14 +181,14 @@ class StarCatalog(Table):
 
         assert not isinstance(mag_range, str)
         assert len(mag_range) == 2
-        assert isinstance(plate_solution, PlateSolution) or use_coord_radius
+        assert isinstance(solution_set, SolutionSet) or use_coord_radius
 
         if protocol is None:
             protocol = self.protocol
 
         assert isinstance(protocol, str)
 
-        psol = plate_solution
+        psol = solution_set
         protocol = protocol.upper()
 
         if mag_range[0] is None:
@@ -244,7 +244,7 @@ class StarCatalog(Table):
 
         # Use astrometric solutions for query
         else:
-            half_diag = u.Quantity([sol['half_diag'] for sol in psol.solutions])
+            half_diag = u.Quantity([sol.half_diag for sol in psol.solutions])
             fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
 
             # If max angular separation between solutions is less than
@@ -266,15 +266,15 @@ class StarCatalog(Table):
                 # Loop through solutions
                 for i in np.arange(psol.num_solutions):
                     solution = psol.solutions[i]
-                    sol_skycoord = SkyCoord(ra=solution['ra_icrs']*u.deg,
-                                            dec=solution['dec_icrs']*u.deg)
+                    sol_skycoord = SkyCoord(ra=solution.ra_icrs*u.deg,
+                                            dec=solution.dec_icrs*u.deg)
 
                     if protocol == 'SQL':
                         tab = self.query_gaia_sql(query_str, sol_skycoord,
-                                                  solution['half_diag'])
+                                                  solution.half_diag)
                     else:
                         tab = self.query_gaia_tap(query_str, sol_skycoord,
-                                                  solution['half_diag'])
+                                                  solution.half_diag)
 
                     tab['solution_num'] = i + 1
                     gaia_tables.append(tab)

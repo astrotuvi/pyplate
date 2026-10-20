@@ -115,7 +115,12 @@ Removed:
   and `sources.py`, including the Tycho-2 fallback for astrometric reference
   stars in `solve.py`, so astrometry and photometry use Gaia only;
 - the Tycho-2 parts of `AstrometryNetIndex` (`download_tycho2()` and
-  building index files with `catalog='tycho'`);
+  building index files with `catalog='tycho'`). With Gaia the only
+  catalogue, the `catalog` argument of `create_index_year()` and
+  `create_index_loop()` is removed, so callers that pass it must drop it.
+  The default `sort_by` of `create_index_loop()` becomes `'Gmag'`; the old
+  default `'BTmag'` (a Tycho-2 magnitude) was replaced by `'Gmag'` for Gaia
+  anyway, so the indexes stay the same;
 - the settings left over from the removed sub-field recursion:
   `subfield_distort`, `max_recursion_depth`, `force_recursion_depth`;
 - the stale `tests/test_db_*.py` and `tests/test_schema.py` scripts.
@@ -633,7 +638,13 @@ attribute assignments to the context plus four results.
 2. → `PlateHeader`
 3. → `PlateProcess`
 4. → the steps
-5. → `output.write_results(db, process)`
+5. → the writers in `output.py`: `write_solution`, `write_calibration`
+   and `write_sources` (database, one connection for all three),
+   `write_sources_csv`, and `write_wcs_header` after solving
+
+Each writer is called under its own `[Pipeline]` switch, as the output
+methods of `Process` were, so the switches can still be changed on the
+`PlatePipeline` object; there is no single `write_results()`.
 
 `parallel_run()` stays as it is.
 
@@ -790,8 +801,14 @@ future blend-aware matcher (section 10) can mark several stars per source in
 2. DR5 column names: `gaiaedr3_*` → `gaiadr4_*`, `num_gaia_edr3` → `num_gaia_dr4`
    (done in step 1 for all of `process/`, because the step-1 pipeline
    writes to the DR5 schema).
-3. Result types: `PlateSolution` → `SolutionSet`. The `phot_calib` dicts are
-   converted to `PhotCalib` / `PhotCalibCurve` records in `output.py`.
+3. Result types: `PlateSolution` → `SolutionSet`. `PhotometryProcess`
+   still collects the calibrations as `phot_calib` dicts. At the end of
+   `PlateProcess.calibrate_photometry` they are converted to `PhotCalib`
+   records, each with its calibration curve (`PhotCalib.curve`, not a
+   column), which become `PlateProcess.phot_calib`. `output.py` samples
+   the curves of the last iteration and writes them as `PhotCalibCurve`
+   records. `PhotCalib` and `PhotCalibCurve` are defined in
+   `photometry.py`.
 
 ## 7. Testing
 
@@ -863,7 +880,14 @@ together with the code:
 
 ## 9. Open items
 
-None.
+Behaviour of the old code that the redesign keeps, so that the results stay
+the same, but that is probably not intended. Fixing it changes the results,
+so each fix is a separate, deliberate change:
+
+| Behaviour | Consequence |
+|---|---|
+| When the photometric calibration fails for all solutions, the calibrations of the finished iterations are still written to `phot_calib`, without curves. The old code shared one list object between `Process` and `PhotometryProcess` (`__dict__.update`), so the partial results reached the output. `PlateProcess.calibrate_photometry` now does this explicitly. | `phot_calib` rows for a process with `calibrated = 0`. |
+| After solving, `PlatePipeline.single_image()` calls `sources.process_coordinates()` without the solutions; the call only logs a warning. The coordinates are computed only by the crossmatch, which calls it with the solutions. | With `crossmatch_gaia` off, the sources get no sky coordinates (`ra_icrs`, `dec_icrs`, HEALPix, Galactic and ecliptic coordinates, air mass). |
 
 ## 10. Future developments
 

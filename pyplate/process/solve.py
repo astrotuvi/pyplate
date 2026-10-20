@@ -1,31 +1,21 @@
 import os
-import glob
-import shutil
-import sys
-import math
-import datetime as dt
 import subprocess as sp
 import numpy as np
 import warnings
-import xml.etree.ElementTree as ET
 import unidecode
-from astropy import __version__ as astropy_version
+from collections.abc import Callable
+from dataclasses import dataclass
 from astropy import wcs
 from astropy.io import fits, votable
-from astropy.table import Table, vstack
-from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
-from astropy.coordinates import match_coordinates_sky
+from astropy.table import Table
+from astropy.coordinates import Angle, SkyCoord, ICRS
 from astropy import units as u
-from astropy.time import Time
-from astropy.stats import sigma_clip
-from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
-from scipy.ndimage.filters import generic_filter
+from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.linalg import lstsq
-from collections import OrderedDict
-from ..database.database import PlateDB
-from .._version import __version__
-from .settings import conf_attributes
-from .sources import crossmatch_cartesian
+from ..metadata.base import DbRecord, related
+from .context import ProcessContext
+from .log import ProcessLog
+from .sources import SourceTable, crossmatch_cartesian
 
 try:
     from scipy.spatial import cKDTree as KDT
@@ -37,17 +27,6 @@ try:
     have_sklearn = True
 except ImportError:
     have_sklearn = False
-
-try:
-    import MySQLdb
-except ImportError:
-    pass
-
-try:
-    import healpy
-    have_healpy = True
-except ImportError:
-    have_healpy = False
 
 try:
     import statsmodels.api as sm
@@ -146,90 +125,382 @@ def valid_wcs_header(header, imwidth, imheight):
         return False
 
 
-class PlateSolution:
+@dataclass
+class Solution(DbRecord):
+    """An astrometric solution (``solution`` table).
+
+    The columns are described in ``applause_dr5.yaml``. Angles and scales
+    are astropy quantities, headers :class:`astropy.io.fits.Header`; the
+    database writer converts them.
+
+    Attributes
+    ----------
+    ra_icrs_hms, dec_icrs_dms
+        Coordinates of the centre as sexagesimal strings.
+    half_diag
+        Half of the diagonal of the field of view.
+    ncp_close, scp_close
+        Whether a celestial pole is within ``half_diag`` of the centre.
+    skycoord_corners
+        Coordinates of the image corners.
+    healpix_table
+        Number of sources in each HEALPix (level 1024) of the solution.
+    unique_num
+        For a duplicate solution, the number of the solution it duplicates.
     """
-    Plate solution class for multiple astrometric solutions and parameters
-    that are common to all solutions
 
+    table = 'solution'
+
+    solution_id: int | None = None
+    solutionset_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    solution_num: int | None = None
+    ra_icrs: float | None = None
+    dec_icrs: float | None = None
+    fov1: Angle | None = None
+    fov2: Angle | None = None
+    pixel_scale: u.Quantity | None = None
+    source_density: u.Quantity | None = None
+    cd1_1: float | None = None
+    cd1_2: float | None = None
+    cd2_1: float | None = None
+    cd2_2: float | None = None
+    rotation_angle: u.Quantity | None = None
+    plate_mirrored: bool | None = None
+    ncp_on_plate: bool | None = None
+    scp_on_plate: bool | None = None
+    stc_box: str | None = None
+    stc_polygon: str | None = None
+    header_wcs: fits.Header | None = None
+    header_anet: fits.Header | None = None
+    header_scamp: fits.Header | None = None
+    scamp_dscale: float | None = None
+    scamp_dangle: u.Quantity | None = None
+    scamp_dx: u.Quantity | None = None
+    scamp_dy: u.Quantity | None = None
+    scamp_sigma_1: u.Quantity | None = None
+    scamp_sigma_2: u.Quantity | None = None
+    scamp_sigma_mean: u.Quantity | None = None
+    scamp_chi2: float | None = None
+    scamp_ndeg: int | None = None
+    scamp_distort: int | None = None
+    scamp_iteration: int | None = None
+    x_centroid: float | None = None
+    y_centroid: float | None = None
+    rel_x_centroid: float | None = None
+    rel_y_centroid: float | None = None
+    num_xmatch: int | None = None
+    num_gaia_dr4: int | None = None
+
+    ra_icrs_hms: str | None = related(default=None)
+    dec_icrs_dms: str | None = related(default=None)
+    half_diag: Angle | None = related(default=None)
+    ncp_close: bool | None = related(default=None)
+    scp_close: bool | None = related(default=None)
+    skycoord_corners: SkyCoord | None = related(default=None)
+    healpix_table: Table | None = related(default=None)
+    unique_num: int | None = related(default=None)
+
+    def get_header(self, keyword=None):
+        """
+        Return Astrometry.net or SCAMP header.
+
+        Parameters
+        ----------
+        keyword : str
+            A keyword specifying which header to return
+
+        """
+
+        if self.header_scamp:
+            header = self.header_scamp.copy()
+        elif self.header_anet:
+            header = self.header_anet.copy()
+        else:
+            header = None
+
+        if keyword == 'header_scamp':
+            if self.header_scamp:
+                header = self.header_scamp.copy()
+            else:
+                header = None
+
+        if keyword == 'header_anet':
+            if self.header_anet:
+                header = self.header_anet.copy()
+            else:
+                header = None
+
+        if keyword == 'header_wcs':
+            if self.header_wcs:
+                header = self.header_wcs.copy()
+            else:
+                header = None
+
+        return header
+
+    def calculate_parameters(self, ctx: ProcessContext,
+                             num_sources_sixbins: int,
+                             rel_area_sixbins: float) -> None:
+        """
+        Calculate solution-related parameters from ``header_wcs``.
+
+        Parameters
+        ----------
+        ctx
+            Context of the process (image size and log).
+        num_sources_sixbins, rel_area_sixbins
+            Number of sources in the annular bins 1--6 and the area of the
+            bins relative to the image, for the source density.
+
+        """
+
+        log = ctx.log
+        imwidth = ctx.imwidth
+        imheight = ctx.imheight
+
+        if self.header_wcs is None:
+            log.write('No solution found, cannot calculate '
+                      'solution-related parameters',
+                      level=2, event=34)
+            return
+
+        w = wcs.WCS(self.header_wcs)
+        self.ra_icrs = self.header_wcs['CRVAL1']
+        self.dec_icrs = self.header_wcs['CRVAL2']
+        self.cd1_1 = self.header_wcs['CD1_1']
+        self.cd1_2 = self.header_wcs['CD1_2']
+        self.cd2_1 = self.header_wcs['CD2_1']
+        self.cd2_2 = self.header_wcs['CD2_2']
+
+        pix_edge_midpoints = np.array([[1., (imheight+1.)/2.],
+                                       [imwidth, (imheight+1.)/2.],
+                                       [(imwidth + 1.)/2., 1.],
+                                       [(imwidth + 1.)/2., imheight]])
+        edge_midpoints = w.all_pix2world(pix_edge_midpoints, 1)
+
+        c1 = SkyCoord(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1],
+                      unit=(u.deg, u.deg))
+        c2 = SkyCoord(ra=edge_midpoints[1,0], dec=edge_midpoints[1,1],
+                      unit=(u.deg, u.deg))
+        c3 = SkyCoord(ra=edge_midpoints[2,0], dec=edge_midpoints[2,1],
+                      unit=(u.deg, u.deg))
+        c4 = SkyCoord(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
+                      unit=(u.deg, u.deg))
+        self.fov1 = c1.separation(c2)
+        self.fov2 = c3.separation(c4)
+
+        self.source_density = (num_sources_sixbins
+                               / rel_area_sixbins
+                               / (self.fov1*self.fov2))
+
+        pixscale1 = self.fov1.to(u.arcsec) / (imwidth * u.pixel)
+        pixscale2 = self.fov2.to(u.arcsec) / (imheight * u.pixel)
+        self.pixel_scale = (pixscale1 + pixscale2) / 2.
+
+        # Check if a celestial pole is nearby or on the plate
+        self.half_diag = np.sqrt(self.fov1**2 + self.fov2**2) / 2.
+        self.ncp_close = 90. - self.dec_icrs <= self.half_diag / u.deg
+        self.scp_close = 90. + self.dec_icrs <= self.half_diag / u.deg
+        ncp_on_plate = False
+        scp_on_plate = False
+
+        if self.ncp_close:
+            ncp_pix = w.all_world2pix([[self.ra_icrs, 90.]], 1,
+                                      quiet=True)
+
+            if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < imwidth
+                and ncp_pix[0,1] > 0 and ncp_pix[0,1] < imheight):
+                ncp_on_plate = True
+
+        if self.scp_close:
+            scp_pix = w.all_world2pix([[self.ra_icrs, -90.]], 1,
+                                      quiet=True)
+
+            if (scp_pix[0,0] > 0 and scp_pix[0,0] < imwidth
+                and scp_pix[0,1] > 0 and scp_pix[0,1] < imheight):
+                scp_on_plate = True
+
+        self.ncp_on_plate = ncp_on_plate
+        self.scp_on_plate = scp_on_plate
+
+        # Construct coordinate strings
+        ra_angle = Angle(self.ra_icrs, u.deg)
+        dec_angle = Angle(self.dec_icrs, u.deg)
+
+        self.ra_icrs_hms = ra_angle.to_string(unit=u.hour, sep=':',
+                                              precision=1, pad=True)
+        self.dec_icrs_dms = dec_angle.to_string(unit=u.deg, sep=':',
+                                                precision=1, pad=True)
+        self.stc_box = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
+                        .format(self.header_wcs['CRVAL1'],
+                                self.header_wcs['CRVAL2'],
+                                self.fov1.value, self.fov2.value))
+
+        pix_corners = np.array([[1., 1.], [imwidth, 1.],
+                               [imwidth, imheight],
+                               [1., imheight]])
+        corners = w.all_pix2world(pix_corners, 1)
+        self.stc_polygon = ('Polygon ICRS {:.5f} {:.5f} {:.5f} {:.5f} '
+                            '{:.5f} {:.5f} {:.5f} {:.5f}'
+                            .format(corners[0,0], corners[0,1],
+                                    corners[1,0], corners[1,1],
+                                    corners[2,0], corners[2,1],
+                                    corners[3,0], corners[3,1]))
+        self.skycoord_corners = SkyCoord(corners[:,0] * u.deg,
+                                         corners[:,1] * u.deg,
+                                         frame='icrs')
+
+        # Calculate plate rotation angle
+        try:
+            cp = np.array([self.header_wcs['CRPIX1'],
+                           self.header_wcs['CRPIX2']])
+
+            if dec_angle.deg > 89.:
+                cn = w.wcs_world2pix([[self.ra_icrs, 90.]], 1)
+            else:
+                cn = w.wcs_world2pix([[self.ra_icrs,
+                                       self.dec_icrs + 1.]], 1)
+
+            if ra_angle.deg > 359.:
+                ce = w.wcs_world2pix([[self.ra_icrs - 359.,
+                                       self.dec_icrs]], 1)
+            else:
+                ce = w.wcs_world2pix([[self.ra_icrs + 1.,
+                                       self.dec_icrs]], 1)
+
+            naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
+            eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
+
+            if naz < 0:
+                naz += 360.
+
+            if eaz < 0:
+                eaz += 360.
+
+            rotation_angle = naz
+            ne_angle = naz - eaz
+
+            if rotation_angle > 180:
+                rotation_angle -= 360.
+
+            if ne_angle < 0:
+                ne_angle += 360.
+
+            if ne_angle > 180:
+                plate_mirrored = True
+            else:
+                plate_mirrored = False
+        except Exception:
+            rotation_angle = None
+            plate_mirrored = None
+            log.write('Could not calculate plate rotation angle',
+                      level=2, event=34)
+
+        self.rotation_angle = rotation_angle * u.deg
+        self.plate_mirrored = plate_mirrored
+
+        log.write('Image dimensions: {:.2f} x {:.2f} degrees'
+                  ''.format(self.fov1.value, self.fov2.value),
+                  double_newline=False)
+        log.write('Mean pixel scale: {:.3f} arcsec'
+                  ''.format(self.pixel_scale.value),
+                  double_newline=False)
+        log.write('The image has {:.0f} stars per square degree'
+                  ''.format(self.source_density.value))
+        log.write('Plate rotation angle: {}'
+                  .format(self.rotation_angle.value),
+                  double_newline=False)
+        log.write('Plate is mirrored: {}'.format(self.plate_mirrored),
+                  double_newline=False)
+        log.write('North Celestial Pole is on the plate: {}'
+                  .format(self.ncp_on_plate),
+                  double_newline=False)
+        log.write('South Celestial Pole is on the plate: {}'
+                  .format(self.scp_on_plate))
+
+
+@dataclass
+class ScannerPattern(DbRecord):
+    """A point of the scanner pattern (``scanner_pattern`` table).
+
+    The columns are described in ``applause_dr5.yaml``.
     """
 
-    def __init__(self):
-        self.basefn = None
-        self.log = None
-        self.write_wcs_dir = ''
+    table = 'scanner_pattern'
 
-        self.plate_header = None
-        self.platemeta = None
-        self.imwidth = None
-        self.imheight = None
-        self.plate_solved = False
-        self.mean_pixel_scale = None
-        self.min_pixel_scale = None
-        self.max_pixel_scale = None
-        self.mean_fov1 = None
-        self.mean_fov2 = None
-        self.source_density = None
-        self.num_sources = None
-        self.num_sources_sixbins = None
-        self.rel_area_sixbins = None
-        self.min_ra = None
-        self.max_ra = None
-        self.min_dec = None
-        self.max_dec = None
-        self.ncp_close = None
-        self.scp_close = None
-        self.ncp_on_plate = None
-        self.scp_on_plate = None
+    pattern_id: int | None = None
+    solutionset_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    axis: int | None = None
+    coord: float | None = None
+    shift: float | None = None
+    extrapolated: int | None = None
 
-        self.header_wcs = None
-        self.solutions = None
-        self.duplicate_solutions = None
-        self.exp_numbers = None
-        self.num_solutions = 0
-        self.num_duplicate_solutions = 0
-        self.num_iterations = 0
-        self.pattern_x = None
-        self.pattern_y = None
-        self.pattern_ratio = None
-        self.pattern_table = None
 
-        self.centroid = None
-        self.ra_centroid = None
-        self.dec_centroid = None
-        self.radius = None
-        self.max_separation = None
+@dataclass
+class SolutionSet(DbRecord):
+    """The astrometric solutions of a plate and the values common to them
+    (``solution_set`` table).
 
-    def assign_conf(self, conf):
-        """
-        Assign the configuration (:class:`pyplate.config.Config`) and set
-        class attributes from it.
+    The columns are described in ``applause_dr5.yaml``.
 
-        """
+    Attributes
+    ----------
+    plate_solved
+        Whether a solution was found.
+    solutions, duplicate_solutions
+        The solutions, and the solutions found again (numbered -1, -2, ...).
+    pattern_x, pattern_y
+        Scanner pattern along each axis: the shift as a function of the
+        coordinate.
+    pattern_table
+        The scanner pattern, sampled every 50 pixels (the rows of the
+        ``scanner_pattern`` table).
+    imwidth, imheight
+        Image size.
+    centroid, radius
+        Centre of the solutions and the distance from it to the furthest
+        image corner.
+    """
 
-        self.conf = conf
-        self.archive_id = conf.archive.archive_id
-        self.write_wcs_dir = conf.files.write_wcs_dir
+    table = 'solution_set'
 
-    def assign_header(self, header):
-        """
-        Assign FITS header with metadata.
+    solutionset_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    num_solutions: int = 0
+    num_duplicate_solutions: int = 0
+    pattern_ratio: float | None = None
+    mean_pixel_scale: u.Quantity | None = None
+    min_pixel_scale: u.Quantity | None = None
+    max_pixel_scale: u.Quantity | None = None
+    mean_fov1: Angle | None = None
+    mean_fov2: Angle | None = None
+    source_density: u.Quantity | None = None
+    max_separation: Angle | None = None
+    header_wcs: fits.Header | None = None
 
-        """
+    plate_solved: bool = related(default=False)
+    solutions: list[Solution] = related()
+    duplicate_solutions: list[Solution] = related()
+    pattern_x: Callable | None = related(default=None)
+    pattern_y: Callable | None = related(default=None)
+    pattern_table: Table | None = related(default=None)
+    imwidth: int | None = related(default=None)
+    imheight: int | None = related(default=None)
+    centroid: SkyCoord | None = related(default=None)
+    radius: Angle | None = related(default=None)
 
-        self.plate_header = header
-
-    def assign_metadata(self, platemeta):
-        """
-        Assign plate metadata.
-
-        """
-
-        self.platemeta = platemeta
-
-        if self.platemeta.archive_id:
-            self.archive_id = self.platemeta.archive_id
-
-    def create_wcs_header(self):
+    def create_wcs_header(self, log: ProcessLog) -> None:
         """
         Stack WCS keywords from solutions into one header. Use alternate
         WCS keywords specified in the FITS Standard 4.0.
@@ -237,8 +508,8 @@ class PlateSolution:
         """
 
         if self.num_solutions == 0:
-            self.log.write('No plate solution for the FITS header',
-                           level=2, event=36)
+            log.write('No plate solution for the FITS header',
+                      level=2, event=36)
             return
 
         self.header_wcs = self.solutions[0].get_header()
@@ -283,29 +554,6 @@ class PlateSolution:
 
                         self.header_wcs.append(newcard, end=True)
 
-    def output_wcs_header(self):
-        """
-        Write WCS header to an ASCII file.
-
-        """
-
-        if self.plate_solved:
-            self.log.write('Writing WCS header to a file', level=3, event=36)
-
-            # Create output directory, if missing
-            if self.write_wcs_dir and not os.path.isdir(self.write_wcs_dir):
-                self.log.write('Creating WCS output directory {}'
-                               ''.format(self.write_wcs_dir), level=4, event=36)
-                os.makedirs(self.write_wcs_dir)
-
-            for i in np.arange(self.num_solutions):
-                fn_wcshead = '{}-{:02d}.wcs'.format(self.basefn, i+1)
-                fn_wcshead = os.path.join(self.write_wcs_dir, fn_wcshead)
-                self.log.write('Writing WCS output file {}'.format(fn_wcshead),
-                               level=4, event=36)
-                wcshead = self.solutions[i]['header_scamp']
-                wcshead.tofile(fn_wcshead, overwrite=True)
-
     def calculate_centroid(self):
         """
         Calculate coordinates of a mid-point of solutions, and distance from
@@ -316,8 +564,8 @@ class PlateSolution:
         assert self.num_solutions > 0
 
         # Collect center coordinates of solutions
-        sol_ra = np.array([sol['ra_icrs'] for sol in self.solutions])
-        sol_dec = np.array([sol['dec_icrs'] for sol in self.solutions])
+        sol_ra = np.array([sol.ra_icrs for sol in self.solutions])
+        sol_dec = np.array([sol.dec_icrs for sol in self.solutions])
         c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
 
         # Create an offset frame based on the first solution
@@ -337,8 +585,8 @@ class PlateSolution:
         max_sep = sep2[ind_max2]
 
         # Collect corner coordinates of the two solutions
-        corners1 = self.solutions[ind_max1]['skycoord_corners']
-        corners2 = self.solutions[ind_max2]['skycoord_corners']
+        corners1 = self.solutions[ind_max1].skycoord_corners
+        corners2 = self.solutions[ind_max2].skycoord_corners
         max_sep_corners = 0 * u.deg
 
         # Find corners that are most distant from each other
@@ -356,393 +604,37 @@ class PlateSolution:
         centroid = c1.directional_offset_by(pos_angle, radius)
 
         self.centroid = centroid
-        self.ra_centroid = centroid.ra.deg
-        self.dec_centroid = centroid.dec.deg
         self.radius = radius
         self.max_separation = max_sep
-
-
-class AstrometricSolution(OrderedDict):
-    """
-    Astrometric solution class
-
-    """
-
-    def __init__(self):
-        self.imwidth = None
-        self.imheight = None
-        self.num_sources_sixbins = None
-        self.rel_area_sixbins = None
-        self.wcs = None
-        self.log = None
-
-    def populate(self):
-        keys = ['solution_num', 'ra_icrs', 'dec_icrs',
-                'ra_icrs_hms', 'dec_icrs_dms',
-                'fov1', 'fov2', 'half_diag', 'pixel_scale', 'source_density',
-                'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 'rotation_angle',
-                'plate_mirrored', 'ncp_close', 'scp_close',
-                'ncp_on_plate', 'scp_on_plate', 'stc_box', 'stc_polygon',
-                'header_anet', 'header_scamp', 'header_wcs',
-                'skycoord_corners', 'x_centroid', 'y_centroid',
-                'rel_x_centroid', 'rel_y_centroid', 'num_xmatch',
-                'scamp_dscale', 'scamp_dangle', 'scamp_dx', 'scamp_dy',
-                'scamp_sigma_1', 'scamp_sigma_2', 'scamp_sigma_mean',
-                'scamp_chi2', 'scamp_ndeg',
-                'scamp_distort', 'scamp_iteration',
-                'num_gaia_dr4', 'healpix_table']
-
-        for k in keys:
-            self[k] = None
-
-    def assign_conf(self, conf):
-        """
-        Assign the configuration (:class:`pyplate.config.Config`) and set
-        class attributes from it.
-
-        """
-
-        self.conf = conf
-        self.archive_id = conf.archive.archive_id
-
-    @staticmethod
-    def strip_header_comments(header):
-        """
-        Strip comment lines from header.
-
-        """
-
-        header_strip = fits.Header()
-
-        for c in header.cards:
-            if c[0] != 'COMMENT':
-                header_strip.append(c, bottom=True)
-
-        return header_strip
-
-    def get_header(self, keyword=None):
-        """
-        Return Astrometry.net or SCAMP header.
-
-        Parameters
-        ----------
-        keyword : str
-            A keyword specifying which header to return
-
-        """
-
-        if self['header_scamp']:
-            header = self['header_scamp'].copy()
-        elif self['header_anet']:
-            header = self['header_anet'].copy()
-        else:
-            header = None
-
-        if keyword == 'header_scamp':
-            if self['header_scamp']:
-                header = self['header_scamp'].copy()
-            else:
-                header = None
-
-        if keyword == 'header_anet':
-            if self['header_anet']:
-                header = self['header_anet'].copy()
-            else:
-                header = None
-
-        if keyword == 'header_wcs':
-            if self['header_wcs']:
-                header = self['header_wcs'].copy()
-            else:
-                header = None
-
-        return header
-
-    def calculate_parameters(self):
-        """
-        Calculate solution-related parameters.
-
-        """
-
-        if self['header_wcs'] is None:
-            self.log.write('No solution found, cannot calculate '
-                           'solution-related parameters',
-                           level=2, event=34)
-            return
-
-        self.wcs = wcs.WCS(self['header_wcs'])
-        self['ra_icrs'] = self['header_wcs']['CRVAL1']
-        self['dec_icrs'] = self['header_wcs']['CRVAL2']
-        self['cd1_1'] = self['header_wcs']['CD1_1']
-        self['cd1_2'] = self['header_wcs']['CD1_2']
-        self['cd2_1'] = self['header_wcs']['CD2_1']
-        self['cd2_2'] = self['header_wcs']['CD2_2']
-
-        pix_edge_midpoints = np.array([[1., (self.imheight+1.)/2.],
-                                       [self.imwidth, (self.imheight+1.)/2.],
-                                       [(self.imwidth + 1.)/2., 1.],
-                                       [(self.imwidth + 1.)/2., self.imheight]])
-        edge_midpoints = self.wcs.all_pix2world(pix_edge_midpoints, 1)
-
-        c1 = SkyCoord(ra=edge_midpoints[0,0], dec=edge_midpoints[0,1],
-                      unit=(u.deg, u.deg))
-        c2 = SkyCoord(ra=edge_midpoints[1,0], dec=edge_midpoints[1,1],
-                      unit=(u.deg, u.deg))
-        c3 = SkyCoord(ra=edge_midpoints[2,0], dec=edge_midpoints[2,1],
-                      unit=(u.deg, u.deg))
-        c4 = SkyCoord(ra=edge_midpoints[3,0], dec=edge_midpoints[3,1],
-                      unit=(u.deg, u.deg))
-        self['fov1'] = c1.separation(c2)
-        self['fov2'] = c3.separation(c4)
-
-        self['source_density'] = (self.num_sources_sixbins
-                                  / self.rel_area_sixbins
-                                  / (self['fov1']*self['fov2']))
-
-        pixscale1 = self['fov1'].to(u.arcsec) / (self.imwidth * u.pixel)
-        pixscale2 = self['fov2'].to(u.arcsec) / (self.imheight * u.pixel)
-        self['pixel_scale'] = (pixscale1 + pixscale2) / 2.
-
-        # Check if a celestial pole is nearby or on the plate
-        self['half_diag'] = np.sqrt(self['fov1']**2 + self['fov2']**2) / 2.
-        self['ncp_close'] = 90. - self['dec_icrs'] <= self['half_diag'] / u.deg
-        self['scp_close'] = 90. + self['dec_icrs'] <= self['half_diag'] / u.deg
-        ncp_on_plate = False
-        scp_on_plate = False
-
-        if self['ncp_close']:
-            ncp_pix = self.wcs.all_world2pix([[self['ra_icrs'], 90.]], 1,
-                                             quiet=True)
-
-            if (ncp_pix[0,0] > 0 and ncp_pix[0,0] < self.imwidth
-                and ncp_pix[0,1] > 0 and ncp_pix[0,1] < self.imheight):
-                ncp_on_plate = True
-
-        if self['scp_close']:
-            scp_pix = self.wcs.all_world2pix([[self['ra_icrs'], -90.]], 1,
-                                             quiet=True)
-
-            if (scp_pix[0,0] > 0 and scp_pix[0,0] < self.imwidth
-                and scp_pix[0,1] > 0 and scp_pix[0,1] < self.imheight):
-                scp_on_plate = True
-
-        self['ncp_on_plate'] = ncp_on_plate
-        self['scp_on_plate'] = scp_on_plate
-
-        # Construct coordinate strings
-        ra_angle = Angle(self['ra_icrs'], u.deg)
-        dec_angle = Angle(self['dec_icrs'], u.deg)
-
-        self['ra_icrs_hms'] = ra_angle.to_string(unit=u.hour, sep=':',
-                                                 precision=1, pad=True)
-        self['dec_icrs_dms'] = dec_angle.to_string(unit=u.deg, sep=':',
-                                                   precision=1, pad=True)
-        self['stc_box'] = ('Box ICRS {:.5f} {:.5f} {:.5f} {:.5f}'
-                           .format(self['header_wcs']['CRVAL1'],
-                                   self['header_wcs']['CRVAL2'],
-                                   self['fov1'].value, self['fov2'].value))
-
-        pix_corners = np.array([[1., 1.], [self.imwidth, 1.],
-                               [self.imwidth, self.imheight],
-                               [1., self.imheight]])
-        corners = self.wcs.all_pix2world(pix_corners, 1)
-        self['stc_polygon'] = ('Polygon ICRS {:.5f} {:.5f} {:.5f} {:.5f} '
-                               '{:.5f} {:.5f} {:.5f} {:.5f}'
-                               .format(corners[0,0], corners[0,1],
-                                       corners[1,0], corners[1,1],
-                                       corners[2,0], corners[2,1],
-                                       corners[3,0], corners[3,1]))
-        self['skycoord_corners'] = SkyCoord(corners[:,0] * u.deg,
-                                            corners[:,1] * u.deg,
-                                            frame='icrs')
-
-        # Calculate plate rotation angle
-        try:
-            cp = np.array([self['header_wcs']['CRPIX1'],
-                           self['header_wcs']['CRPIX2']])
-
-            if dec_angle.deg > 89.:
-                cn = self.wcs.wcs_world2pix([[self['ra_icrs'], 90.]], 1)
-            else:
-                cn = self.wcs.wcs_world2pix([[self['ra_icrs'],
-                                              self['dec_icrs'] + 1.]], 1)
-
-            if ra_angle.deg > 359.:
-                ce = self.wcs.wcs_world2pix([[self['ra_icrs'] - 359.,
-                                              self['dec_icrs']]], 1)
-            else:
-                ce = self.wcs.wcs_world2pix([[self['ra_icrs'] + 1.,
-                                              self['dec_icrs']]], 1)
-
-            naz = 90. - np.arctan2((cn-cp)[0,1],(cn-cp)[0,0]) * 180. / np.pi
-            eaz = 90. - np.arctan2((ce-cp)[0,1],(ce-cp)[0,0]) * 180. / np.pi
-
-            if naz < 0:
-                naz += 360.
-
-            if eaz < 0:
-                eaz += 360.
-
-            rotation_angle = naz
-            ne_angle = naz - eaz
-
-            if rotation_angle > 180:
-                rotation_angle -= 360.
-
-            if ne_angle < 0:
-                ne_angle += 360.
-
-            if ne_angle > 180:
-                plate_mirrored = True
-            else:
-                plate_mirrored = False
-        except Exception:
-            rotation_angle = None
-            plate_mirrored = None
-            self.log.write('Could not calculate plate rotation angle',
-                           level=2, event=34)
-
-        self['rotation_angle'] = rotation_angle * u.deg
-        self['plate_mirrored'] = plate_mirrored
-
-        self.log.write('Image dimensions: {:.2f} x {:.2f} degrees'
-                       ''.format(self['fov1'].value, self['fov2'].value),
-                       double_newline=False)
-        self.log.write('Mean pixel scale: {:.3f} arcsec'
-                       ''.format(self['pixel_scale'].value),
-                       double_newline=False)
-        self.log.write('The image has {:.0f} stars per square degree'
-                       ''.format(self['source_density'].value))
-        self.log.write('Plate rotation angle: {}'
-                       .format(self['rotation_angle'].value),
-                       double_newline=False)
-        self.log.write('Plate is mirrored: {}'.format(self['plate_mirrored']),
-                       double_newline=False)
-        self.log.write('North Celestial Pole is on the plate: {}'
-                       .format(self['ncp_on_plate']),
-                       double_newline=False)
-        self.log.write('South Celestial Pole is on the plate: {}'
-                       .format(self['scp_on_plate']))
 
 
 class SolveProcess:
     """
     Plate solve process class
 
+    Parameters
+    ----------
+    ctx
+        Context of the process.
+    sources
+        Extracted sources.
+
     """
 
-    def __init__(self, filename, archive_id=None):
-        self.filename = os.path.basename(filename)
-        self.archive_id = archive_id
-        self.basefn = ''
-        self.fn_fits = ''
-        self.process_id = None
-        self.scan_id = None
-        self.plate_id = None
+    def __init__(self, ctx: ProcessContext, sources: SourceTable):
+        self.ctx = ctx
+        self.sources = sources.as_array()
+        self.num_sources = len(sources)
+        self.num_sources_sixbins = sources.num_sources_sixbins
+        self.rel_area_sixbins = sources.rel_area_sixbins
+        self.plate_epoch = ctx.plate_epoch
+        self.plate_year = ctx.plate_year
 
-        self.fits_dir = ''
-        self.index_dir = ''
-        self.gaia_dir = ''
-        self.tycho2_dir = ''
-        self.work_dir = ''
-        self.write_source_dir = ''
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
-        self.write_phot_dir = ''
-        self.write_wcs_dir = ''
-        self.write_log_dir = ''
-
-        self.astref_catalog = None
-        self.photref_catalog = None
-
-        self.use_gaia_fits = False
-        self.use_tycho2_fits = False
-
-        self.use_ucac4_db = False
-        self.ucac4_db_host = 'localhost'
-        self.ucac4_db_user = ''
-        self.ucac4_db_name = ''
-        self.ucac4_db_passwd = ''
-        self.ucac4_db_table = 'ucac4'
-
-        self.use_apass_db = False
-        self.apass_db_host = 'localhost'
-        self.apass_db_user = ''
-        self.apass_db_name = ''
-        self.apass_db_passwd = ''
-        self.apass_db_table = 'apass'
-
-        self.output_db_host = 'localhost'
-        self.output_db_user = ''
-        self.output_db_name = ''
-        self.output_db_passwd = ''
-        self.write_sources_csv = False
-
-        self.sextractor_path = 'sex'
-        self.scamp_path = 'scamp'
-        self.psfex_path = 'psfex'
-        self.solve_field_path = 'solve-field'
-        self.wcs_to_tan_path = 'wcs-to-tan'
-
-        self.timestamp = dt.datetime.now()
-        self.timestamp_str = dt.datetime.now().strftime('%Y%m%dT%H%M%S')
-        self.scratch_dir = None
-        self.enable_log = False
-        self.log = None
-        self.enable_db_log = False
-
-        self.plate_epoch = 1950
-        self.plate_year = int(self.plate_epoch)
-        self.threshold_sigma = 4.
-        self.use_filter = False
-        self.filter_path = None
-        self.use_psf = False
-        self.psf_threshold_sigma = 20.
-        self.psf_model_sigma = 20.
-        self.min_model_sources = 100
-        self.max_model_sources = 10000
-        self.sip = 3
-        self.skip_bright = 10
-        self.allow_force = False
-        self.repeat_find = True
-        self.distort = 3
-        self.subfield_distort = 1
-        self.max_recursion_depth = 5
-        self.force_recursion_depth = 0
-        self.circular_film = False
-        self.crossmatch_radius = None
-        self.crossmatch_nsigma = 10.
-        self.crossmatch_nlogarea = 2.
-        self.crossmatch_maxradius = 20.
-
-        self.plate_header = None
-        self.platemeta = None
-        self.imwidth = None
-        self.imheight = None
         self.plate_solved = False
-        self.mean_pixel_scale = None
-        self.min_pixel_scale = None
-        self.max_pixel_scale = None
-        self.mean_fov1 = None
-        self.mean_fov2 = None
-        self.source_density = None
-        self.num_sources = None
-        self.num_sources_sixbins = None
-        self.rel_area_sixbins = None
-        self.min_ra = None
-        self.max_ra = None
-        self.min_dec = None
-        self.max_dec = None
-        self.ncp_close = None
-        self.scp_close = None
-        self.ncp_on_plate = None
-        self.scp_on_plate = None
-
-        self.sources = None
-        self.scampref = None
-        self.scampcat = None
-        self.solutions = None
-        self.duplicate_solutions = None
+        self.astrom_sources = None
+        self.solutions = []
+        self.duplicate_solutions = []
+        self.astref_tables = []
         self.exp_numbers = None
         self.num_solutions = 0
         self.num_duplicate_solutions = 0
@@ -751,87 +643,6 @@ class SolveProcess:
         self.pattern_y = None
         self.pattern_ratio = None
         self.pattern_table = None
-        self.astref_tables = []
-        self.gaia_files = None
-        self.neighbors_gaia = None
-        self.sol_centroid = None
-        self.sol_radius = None
-        self.sol_max_sep = None
-        self.astrom_sub = []
-        self.phot_cterm = []
-        self.phot_color = None
-        self.phot_calib = []
-        self.phot_calibrated = False
-        self.phot_sub = []
-
-        self.id_tyc = None
-        self.id_tyc_pad = None
-        self.hip_tyc = None
-        self.ra_tyc = None
-        self.dec_tyc = None
-        self.btmag_tyc = None
-        self.vtmag_tyc = None
-        self.btmagerr_tyc = None
-        self.vtmagerr_tyc = None
-        self.num_tyc = 0
-
-        self.id_ucac = None
-        self.ra_ucac = None
-        self.dec_ucac = None
-        self.raerr_ucac = None
-        self.decerr_ucac = None
-        self.mag_ucac = None
-        self.bmag_ucac = None
-        self.vmag_ucac = None
-        self.magerr_ucac = None
-        self.bmagerr_ucac = None
-        self.vmagerr_ucac = None
-        self.num_ucac = 0
-
-        self.ra_apass = None
-        self.dec_apass = None
-        self.bmag_apass = None
-        self.vmag_apass = None
-        self.berr_apass = None
-        self.verr_apass = None
-        self.num_apass = 0
-
-        self.combined_ucac_apass = None
-
-        self.ucac4_columns = OrderedDict([
-            ('ucac4_ra', ('RAJ2000', 'f8')),
-            ('ucac4_dec', ('DEJ2000', 'f8')),
-            ('ucac4_raerr', ('e_RAJ2000', 'i')),
-            ('ucac4_decerr', ('e_DEJ2000', 'i')),
-            ('ucac4_mag', ('amag', 'f8')),
-            ('ucac4_magerr', ('e_amag', 'f8')),
-            ('ucac4_pmra', ('pmRA', 'f8')),
-            ('ucac4_pmdec', ('pmDE', 'f8')),
-            ('ucac4_id', ('UCAC4', 'a10')),
-            ('ucac4_bmag', ('Bmag', 'f8')),
-            ('ucac4_vmag', ('Vmag', 'f8')),
-            ('ucac4_bmagerr', ('e_Bmag', 'f8')),
-            ('ucac4_vmagerr', ('e_Vmag', 'f8'))
-        ])
-
-        self.apass_columns = OrderedDict([
-            ('apass_ra', ('RAdeg', 'f8')),
-            ('apass_dec', ('DEdeg', 'f8')),
-            ('apass_bmag', ('B', 'f8')),
-            ('apass_vmag', ('V', 'f8')),
-            ('apass_bmagerr', ('e_B', 'f8')),
-            ('apass_vmagerr', ('e_V', 'f8'))
-        ])
-
-    def assign_conf(self, conf):
-        """
-        Assign the configuration (:class:`pyplate.config.Config`) and set
-        class attributes from it.
-
-        """
-
-        self.conf = conf
-        self.__dict__.update(conf_attributes(conf))
 
     def find_scanner_pattern(self, coords_image, coords_ref):
         """
@@ -960,7 +771,7 @@ class SolveProcess:
 
         """
 
-        self.log.write('Finding multi-exposure pattern', level=3, event=31)
+        self.ctx.log.write('Finding multi-exposure pattern', level=3, event=31)
 
         n, dim = coords.shape
         assert dim == 3
@@ -985,8 +796,8 @@ class SolveProcess:
         core_samples_mask[db.core_sample_indices_] = True
         labels = db.labels_
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        self.log.write('Found {:d} source clusters'.format(num_clusters),
-                       level=4, event=31, double_newline=False)
+        self.ctx.log.write('Found {:d} source clusters'.format(num_clusters),
+                           level=4, event=31, double_newline=False)
 
         # Find cluster sizes (label counts)
         lab, cnt = np.unique(labels[labels>-1], return_counts=True)
@@ -1000,9 +811,9 @@ class SolveProcess:
         # Accept most probable cluster size (label count)
         #count_prob = c[ind_sort[0]]
         #num_accepted_clusters = cc[ind_sort[0]]
-        #self.log.write('Use clusters with {:d} members'
+        #self.ctx.log.write('Use clusters with {:d} members'
         #               .format(count_prob), level=4, double_newline=False)
-        #self.log.write('Such clusters appear {:d} times'
+        #self.ctx.log.write('Such clusters appear {:d} times'
         #               .format(num_accepted_clusters), level=4,
         #               double_newline=False)
 
@@ -1013,13 +824,13 @@ class SolveProcess:
         num_accepted_clusters = len(labels_sel)
 
         if num_accepted_clusters < 5:
-            self.log.write('Not enough source clusters found (<5)!',
-                           level=2, event=31)
+            self.ctx.log.write('Not enough source clusters found (<5)!',
+                               level=2, event=31)
             return None
         else:
-            self.log.write('Use {:d} source clusters'
-                           .format(num_accepted_clusters), level=4, event=31,
-                           double_newline=False)
+            self.ctx.log.write('Use {:d} source clusters'
+                               .format(num_accepted_clusters), level=4, event=31,
+                               double_newline=False)
 
         # Create array for source coordinates relative to cluster center
         xy = coords_select.copy()[:,:2]
@@ -1064,8 +875,8 @@ class SolveProcess:
             scale_rot = True
 
             # Find cluster nearest to image center
-            im_center = np.array(((self.imwidth + 1.) / 2.,
-                                  (self.imheight + 1.) / 2.))
+            im_center = np.array(((self.ctx.imwidth + 1.) / 2.,
+                                  (self.ctx.imheight + 1.) / 2.))
             dist_center = np.linalg.norm(xy_mean[m] - im_center, axis=1)
             ind_nearest = dist_center.argmin()
 
@@ -1126,13 +937,13 @@ class SolveProcess:
         noise_mask = (db.labels_ == -1)
         exp_labels = db.labels_
         num_exp_clusters = len(set(exp_labels)) - (1 if -1 in exp_labels else 0)
-        self.log.write('Number of clusters within source pattern: {:d}'
-                       .format(num_exp_clusters), level=4, event=31,
-                       double_newline=False)
+        self.ctx.log.write('Number of clusters within source pattern: {:d}'
+                           .format(num_exp_clusters), level=4, event=31,
+                           double_newline=False)
 
         if num_exp_clusters == 0:
-            self.log.write('Finding multi-exposure pattern failed!',
-                           level=2, event=31)
+            self.ctx.log.write('Finding multi-exposure pattern failed!',
+                               level=2, event=31)
             return None
 
         # Find cluster centers and sort them
@@ -1179,12 +990,12 @@ class SolveProcess:
                 exp_num[ind] = np.arange(1, num_exp_clusters+1)
 
         num_found = len(xy_found)
-        self.log.write('Found {:d} patterns'.format(num_found),
-                       level=4, event=31)
+        self.ctx.log.write('Found {:d} patterns'.format(num_found),
+                           level=4, event=31)
 
         if num_found < 10:
-            self.log.write('Not enough patterns found (<10)!',
-                           level=2, event=31)
+            self.ctx.log.write('Not enough patterns found (<10)!',
+                               level=2, event=31)
             exp_num = None
 
         return exp_num
@@ -1221,41 +1032,41 @@ class SolveProcess:
                 plate_year = self.plate_year
 
         if repeat_find is None:
-            repeat_find = self.repeat_find
+            repeat_find = self.ctx.cfg.solve.repeat_find
 
         # Log Astrometry.net and SCAMP versions
-        anet_ver = (sp.check_output([self.solve_field_path, '-h']).strip()
+        anet_ver = (sp.check_output([self.ctx.cfg.programs.solve_field_path, '-h']).strip()
                     .decode('utf-8').split('\n')[4])
-        scamp_ver = (sp.check_output([self.scamp_path, '-v']).strip()
+        scamp_ver = (sp.check_output([self.ctx.cfg.programs.scamp_path, '-v']).strip()
                      .decode('utf-8'))
-        self.log.write('Using Astrometry.net {}'.format(anet_ver),
-                       level=4, event=30, double_newline=False)
-        self.log.write('Using {}'.format(scamp_ver), level=4, event=30,
-                       double_newline=False)
+        self.ctx.log.write('Using Astrometry.net {}'.format(anet_ver),
+                           level=4, event=30, double_newline=False)
+        self.ctx.log.write('Using {}'.format(scamp_ver), level=4, event=30,
+                           double_newline=False)
 
         # Log plate epoch
-        self.log.write('Using plate epoch of {:.2f}'.format(plate_epoch),
-                       level=4, event=30, double_newline=False)
+        self.ctx.log.write('Using plate epoch of {:.2f}'.format(plate_epoch),
+                           level=4, event=30, double_newline=False)
 
         if sip is None:
-            sip = self.sip
+            sip = self.ctx.cfg.solve.sip
 
         if skip_bright is None:
-            skip_bright = self.skip_bright
+            skip_bright = self.ctx.cfg.solve.skip_bright
 
         # By default, use 1000 sources for solving
         num_keep = 1000
 
         try:
-            numexp = self.platemeta.numexp
+            numexp = self.ctx.plate.numexp
         except Exception:
             numexp = 1
 
         # Calculate a factor that takes into account how much the longest
         # and shortest exposure times differ
         try:
-            max_exp = np.max([e.exptime for e in self.platemeta.exposures])
-            min_exp = np.min([e.exptime for e in self.platemeta.exposures])
+            max_exp = np.max([e.exptime for e in self.ctx.plate.exposures])
+            min_exp = np.min([e.exptime for e in self.ctx.plate.exposures])
 
             if min_exp > 0:
                 exp_factor = np.log10(max_exp / min_exp) + 1.
@@ -1272,8 +1083,8 @@ class SolveProcess:
         # Limit number of stars with 100000/numexp
         num_keep = min([num_keep, int(100000/numexp)])
 
-        self.log.write('Using max {:d} stars for astrometric solving'.format(num_keep),
-                       level=4, event=30, double_newline=False)
+        self.ctx.log.write('Using max {:d} stars for astrometric solving'.format(num_keep),
+                           level=4, event=30, double_newline=False)
 
         # Create another xy list for faster solving
         # Keep 1000 stars in brightness order, skip the brightest
@@ -1297,8 +1108,8 @@ class SolveProcess:
         indsel = indclean[indsort]
         nrows = len(indsel)
 
-        self.log.write('Selected {:d} stars for astrometric solving'.format(nrows),
-                       level=4, event=30)
+        self.ctx.log.write('Selected {:d} stars for astrometric solving'.format(nrows),
+                           level=4, event=30)
 
         self.astrom_sources = self.sources[indsel]
         self.solutions = []
@@ -1307,7 +1118,7 @@ class SolveProcess:
         self.num_duplicate_solutions = 0
 
         try:
-            numexp = self.platemeta.numexp
+            numexp = self.ctx.plate.numexp
         except Exception:
             numexp = 1
 
@@ -1333,7 +1144,7 @@ class SolveProcess:
         xycat['Y_IMAGE'].unit = 'pixel'
         xycat['MAG_AUTO'].unit = 'mag'
         xycat['FLUX'].unit = 'count'
-        fn_xy = os.path.join(self.scratch_dir, '{}.xy'.format(self.basefn))
+        fn_xy = os.path.join(self.ctx.work_dir, '{}.xy'.format(self.ctx.basefn))
         xycat.write(fn_xy, format='fits', overwrite=True)
 
         use_force = False
@@ -1345,7 +1156,7 @@ class SolveProcess:
 
             if solution is None:
                 if (use_force or self.num_solutions > 0 or
-                    not self.allow_force):
+                    not self.ctx.cfg.solve.allow_force):
                     break
                 else:
                     use_force = True
@@ -1358,11 +1169,11 @@ class SolveProcess:
             # If this is not the first solution, check if we got a unique
             # solution
             if self.num_solutions > 0:
-                sol_ra = np.array([sol['ra_icrs'] for sol in self.solutions])
-                sol_dec = np.array([sol['dec_icrs'] for sol in self.solutions])
+                sol_ra = np.array([sol.ra_icrs for sol in self.solutions])
+                sol_dec = np.array([sol.dec_icrs for sol in self.solutions])
                 c_sol = SkyCoord(sol_ra * u.deg, sol_dec * u.deg, frame='icrs')
-                c_cur = SkyCoord(solution['ra_icrs'] * u.deg,
-                                 solution['dec_icrs'] * u.deg, frame='icrs')
+                c_cur = SkyCoord(solution.ra_icrs * u.deg,
+                                 solution.dec_icrs * u.deg, frame='icrs')
                 min_sep = c_cur.separation(c_sol).min()
 
                 if min_sep > 1. * u.deg:
@@ -1372,39 +1183,39 @@ class SolveProcess:
                 else:
                     sep_str = '{:.2f} arcsec'.format(min_sep.arcsec)
 
-                self.log.write('Current solution is separated from the '
-                               'nearest solution by {}'.format(sep_str),
-                               level=4, event=32)
+                self.ctx.log.write('Current solution is separated from the '
+                                   'nearest solution by {}'.format(sep_str),
+                                   level=4, event=32)
 
-                if min_sep < (10. * solution['pixel_scale'] * u.pixel):
+                if min_sep < (10. * solution.pixel_scale * u.pixel):
                     unique_solution = False
                     unique_num = c_cur.separation(c_sol).argmin() + 1
 
             if unique_solution:
-                solution['solution_num'] = self.num_solutions + 1
+                solution.solution_num = self.num_solutions + 1
                 self.solutions.append(solution)
                 self.astref_tables.append(astref_table)
                 self.num_solutions = len(self.solutions)
 
-                self.log.write('Current solution is unique; assigned number '
-                               '{:d}'.format(solution['solution_num']),
-                               level=4, event=32,
-                               solution_num=solution['solution_num'])
+                self.ctx.log.write('Current solution is unique; assigned number '
+                                   '{:d}'.format(solution.solution_num),
+                                   level=4, event=32,
+                                   solution_num=solution.solution_num)
             else:
-                solution['solution_num'] = -self.num_duplicate_solutions - 1
-                solution['unique_num'] = unique_num
+                solution.solution_num = -self.num_duplicate_solutions - 1
+                solution.unique_num = unique_num
                 self.duplicate_solutions.append(solution)
                 self.num_duplicate_solutions = len(self.duplicate_solutions)
 
-                self.log.write('Current solution is a duplicate of '
-                               'solution {:d}; assigned number {:d}'
-                               .format(unique_num, solution['solution_num']),
-                               level=4, event=32,
-                               solution_num=solution['solution_num'])
+                self.ctx.log.write('Current solution is a duplicate of '
+                                   'solution {:d}; assigned number {:d}'
+                                   .format(unique_num, solution.solution_num),
+                                   level=4, event=32,
+                                   solution_num=solution.solution_num)
 
             # Check the number of remaining solutions
             try:
-                num_remain_exp = self.platemeta.numexp - self.num_solutions
+                num_remain_exp = self.ctx.plate.numexp - self.num_solutions
             except Exception:
                 num_remain_exp = 1 - self.num_solutions
 
@@ -1418,37 +1229,33 @@ class SolveProcess:
             self.improve_astrometric_solutions(distort=3)
             self.improve_astrometric_solutions()
 
-            # Calculate mean pixel scale and FOV across all solutions
-            pixscales = u.Quantity([sol['pixel_scale'] for sol in self.solutions])
-            self.mean_pixel_scale = pixscales.mean()
-            self.min_pixel_scale = pixscales.min()
-            self.max_pixel_scale = pixscales.max()
-            fov1 = u.Quantity([sol['fov1'] for sol in self.solutions])
-            fov2 = u.Quantity([sol['fov2'] for sol in self.solutions])
-            self.mean_fov1 = fov1.mean()
-            self.mean_fov2 = fov2.mean()
-            dens = u.Quantity([sol['source_density'] for sol in self.solutions])
-            self.source_density = dens.mean()
+        solution_set = SolutionSet(
+            num_solutions=self.num_solutions,
+            num_duplicate_solutions=self.num_duplicate_solutions,
+            pattern_ratio=self.pattern_ratio, plate_solved=self.plate_solved,
+            solutions=self.solutions,
+            duplicate_solutions=self.duplicate_solutions,
+            pattern_x=self.pattern_x, pattern_y=self.pattern_y,
+            pattern_table=self.pattern_table, imwidth=self.ctx.imwidth,
+            imheight=self.ctx.imheight)
 
-        # Create PlateSolution instance
-        plate_solution = PlateSolution()
-
-        # Assign solutions and parameters to PlateSolution instance
-        for attr in ['imwidth', 'imheight', 'plate_solved',
-                     'num_solutions', 'solutions', 'num_iterations',
-                     'num_duplicate_solutions', 'duplicate_solutions',
-                     'pattern_x', 'pattern_y', 'pattern_ratio',
-                     'pattern_table', 'mean_pixel_scale',
-                     'min_pixel_scale', 'max_pixel_scale',
-                     'mean_fov1', 'mean_fov2', 'source_density']:
-            setattr(plate_solution, attr, getattr(self, attr))
-
-        # Calculate solutions centroid
         if self.plate_solved:
-            plate_solution.calculate_centroid()
+            # Calculate mean pixel scale and FOV across all solutions
+            pixscales = u.Quantity([sol.pixel_scale for sol in self.solutions])
+            solution_set.mean_pixel_scale = pixscales.mean()
+            solution_set.min_pixel_scale = pixscales.min()
+            solution_set.max_pixel_scale = pixscales.max()
+            fov1 = u.Quantity([sol.fov1 for sol in self.solutions])
+            fov2 = u.Quantity([sol.fov2 for sol in self.solutions])
+            solution_set.mean_fov1 = fov1.mean()
+            solution_set.mean_fov2 = fov2.mean()
+            dens = u.Quantity([sol.source_density for sol in self.solutions])
+            solution_set.source_density = dens.mean()
 
-        # Return
-        return plate_solution
+            # Calculate solutions centroid
+            solution_set.calculate_centroid()
+
+        return solution_set
 
     def find_astrometric_solution(self, ref_year=None, sip=None,
                                   use_force=False):
@@ -1464,26 +1271,26 @@ class SolveProcess:
 
         """
 
-        self.log.write('Looking for an astrometric solution', level=3, event=32)
+        self.ctx.log.write('Looking for an astrometric solution', level=3, event=32)
 
         if ref_year is None:
             ref_year = self.plate_year
 
         if sip is None:
-            sip = self.sip
+            sip = self.ctx.cfg.solve.sip
 
         num_astrom_sources = len(self.astrom_sources)
 
         try:
-            num_remain_exp = self.platemeta.numexp - self.num_solutions
+            num_remain_exp = self.ctx.plate.numexp - self.num_solutions
         except Exception:
             num_remain_exp = 1
 
-        self.log.write('Number of remaining solutions: {:d}'
-                       .format(num_remain_exp), level=4, event=32)
+        self.ctx.log.write('Number of remaining solutions: {:d}'
+                           .format(num_remain_exp), level=4, event=32)
 
         if use_force:
-            self.log.write('Using force to find solution', level=4, event=32)
+            self.ctx.log.write('Using force to find solution', level=4, event=32)
 
         # Current solution sequence number
         solution_seq = self.num_solutions + self.num_duplicate_solutions + 1
@@ -1494,9 +1301,9 @@ class SolveProcess:
             and len(self.exp_numbers) > 4
             and self.exp_numbers.max() > self.num_solutions
             and use_force == False):
-            self.log.write('Selecting sources that match the exposure number '
-                           '{:d}'.format(solution_seq),
-                           level=4, event=32)
+            self.ctx.log.write('Selecting sources that match the exposure number '
+                               '{:d}'.format(solution_seq),
+                               level=4, event=32)
             indmask = (self.exp_numbers == solution_seq)
             use_sources = self.astrom_sources[indmask]
             num_use_sources = indmask.sum()
@@ -1505,8 +1312,8 @@ class SolveProcess:
         # select sources that have two nearest neighbours within 90-degree
         # angle
         elif num_remain_exp > 2 and use_force == False:
-            self.log.write('Selecting sources that have two nearest neighbours '
-                           'within 90-degree angle', level=4, event=32)
+            self.ctx.log.write('Selecting sources that have two nearest neighbours '
+                               'within 90-degree angle', level=4, event=32)
             coords = np.empty((num_astrom_sources, 2))
             coords[:,0] = self.astrom_sources['x_source']
             coords[:,1] = self.astrom_sources['y_source']
@@ -1541,10 +1348,10 @@ class SolveProcess:
                         dxs = np.std(dx[clumpmask])
                         dys = np.std(dy[clumpmask])
 
-                        #self.log.write('i, count: {:d} {:d}'.format(i, cnt[i]))
-                        #self.log.write('dx mean, stddev: {:.3f} {:.3f}'
+                        #self.ctx.log.write('i, count: {:d} {:d}'.format(i, cnt[i]))
+                        #self.ctx.log.write('dx mean, stddev: {:.3f} {:.3f}'
                         #               .format(dxm, dxs), double_newline=False)
-                        #self.log.write('dy mean, stddev: {:.3f} {:.3f}'
+                        #self.ctx.log.write('dy mean, stddev: {:.3f} {:.3f}'
                         #               .format(dym, dys))
 
                         # Check if cluster is compact and away from center
@@ -1552,10 +1359,10 @@ class SolveProcess:
                         if np.maximum(dxs, dys) < np.sqrt(dxm**2 + dym**2):
                             break
 
-                    #self.log.write('i: {:d}'.format(i))
-                    #self.log.write('dx mean, stddev: {:.3f} {:.3f}'
+                    #self.ctx.log.write('i: {:d}'.format(i))
+                    #self.ctx.log.write('dx mean, stddev: {:.3f} {:.3f}'
                     #               .format(dxm, dxs), double_newline=False)
-                    #self.log.write('dy mean, stddev: {:.3f} {:.3f}'
+                    #self.ctx.log.write('dy mean, stddev: {:.3f} {:.3f}'
                     #               .format(dym, dys))
                     use_sources = self.astrom_sources[indmask][clumpmask]
                     num_use_sources = clumpmask.sum()
@@ -1575,8 +1382,8 @@ class SolveProcess:
             t['dx2'] = x2[indmask] - x0[indmask]
             t['dy2'] = y2[indmask] - y0[indmask]
             t['label'] = labels
-            basefn_solution = '{}-{:02d}'.format(self.basefn, solution_seq)
-            fn_out = os.path.join(self.scratch_dir,
+            basefn_solution = '{}-{:02d}'.format(self.ctx.basefn, solution_seq)
+            fn_out = os.path.join(self.ctx.work_dir,
                                   '{}_dxy.fits'.format(basefn_solution))
             t.write(fn_out, format='fits', overwrite=True)
 
@@ -1609,7 +1416,7 @@ class SolveProcess:
             num_use_sources = num_astrom_sources
 
         # Prepare filenames
-        basefn_solution = '{}-{:02d}'.format(self.basefn, solution_seq)
+        basefn_solution = '{}-{:02d}'.format(self.ctx.basefn, solution_seq)
         fn_xy = '{}.xy'.format(basefn_solution)
         fn_match = '{}.match'.format(basefn_solution)
         fn_corr = '{}.corr'.format(basefn_solution)
@@ -1625,13 +1432,13 @@ class SolveProcess:
         xycat['MAG_AUTO'].unit = 'mag'
         xycat['FLUX'].unit = 'count'
 
-        fn_xy = os.path.join(self.scratch_dir, fn_xy)
+        fn_xy = os.path.join(self.ctx.work_dir, fn_xy)
         xycat.write(fn_xy, format='fits', overwrite=True)
 
         # Write backend config file
-        fconf = open(os.path.join(self.scratch_dir,
-                                  self.basefn + '_backend.cfg'), 'w')
-        index_path = os.path.join(self.index_dir,
+        fconf = open(os.path.join(self.ctx.work_dir,
+                                  self.ctx.basefn + '_backend.cfg'), 'w')
+        index_path = os.path.join(self.ctx.cfg.files.index_dir,
                                   'index_{:d}'.format(ref_year))
         fconf.write('add_path {}\n'.format(index_path))
         fconf.write('autoindex\n')
@@ -1639,19 +1446,19 @@ class SolveProcess:
         fconf.close()
 
         # Construct the solve-field call
-        cmd = self.solve_field_path
+        cmd = self.ctx.cfg.programs.solve_field_path
         cmd += ' {}'.format(fn_xy)
-        cmd += ' --width {:d}'.format(self.imwidth)
-        cmd += ' --height {:d}'.format(self.imheight)
+        cmd += ' --width {:d}'.format(self.ctx.imwidth)
+        cmd += ' --height {:d}'.format(self.ctx.imheight)
         cmd += ' --x-column X_IMAGE'
         cmd += ' --y-column Y_IMAGE'
         cmd += ' --sort-column MAG_AUTO'
         cmd += ' --sort-ascending'
-        cmd += ' --backend-config {}_backend.cfg'.format(self.basefn)
+        cmd += ' --backend-config {}_backend.cfg'.format(self.ctx.basefn)
 
         cmd += ' --crpix-center'
         cmd += ' --scamp {}.cat'.format(basefn_solution)
-        cmd += ' --scamp-config {}_scamp.conf'.format(self.basefn)
+        cmd += ' --scamp-config {}_scamp.conf'.format(self.ctx.basefn)
         cmd += ' --no-plots'
         cmd += ' --out {}'.format(basefn_solution)
         cmd += ' --match {}'.format(fn_match)
@@ -1662,7 +1469,7 @@ class SolveProcess:
         cmd += ' --uniformize 100'
 
         if self.num_solutions > 0:
-            scale0 = self.solutions[0]['pixel_scale']
+            scale0 = self.solutions[0].pixel_scale
             scale_low = 0.95 * scale0
             scale_high = 1.05 * scale0
             cmd += ' --scale-units arcsecperpix'
@@ -1674,7 +1481,7 @@ class SolveProcess:
         numexp_condition = False
 
         try:
-            if self.platemeta.numexp > 4:
+            if self.ctx.plate.numexp > 4:
                 numexp_condition = True
         except Exception:
             pass
@@ -1701,16 +1508,16 @@ class SolveProcess:
         else:
             cmd += ' --no-tweak'
 
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
-        sp.call(cmd, shell=True, stdout=self.log.handle,
-                stderr=self.log.handle, cwd=self.scratch_dir)
-        self.log.write('', timestamp=False, double_newline=False)
+        self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
+        sp.call(cmd, shell=True, stdout=self.ctx.log.handle,
+                stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
+        self.ctx.log.write('', timestamp=False, double_newline=False)
 
         # Check the result of solve-field
-        fn_solved = os.path.join(self.scratch_dir, '{}.solved'.format(basefn_solution))
-        fn_wcs = os.path.join(self.scratch_dir, '{}.wcs'.format(basefn_solution))
-        fn_match = os.path.join(self.scratch_dir, fn_match)
-        fn_corr = os.path.join(self.scratch_dir, fn_corr)
+        fn_solved = os.path.join(self.ctx.work_dir, '{}.solved'.format(basefn_solution))
+        fn_wcs = os.path.join(self.ctx.work_dir, '{}.wcs'.format(basefn_solution))
+        fn_match = os.path.join(self.ctx.work_dir, fn_match)
+        fn_corr = os.path.join(self.ctx.work_dir, fn_corr)
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             wcshead = fits.getheader(fn_wcs)
@@ -1718,26 +1525,26 @@ class SolveProcess:
             # If SIP distortions were not computed, then repeat solving
             # without tweaking (plane TAN projection)
             if sip > 0 and wcshead['CTYPE1'] == 'RA---TAN':
-                self.log.write('Repeating astrometric solving without SIP distortions',
-                               level=4, event=32)
-                self.log.write('Subprocess: {}'.format(cmd_no_tweak),
-                               level=5, event=32)
-                sp.call(cmd_no_tweak, shell=True, stdout=self.log.handle,
-                        stderr=self.log.handle, cwd=self.scratch_dir)
-                self.log.write('', timestamp=False, double_newline=False)
+                self.ctx.log.write('Repeating astrometric solving without SIP distortions',
+                                   level=4, event=32)
+                self.ctx.log.write('Subprocess: {}'.format(cmd_no_tweak),
+                                   level=5, event=32)
+                sp.call(cmd_no_tweak, shell=True, stdout=self.ctx.log.handle,
+                        stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
+                self.ctx.log.write('', timestamp=False, double_newline=False)
 
         if os.path.exists(fn_solved) and os.path.exists(fn_wcs):
             self.plate_solved = True
-            self.log.write('Astrometric solution found (sequence number {:d})'
-                           .format(solution_seq), level=4, event=32)
+            self.ctx.log.write('Astrometric solution found (sequence number {:d})'
+                               .format(solution_seq), level=4, event=32)
             #self.db_update_process(solved=1)
         else:
             if self.num_solutions > 0:
-                self.log.write('Could not find additional astrometric solutions',
-                               level=4, event=32)
+                self.ctx.log.write('Could not find additional astrometric solutions',
+                                   level=4, event=32)
             else:
-                self.log.write('Could not solve astrometry for the plate',
-                               level=2, event=32)
+                self.ctx.log.write('Could not solve astrometry for the plate',
+                                   level=2, event=32)
                 #self.db_update_process(solved=0)
             return None, None
 
@@ -1745,27 +1552,18 @@ class SolveProcess:
         header_anet = fits.getheader(fn_wcs)
         header_wcs = header_anet.copy()
         header_wcs.set('NAXIS', 2)
-        header_wcs.set('NAXIS1', self.imwidth, after='NAXIS')
-        header_wcs.set('NAXIS2', self.imheight, after='NAXIS1')
+        header_wcs.set('NAXIS1', self.ctx.imwidth, after='NAXIS')
+        header_wcs.set('NAXIS2', self.ctx.imheight, after='NAXIS1')
         header_wcs_anet = header_wcs
 
-        # Create AstrometricSolution instance and calculate parameters
-        self.log.write('Calculating parameters for the initial solution '
-                       '(sequence number {:d})'.format(solution_seq),
-                       level=4, event=32)
+        # Create Solution instance and calculate parameters
+        self.ctx.log.write('Calculating parameters for the initial solution '
+                           '(sequence number {:d})'.format(solution_seq),
+                           level=4, event=32)
 
-        solution = AstrometricSolution()
-        solution.assign_conf(self.conf)
-        solution.populate()
-        solution.imwidth = self.imwidth
-        solution.imheight = self.imheight
-        solution.num_sources_sixbins = self.num_sources_sixbins
-        solution.rel_area_sixbins = self.rel_area_sixbins
-        solution.log = self.log
-
-        solution['header_anet'] = header_anet
-        solution['header_wcs'] = header_wcs
-        solution.calculate_parameters()
+        solution = Solution(header_anet=header_anet, header_wcs=header_wcs)
+        solution.calculate_parameters(self.ctx, self.num_sources_sixbins,
+                                      self.rel_area_sixbins)
 
         #match_table = Table.read(fn_match)
         #half_diag = match_table['RADIUS'][0]
@@ -1774,9 +1572,9 @@ class SolveProcess:
         astref_table = self.get_reference_stars_for_solution(solution)
 
         # Improve solution with SCAMP
-        self.log.write('Improving solution and recalculating parameters '
-                       '(sequence number {:d})'.format(solution_seq),
-                       level=4, event=32)
+        self.ctx.log.write('Improving solution and recalculating parameters '
+                           '(sequence number {:d})'.format(solution_seq),
+                           level=4, event=32)
 
         # Create scampref file
         numref = len(astref_table)
@@ -1790,55 +1588,55 @@ class SolveProcess:
         hduref.data.field('MAGERR')[:] = np.zeros(numref) + 0.1
         hduref.data.field('OBSDATE')[:] = np.zeros(numref) + 2000.
         scampref[2].data = hduref.data
-        scampref_file = os.path.join(self.scratch_dir,
+        scampref_file = os.path.join(self.ctx.work_dir,
                                      '{}_scampref.cat'.format(basefn_solution))
         scampref.writeto(scampref_file, overwrite=True)
 
         # Create SCAMP .ahead files
         fn_tan = '{}_tan.wcs'.format(basefn_solution)
-        cmd = self.wcs_to_tan_path
+        cmd = self.ctx.cfg.programs.wcs_to_tan_path
         cmd += ' -w {}.wcs'.format(basefn_solution)
         cmd += ' -x 1'
         cmd += ' -y 1'
-        cmd += ' -W {:f}'.format(self.imwidth)
-        cmd += ' -H {:f}'.format(self.imheight)
+        cmd += ' -W {:f}'.format(self.ctx.imwidth)
+        cmd += ' -H {:f}'.format(self.ctx.imheight)
         cmd += ' -N 20'
         cmd += ' -o {}'.format(fn_tan)
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
-        sp.call(cmd, shell=True, stdout=self.log.handle,
-                stderr=self.log.handle, cwd=self.scratch_dir)
+        self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
+        sp.call(cmd, shell=True, stdout=self.ctx.log.handle,
+                stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
 
-        tanhead = fits.getheader(os.path.join(self.scratch_dir, fn_tan))
+        tanhead = fits.getheader(os.path.join(self.ctx.work_dir, fn_tan))
         tanhead.set('NAXIS', 2)
         ahead = fits.Header()
         ahead.set('NAXIS', 2)
-        ahead.set('NAXIS1', self.imwidth)
-        ahead.set('NAXIS2', self.imheight)
-        ahead.set('IMAGEW', self.imwidth)
-        ahead.set('IMAGEH', self.imheight)
+        ahead.set('NAXIS1', self.ctx.imwidth)
+        ahead.set('NAXIS2', self.ctx.imheight)
+        ahead.set('IMAGEW', self.ctx.imwidth)
+        ahead.set('IMAGEH', self.ctx.imheight)
         ahead.set('CTYPE1', 'RA---TAN')
         ahead.set('CTYPE2', 'DEC--TAN')
-        ahead.set('CRPIX1', (self.imwidth + 1.) / 2.)
-        ahead.set('CRPIX2', (self.imheight + 1.) / 2.)
+        ahead.set('CRPIX1', (self.ctx.imwidth + 1.) / 2.)
+        ahead.set('CRPIX2', (self.ctx.imheight + 1.) / 2.)
         ahead.set('CRVAL1', tanhead['CRVAL1'])
         ahead.set('CRVAL2', tanhead['CRVAL2'])
         ahead.set('CD1_1', tanhead['CD1_1'])
         ahead.set('CD1_2', tanhead['CD1_2'])
         ahead.set('CD2_1', tanhead['CD2_1'])
         ahead.set('CD2_2', tanhead['CD2_2'])
-        aheadfile = os.path.join(self.scratch_dir,
+        aheadfile = os.path.join(self.ctx.work_dir,
                                  '{}.ahead'.format(basefn_solution))
         ahead.totextfile(aheadfile, endcard=True, overwrite=True)
 
         # Use crossid radius of 5 pixels and transform it to arcsec scale
-        crossid_radius = 5. * u.pixel * solution['pixel_scale']
+        crossid_radius = 5. * u.pixel * solution.pixel_scale
 
         # Filename for XML output
         fn_xml = '{}_scamp.xml'.format(basefn_solution)
 
         # Run SCAMP
-        cmd = self.scamp_path
-        cmd += ' -c {}_scamp.conf {}.cat'.format(self.basefn, basefn_solution)
+        cmd = self.ctx.cfg.programs.scamp_path
+        cmd += ' -c {}_scamp.conf {}.cat'.format(self.ctx.basefn, basefn_solution)
         cmd += ' -ASTREF_CATALOG FILE'
         cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
         cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
@@ -1862,12 +1660,12 @@ class SolveProcess:
         cmd += ' -XML_NAME {}'.format(fn_xml)
         cmd += ' -VERBOSE_TYPE LOG'
         cmd += ' -CHECKPLOT_TYPE NONE'
-        self.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
-        sp.call(cmd, shell=True, stdout=self.log.handle,
-                stderr=self.log.handle, cwd=self.scratch_dir)
+        self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=32)
+        sp.call(cmd, shell=True, stdout=self.ctx.log.handle,
+                stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
 
         # Read SCAMP solution
-        fn_scamphead = os.path.join(self.scratch_dir,
+        fn_scamphead = os.path.join(self.ctx.work_dir,
                                     '{}.head'.format(basefn_solution))
 
         try:
@@ -1885,10 +1683,10 @@ class SolveProcess:
         if header_scamp is not None:
             header_wcs = fits.PrimaryHDU().header
             header_wcs.set('NAXIS', 2)
-            header_wcs.set('NAXIS1', self.imwidth)
-            header_wcs.set('NAXIS2', self.imheight)
-            header_wcs.set('IMAGEW', self.imwidth)
-            header_wcs.set('IMAGEH', self.imheight)
+            header_wcs.set('NAXIS1', self.ctx.imwidth)
+            header_wcs.set('NAXIS2', self.ctx.imheight)
+            header_wcs.set('IMAGEW', self.ctx.imwidth)
+            header_wcs.set('IMAGEH', self.ctx.imheight)
             header_wcs.extend(header_scamp)
 
             # Fix SCAMP header if TPV projection is not specified
@@ -1897,43 +1695,45 @@ class SolveProcess:
                 header_wcs.set('CTYPE2', 'DEC--TPV')
 
             # Read SCAMP XML output
-            fn_xml = os.path.join(self.scratch_dir, fn_xml)
+            fn_xml = os.path.join(self.ctx.work_dir, fn_xml)
             warnings.filterwarnings('ignore', message='.*W42.*',
                                     category=votable.exceptions.VOTableSpecWarning)
             scamp_stats = votable.parse_single_table(fn_xml, verify='warn').to_table()
             scamp_ndeg = scamp_stats['NDeg_Reference'][0]
 
             if scamp_ndeg > 5:
-                solution['scamp_dscale'] = scamp_stats['DPixelScale'][0]
-                solution['scamp_dangle'] = scamp_stats['DPosAngle'].quantity[0]
-                solution['scamp_dx'] = scamp_stats['DX'].quantity[0].to(u.arcsec)
-                solution['scamp_dy'] = scamp_stats['DY'].quantity[0].to(u.arcsec)
+                solution.scamp_dscale = scamp_stats['DPixelScale'][0]
+                solution.scamp_dangle = scamp_stats['DPosAngle'].quantity[0]
+                solution.scamp_dx = scamp_stats['DX'].quantity[0].to(u.arcsec)
+                solution.scamp_dy = scamp_stats['DY'].quantity[0].to(u.arcsec)
                 scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
-                solution['scamp_sigma_1'] = scamp_sigmas[0]
-                solution['scamp_sigma_2'] = scamp_sigmas[1]
+                solution.scamp_sigma_1 = scamp_sigmas[0]
+                solution.scamp_sigma_2 = scamp_sigmas[1]
                 scamp_sigma_mean = np.sqrt(scamp_sigmas[0]**2 +
                                            scamp_sigmas[1]**2)
-                solution['scamp_sigma_mean'] = scamp_sigma_mean
-                solution['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
-                solution['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
-                solution['scamp_distort'] = 3
-                solution['scamp_iteration'] = 0
+                solution.scamp_sigma_mean = scamp_sigma_mean
+                solution.scamp_chi2 = scamp_stats['Chi2_Reference'][0]
+                solution.scamp_ndeg = scamp_stats['NDeg_Reference'][0]
+                solution.scamp_distort = 3
+                solution.scamp_iteration = 0
 
                 # Store SCAMP solution and recalculate parameters
-                solution['header_scamp'] = header_scamp
+                solution.header_scamp = header_scamp
 
-                if valid_wcs_header(header_wcs, self.imwidth, self.imheight):
-                    solution['header_wcs'] = header_wcs
-                    solution.calculate_parameters()
+                if valid_wcs_header(header_wcs, self.ctx.imwidth, self.ctx.imheight):
+                    solution.header_wcs = header_wcs
+                    solution.calculate_parameters(
+                        self.ctx, self.num_sources_sixbins,
+                        self.rel_area_sixbins)
                 else:
-                    self.log.write('SCAMP WCS not valid!', level=2, event=32)
+                    self.ctx.log.write('SCAMP WCS not valid!', level=2, event=32)
 
         # Crossmatch sources with rerefence stars and throw out
         # stars that matched
 
-        if solution['scamp_sigma_mean'] is not None:
-            xmatch_radius = (20. * solution['scamp_sigma_mean']
-                             / solution['pixel_scale']
+        if solution.scamp_sigma_mean is not None:
+            xmatch_radius = (20. * solution.scamp_sigma_mean
+                             / solution.pixel_scale
                              / u.pixel)
         else:
             xmatch_radius = 10.
@@ -1953,23 +1753,23 @@ class SolveProcess:
         # Select crossmatched stars and calculate their centroid
         mask_xmatch = ds <= xmatch_radius
         matched_sources = self.astrom_sources[ind_plate[mask_xmatch]]
-        solution['x_centroid'] = matched_sources['x_source'].mean()
-        solution['y_centroid'] = matched_sources['y_source'].mean()
-        xcenter = (self.imwidth + 1.) / 2.
-        ycenter = (self.imheight + 1.) / 2.
-        solution['rel_x_centroid'] = ((solution['x_centroid'] - xcenter)
-                                      / self.imwidth)
-        solution['rel_y_centroid'] = ((solution['y_centroid'] - ycenter)
-                                      / self.imheight)
-        solution['num_xmatch'] = mask_xmatch.sum()
-        self.log.write('Centroid of matched sources: {:.2f} {:.2f}, '
-                       'relative centroid: {:.3f} {:.3f}, '
-                       'number of matches: {:d}'
-                       .format(solution['x_centroid'], solution['y_centroid'],
-                               solution['rel_x_centroid'],
-                               solution['rel_y_centroid'],
-                               solution['num_xmatch']),
-                       level=4, event=32)
+        solution.x_centroid = matched_sources['x_source'].mean()
+        solution.y_centroid = matched_sources['y_source'].mean()
+        xcenter = (self.ctx.imwidth + 1.) / 2.
+        ycenter = (self.ctx.imheight + 1.) / 2.
+        solution.rel_x_centroid = ((solution.x_centroid - xcenter)
+                                   / self.ctx.imwidth)
+        solution.rel_y_centroid = ((solution.y_centroid - ycenter)
+                                   / self.ctx.imheight)
+        solution.num_xmatch = mask_xmatch.sum()
+        self.ctx.log.write('Centroid of matched sources: {:.2f} {:.2f}, '
+                           'relative centroid: {:.3f} {:.3f}, '
+                           'number of matches: {:d}'
+                           .format(solution.x_centroid, solution.y_centroid,
+                               solution.rel_x_centroid,
+                               solution.rel_y_centroid,
+                               solution.num_xmatch),
+                           level=4, event=32)
 
         # Output reference stars for debugging
         #t = Table()
@@ -1978,7 +1778,7 @@ class SolveProcess:
         #t['ra_ref'] = astref_table['ra']
         #t['dec_ref'] = astref_table['dec']
         #t['mag_ref'] = astref_table['mag']
-        #fn_out = os.path.join(self.scratch_dir, '{}_ref.fits'.format(basefn_solution))
+        #fn_out = os.path.join(self.ctx.work_dir, '{}_ref.fits'.format(basefn_solution))
         #t.write(fn_out, format='fits', overwrite=True)
 
         # Output crossmatched stars for debugging
@@ -1988,7 +1788,7 @@ class SolveProcess:
         #t['x_ref'] = xr[ind_ref[mask_xmatch]]
         #t['y_ref'] = yr[ind_ref[mask_xmatch]]
         #t['dist'] = ds[mask_xmatch]
-        #fn_out = os.path.join(self.scratch_dir, '{}_xmatch.fits'.format(basefn_solution))
+        #fn_out = os.path.join(self.ctx.work_dir, '{}_xmatch.fits'.format(basefn_solution))
         #t.write(fn_out, format='fits', overwrite=True)
 
         # Keep only stars that were not crossmatched
@@ -2047,15 +1847,15 @@ class SolveProcess:
 
         """
 
-        self.log.write('Improving astrometric solutions', level=3, event=33)
+        self.ctx.log.write('Improving astrometric solutions', level=3, event=33)
 
         if self.num_solutions < 1:
-            self.log.write('No astrometric solutions to improve!',
-                           level=2, event=33)
+            self.ctx.log.write('No astrometric solutions to improve!',
+                               level=2, event=33)
             return
 
         if distort is None:
-            distort = self.distort
+            distort = self.ctx.cfg.solve.distort
 
         # Create array for xy coordinates of reference stars
         coords_ref = np.zeros((0,2))
@@ -2071,11 +1871,11 @@ class SolveProcess:
             astref_table = self.astref_tables[i]
 
             if len(astref_table) > 0:
-                w = wcs.WCS(solution['header_wcs'])
+                w = wcs.WCS(solution.header_wcs)
                 xr,yr = w.all_world2pix(astref_table['ra'],
                                         astref_table['dec'], 1, quiet=True)
-                mask_inside = ((xr > 0.5) & (xr < self.imwidth) &
-                               (yr > 0.5) & (yr < self.imheight))
+                mask_inside = ((xr > 0.5) & (xr < self.ctx.imwidth) &
+                               (yr > 0.5) & (yr < self.ctx.imheight))
                 xy_ref = np.vstack((xr[mask_inside], yr[mask_inside])).T
 
                 # Include only isolated reference stars
@@ -2092,8 +1892,8 @@ class SolveProcess:
                 y_ref_list.append(np.array([]))
 
         if len(coords_ref) <= 10:
-            self.log.write('Too few astrometric reference stars: '
-                           '{:d}'.format(len(coords_ref)), level=2, event=33)
+            self.ctx.log.write('Too few astrometric reference stars: '
+                               '{:d}'.format(len(coords_ref)), level=2, event=33)
             return
 
         # Exclude reference stars that have close neighbours either
@@ -2104,13 +1904,13 @@ class SolveProcess:
         num_isolated = mask_isolated.sum()
 
         num_excluded = (ds[:,1] <= 5).sum()
-        self.log.write('Excluded {:d} reference stars due to close neighbours, '
-                       '{:d} stars remained.'
-                       ''.format(num_excluded, num_isolated), level=4, event=33)
+        self.ctx.log.write('Excluded {:d} reference stars due to close neighbours, '
+                           '{:d} stars remained.'
+                           ''.format(num_excluded, num_isolated), level=4, event=33)
 
         if num_isolated <= 10:
-            self.log.write('Too few isolated astrometric reference stars: '
-                           '{:d}'.format(num_isolated), level=2, event=33)
+            self.ctx.log.write('Too few isolated astrometric reference stars: '
+                               '{:d}'.format(num_isolated), level=2, event=33)
             return
 
         coords_ref = coords_ref[mask_isolated]
@@ -2119,7 +1919,7 @@ class SolveProcess:
         t = Table()
         t['x_ref'] = coords_ref[:,0]
         t['y_ref'] = coords_ref[:,1]
-        fn_out = os.path.join(self.scratch_dir, '{}_ref_all.fits'.format(self.basefn))
+        fn_out = os.path.join(self.ctx.work_dir, '{}_ref_all.fits'.format(self.ctx.basefn))
         t.write(fn_out, format='fits', overwrite=True)
 
         # Take clean sources from annular bins 1-9
@@ -2138,8 +1938,8 @@ class SolveProcess:
         mask_bins = bclean & (self.sources['annular_bin'] <= 9)
 
         if mask_bins.sum() <= 10:
-            self.log.write('Too few clean sources in annular bins 1--9: '
-                           '{:d}'.format(num_isolated), level=2, event=33)
+            self.ctx.log.write('Too few clean sources in annular bins 1--9: '
+                               '{:d}'.format(num_isolated), level=2, event=33)
             return
 
         coords_plate = np.vstack((self.sources[mask_bins]['x_source'],
@@ -2153,8 +1953,8 @@ class SolveProcess:
         num_isolated = mask_isolated.sum()
 
         if num_isolated <= 10:
-            self.log.write('Too few isolated sources in annular bins 1--9: '
-                           '{:d}'.format(num_isolated), level=2, event=33)
+            self.ctx.log.write('Too few isolated sources in annular bins 1--9: '
+                               '{:d}'.format(num_isolated), level=2, event=33)
             return
 
         coords_plate = coords_plate[mask_isolated]
@@ -2164,9 +1964,9 @@ class SolveProcess:
         ind_plate, ind_ref, _ = crossmatch_cartesian(coords_plate, coords_ref)
 
         if len(ind_plate) < 10:
-            self.log.write('Too few crossmatches between sources and reference '
-                           'stars: {:d}'.format(len(ind_plate)),
-                           level=2, event=33)
+            self.ctx.log.write('Too few crossmatches between sources and reference '
+                               'stars: {:d}'.format(len(ind_plate)),
+                               level=2, event=33)
             return
 
         ind_sources = ind_sources[ind_plate]
@@ -2183,12 +1983,12 @@ class SolveProcess:
         if np.isfinite(pattern_ratio):
             self.pattern_ratio = pattern_ratio
 
-        self.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
-                       '{:.3f}'.format(pattern_ratio), level=4, event=33)
+        self.ctx.log.write('Scanner pattern ratio (stdev_y/stdev_x): '
+                           '{:.3f}'.format(pattern_ratio), level=4, event=33)
 
         # Calculate scanner pattern and output to a table
-        xx = np.arange(0, self.imwidth + 1, 50)
-        yy = np.arange(0, self.imheight + 1, 50)
+        xx = np.arange(0, self.ctx.imwidth + 1, 50)
+        yy = np.arange(0, self.ctx.imheight + 1, 50)
         xx_extra = ((xx < coords_wobble[:,0].min()) |
                     (xx > coords_wobble[:,0].max()))
         yy_extra = ((yy < coords_wobble[:,1].min()) |
@@ -2213,9 +2013,9 @@ class SolveProcess:
             astref_table = self.astref_tables[i]
             x_ref = x_ref_list[i]
             y_ref = y_ref_list[i]
-            basefn_solution = '{}-{:02d}'.format(self.basefn, i+1)
+            basefn_solution = '{}-{:02d}'.format(self.ctx.basefn, i+1)
 
-            fn_scampcat = os.path.join(self.scratch_dir,
+            fn_scampcat = os.path.join(self.ctx.work_dir,
                                        '{}.cat'.format(basefn_solution))
             cat = fits.open(fn_scampcat)
             scampdata = fits.BinTableHDU.from_columns(cat[2].columns,
@@ -2229,42 +2029,42 @@ class SolveProcess:
             scampdata.field('FLAGS')[:] = self.sources[ind_sources]['sextractor_flags']
             cat[2].data = scampdata
 
-            fn_scampcat = os.path.join(self.scratch_dir,
+            fn_scampcat = os.path.join(self.ctx.work_dir,
                                        '{}_dewobbled.cat'.format(basefn_solution))
             cat.writeto(fn_scampcat, overwrite=True)
 
             # Write SCAMP header to .ahead file
-            fn_ahead = os.path.join(self.scratch_dir,
+            fn_ahead = os.path.join(self.ctx.work_dir,
                                     '{}_dewobbled.ahead'.format(basefn_solution))
-            header = solution['header_wcs']
+            header = solution.header_wcs
             header.totextfile(fn_ahead, endcard=True, overwrite=True)
 
             # Use crossid radius of 3 pixels and transform it to arcsec scale
-            crossid_radius = 3. * u.pixel * solution['pixel_scale']
+            crossid_radius = 3. * u.pixel * solution.pixel_scale
 
             # Limit distortion degree based on the number of sources
             use_distort = distort
 
-            if solution['scamp_ndeg'] is None or solution['scamp_ndeg'] < 100:
+            if solution.scamp_ndeg is None or solution.scamp_ndeg < 100:
                 use_distort = min(distort, 3)
-            elif solution['scamp_ndeg'] < 500:
+            elif solution.scamp_ndeg < 500:
                 use_distort = min(distort, 5)
 
-            if solution['scamp_ndeg'] is None:
+            if solution.scamp_ndeg is None:
                 ndeg_str = 'unknown'
             else:
-                ndeg_str = '{:d}'.format(solution['scamp_ndeg'])
+                ndeg_str = '{:d}'.format(solution.scamp_ndeg)
 
-            self.log.write('Using distortion degree {:d} (scamp_ndeg: {})'
-                           .format(use_distort, ndeg_str),
-                           level=3, event=33, solution_num=i+1)
+            self.ctx.log.write('Using distortion degree {:d} (scamp_ndeg: {})'
+                               .format(use_distort, ndeg_str),
+                               level=3, event=33, solution_num=i+1)
 
             # Filename for XML output
             fn_xml = '{}_dewobbled_scamp.xml'.format(basefn_solution)
 
             # Run SCAMP again on dewobbled pixel coordinates
-            cmd = self.scamp_path
-            cmd += ' -c {}_scamp.conf {}_dewobbled.cat'.format(self.basefn, basefn_solution)
+            cmd = self.ctx.cfg.programs.scamp_path
+            cmd += ' -c {}_scamp.conf {}_dewobbled.cat'.format(self.ctx.basefn, basefn_solution)
             cmd += ' -ASTREF_CATALOG FILE'
             cmd += ' -ASTREFCAT_NAME {}_scampref.cat'.format(basefn_solution)
             cmd += ' -ASTREFCENT_KEYS X_WORLD,Y_WORLD'
@@ -2284,13 +2084,13 @@ class SolveProcess:
             cmd += ' -XML_NAME {}'.format(fn_xml)
             cmd += ' -VERBOSE_TYPE LOG'
             cmd += ' -CHECKPLOT_TYPE NONE'
-            self.log.write('Subprocess: {}'.format(cmd), level=5, event=33)
-            sp.call(cmd, shell=True, stdout=self.log.handle,
-                    stderr=self.log.handle, cwd=self.scratch_dir)
+            self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=33)
+            sp.call(cmd, shell=True, stdout=self.ctx.log.handle,
+                    stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
 
             # Read SCAMP solution
             fn_scamphead = '{}_dewobbled.head'.format(basefn_solution)
-            fn_scamphead = os.path.join(self.scratch_dir, fn_scamphead)
+            fn_scamphead = os.path.join(self.ctx.work_dir, fn_scamphead)
 
             with open(fn_scamphead, 'r') as f:
                 scamphead_str = f.read()
@@ -2303,10 +2103,10 @@ class SolveProcess:
 
             header_wcs = fits.PrimaryHDU().header
             header_wcs.set('NAXIS', 2)
-            header_wcs.set('NAXIS1', self.imwidth)
-            header_wcs.set('NAXIS2', self.imheight)
-            header_wcs.set('IMAGEW', self.imwidth)
-            header_wcs.set('IMAGEH', self.imheight)
+            header_wcs.set('NAXIS1', self.ctx.imwidth)
+            header_wcs.set('NAXIS2', self.ctx.imheight)
+            header_wcs.set('IMAGEW', self.ctx.imwidth)
+            header_wcs.set('IMAGEH', self.ctx.imheight)
             header_wcs.extend(header_scamp)
 
             # Fix SCAMP header if TPV projection is not specified
@@ -2315,7 +2115,7 @@ class SolveProcess:
                 header_wcs.set('CTYPE2', 'DEC--TPV')
 
             # Read SCAMP XML output
-            fn_xml = os.path.join(self.scratch_dir, fn_xml)
+            fn_xml = os.path.join(self.ctx.work_dir, fn_xml)
             warnings.filterwarnings('ignore', message='.*W42.*',
                                     category=votable.exceptions.VOTableSpecWarning)
             scamp_stats = votable.parse_single_table(fn_xml, verify='warn').to_table()
@@ -2323,26 +2123,28 @@ class SolveProcess:
 
             if scamp_ndeg > 5:
                 scamp_sigmas = scamp_stats['AstromSigma_Reference'][0,:].quantity
-                self.solutions[i]['scamp_sigma_1'] = scamp_sigmas[0]
-                self.solutions[i]['scamp_sigma_2'] = scamp_sigmas[1]
+                self.solutions[i].scamp_sigma_1 = scamp_sigmas[0]
+                self.solutions[i].scamp_sigma_2 = scamp_sigmas[1]
                 scamp_sigma_mean = np.sqrt(scamp_sigmas[0]**2 +
                                            scamp_sigmas[1]**2)
-                self.solutions[i]['scamp_sigma_mean'] = scamp_sigma_mean
-                self.solutions[i]['scamp_chi2'] = scamp_stats['Chi2_Reference'][0]
-                self.solutions[i]['scamp_ndeg'] = scamp_stats['NDeg_Reference'][0]
-                self.solutions[i]['scamp_distort'] = use_distort
-                self.solutions[i]['scamp_iteration'] = self.num_iterations + 1
+                self.solutions[i].scamp_sigma_mean = scamp_sigma_mean
+                self.solutions[i].scamp_chi2 = scamp_stats['Chi2_Reference'][0]
+                self.solutions[i].scamp_ndeg = scamp_stats['NDeg_Reference'][0]
+                self.solutions[i].scamp_distort = use_distort
+                self.solutions[i].scamp_iteration = self.num_iterations + 1
 
                 # Store improved solution
-                self.solutions[i]['header_scamp'] = header_scamp
+                self.solutions[i].header_scamp = header_scamp
 
-                if valid_wcs_header(header_wcs, self.imwidth, self.imheight):
-                    self.solutions[i]['header_wcs'] = header_wcs
-                    self.solutions[i].calculate_parameters()
+                if valid_wcs_header(header_wcs, self.ctx.imwidth, self.ctx.imheight):
+                    self.solutions[i].header_wcs = header_wcs
+                    self.solutions[i].calculate_parameters(
+                        self.ctx, self.num_sources_sixbins,
+                        self.rel_area_sixbins)
                 else:
-                    self.log.write('SCAMP WCS for solution {:d} not valid!'
-                                   .format(i+1),
-                                   level=2, event=33, solution_num=i+1)
+                    self.ctx.log.write('SCAMP WCS for solution {:d} not valid!'
+                                       .format(i+1),
+                                       level=2, event=33, solution_num=i+1)
 
             # Crossmatch sources with rerefence stars
             w = wcs.WCS(header_wcs)
@@ -2353,7 +2155,7 @@ class SolveProcess:
             coords_ref = np.append(coords_ref, coords_ref_sol, axis=0)
 
             if scamp_ndeg > 5:
-                tolerance = ((5. * scamp_sigma_mean / solution['pixel_scale'])
+                tolerance = ((5. * scamp_sigma_mean / solution.pixel_scale)
                              .to(u.pixel).value)
             else:
                 tolerance = 5.
@@ -2368,27 +2170,27 @@ class SolveProcess:
                 matched_sources = coords_dewobbled[ind_plate[mask_xmatch]]
                 x_centroid = matched_sources[:,0].mean()
                 y_centroid = matched_sources[:,1].mean()
-                self.solutions[i]['x_centroid'] = x_centroid
-                self.solutions[i]['y_centroid'] = y_centroid
-                xcenter = (self.imwidth + 1.) / 2.
-                ycenter = (self.imheight + 1.) / 2.
-                self.solutions[i]['rel_x_centroid'] = ((x_centroid - xcenter)
-                                                       / self.imwidth)
-                self.solutions[i]['rel_y_centroid'] = ((y_centroid - ycenter)
-                                                       / self.imheight)
-                self.solutions[i]['num_xmatch'] = mask_xmatch.sum()
-                self.log.write('Centroid of matched sources: {:.2f} {:.2f}, '
-                               'relative centroid: {:.3f} {:.3f}, '
-                               'number of matches: {:d}'
-                               .format(x_centroid, y_centroid,
-                                       self.solutions[i]['rel_x_centroid'],
-                                       self.solutions[i]['rel_y_centroid'],
-                                       self.solutions[i]['num_xmatch']),
-                               level=4, event=33, solution_num=i+1)
+                self.solutions[i].x_centroid = x_centroid
+                self.solutions[i].y_centroid = y_centroid
+                xcenter = (self.ctx.imwidth + 1.) / 2.
+                ycenter = (self.ctx.imheight + 1.) / 2.
+                self.solutions[i].rel_x_centroid = ((x_centroid - xcenter)
+                                                    / self.ctx.imwidth)
+                self.solutions[i].rel_y_centroid = ((y_centroid - ycenter)
+                                                    / self.ctx.imheight)
+                self.solutions[i].num_xmatch = mask_xmatch.sum()
+                self.ctx.log.write('Centroid of matched sources: {:.2f} {:.2f}, '
+                                   'relative centroid: {:.3f} {:.3f}, '
+                                   'number of matches: {:d}'
+                                   .format(x_centroid, y_centroid,
+                                       self.solutions[i].rel_x_centroid,
+                                       self.solutions[i].rel_y_centroid,
+                                       self.solutions[i].num_xmatch),
+                                   level=4, event=33, solution_num=i+1)
             else:
-                self.log.write('Cannot calculate centroid of solution '
-                               'due to no matched sources!',
-                               level=2, event=33, solution_num=i+1)
+                self.ctx.log.write('Cannot calculate centroid of solution '
+                                   'due to no matched sources!',
+                                   level=2, event=33, solution_num=i+1)
 
             # Output crossmatched stars for debugging
             #t = Table()
@@ -2399,7 +2201,7 @@ class SolveProcess:
             #t['x_ref'] = xr[ind_ref[mask_xmatch]]
             #t['y_ref'] = yr[ind_ref[mask_xmatch]]
             #t['dist'] = ds[mask_xmatch]
-            #fn_out = os.path.join(self.scratch_dir,
+            #fn_out = os.path.join(self.ctx.work_dir,
             #                      '{}_xmatch2_{:d}.fits'.format(basefn_solution,
             #                                                    self.num_iterations+1))
             #t.write(fn_out, format='fits', overwrite=True)
@@ -2413,98 +2215,44 @@ class SolveProcess:
 
         """
 
-        #self.log.write('Getting reference catalogs', level=3, event=40)
+        #self.ctx.log.write('Getting reference catalogs', level=3, event=40)
 
         # Read the Gaia EDR3 catalogue
-        if self.use_gaia_fits:
-            fn_gaia = os.path.join(self.gaia_dir, 'gaiaedr3_pyplate.fits')
+        fn_gaia = os.path.join(self.ctx.cfg.files.gaia_dir,
+                               'gaiaedr3_pyplate.fits')
 
-            tab = Table.read(fn_gaia)
+        tab = Table.read(fn_gaia)
 
-            # Calculate RA and Dec for the plate epoch
-            ra_ref = (tab['ra'] + (self.plate_epoch - 2016.0) * tab['pmra']
-                      / np.cos(tab['dec'] * np.pi / 180.) / 3600000.)
-            dec_ref = (tab['dec'] + (self.plate_epoch - 2016.0)
-                       * tab['pmdec'] / 3600000.)
-            catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
+        # Calculate RA and Dec for the plate epoch
+        ra_ref = (tab['ra'] + (self.plate_epoch - 2016.0) * tab['pmra']
+                  / np.cos(tab['dec'] * np.pi / 180.) / 3600000.)
+        dec_ref = (tab['dec'] + (self.plate_epoch - 2016.0)
+                   * tab['pmdec'] / 3600000.)
+        catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
 
-            # Query stars around the plate center
-            c = SkyCoord(solution['ra_icrs'] * u.deg,
-                         solution['dec_icrs'] * u.deg, frame='icrs')
-            dist = catalog.separation(c)
-            mask_dist = dist < solution['half_diag']
-            ind = np.arange(len(tab))[mask_dist]
+        # Query stars around the plate center
+        c = SkyCoord(solution.ra_icrs * u.deg,
+                     solution.dec_icrs * u.deg, frame='icrs')
+        dist = catalog.separation(c)
+        mask_dist = dist < solution.half_diag
+        ind = np.arange(len(tab))[mask_dist]
 
-            # Check which stars fall inside image area
-            w = wcs.WCS(solution['header_wcs'])
-            xr,yr = w.all_world2pix(ra_ref[mask_dist], dec_ref[mask_dist], 1,
-                                    quiet=True)
-            mask_inside = ((xr > 0) & (xr < self.imwidth) &
-                           (yr > 0) & (yr < self.imheight))
-            ind_ref = ind[mask_inside]
+        # Check which stars fall inside image area
+        w = wcs.WCS(solution.header_wcs)
+        xr,yr = w.all_world2pix(ra_ref[mask_dist], dec_ref[mask_dist], 1,
+                                quiet=True)
+        mask_inside = ((xr > 0) & (xr < self.ctx.imwidth) &
+                       (yr > 0) & (yr < self.ctx.imheight))
+        ind_ref = ind[mask_inside]
 
-            numref = mask_inside.sum()
-            self.log.write('Fetched {:d} entries from Gaia EDR3'
+        numref = mask_inside.sum()
+        self.ctx.log.write('Fetched {:d} entries from Gaia EDR3'
                            ''.format(numref))
 
-            # Construct table for return
-            astref_table = Table()
-            astref_table['ra'] = ra_ref[ind_ref]
-            astref_table['dec'] = dec_ref[ind_ref]
-            astref_table['mag'] = tab[ind_ref]['phot_g_mean_mag']
+        # Construct table for return
+        astref_table = Table()
+        astref_table['ra'] = ra_ref[ind_ref]
+        astref_table['dec'] = dec_ref[ind_ref]
+        astref_table['mag'] = tab[ind_ref]['phot_g_mean_mag']
 
-            return astref_table
-
-        # Read the Tycho-2 catalogue
-        if self.use_tycho2_fits:
-            #self.log.write('Reading the Tycho-2 catalogue', level=3, event=41)
-            fn_tycho2 = os.path.join(self.tycho2_dir, 'tycho2_pyplate.fits')
-
-            tycho2 = Table.read(fn_tycho2)
-
-            #except IOError:
-                #self.log.write('Missing Tycho-2 data', level=2, event=41)
-
-            ra_tyc = tycho2['_RAJ2000']
-            dec_tyc = tycho2['_DEJ2000']
-
-            # For stars that have proper motion data, calculate RA, Dec
-            # for the plate epoch
-            pm_mask = np.isfinite(tycho2['pmRA']) & np.isfinite(tycho2['pmDE'])
-            ra_tyc[pm_mask] = (ra_tyc[pm_mask]
-                               + (self.plate_epoch - 2000.) * tycho2['pmRA'][pm_mask]
-                               / np.cos(dec_tyc[pm_mask] * np.pi / 180.)
-                               / 3600000.)
-            dec_tyc[pm_mask] = (dec_tyc[pm_mask]
-                                + (self.plate_epoch - 2000.)
-                                * tycho2['pmDE'][pm_mask] / 3600000.)
-            catalog = SkyCoord(ra_tyc, dec_tyc, frame='icrs')
-
-            # Query stars around the plate center
-            c = SkyCoord(solution['ra_icrs'] * u.deg,
-                         solution['dec_icrs'] * u.deg, frame='icrs')
-            dist = catalog.separation(c)
-            mask_dist = dist < solution['half_diag']
-            ind = np.arange(len(tycho2))[mask_dist]
-
-            # Check which stars fall inside image area
-            w = wcs.WCS(solution['header_wcs'])
-            xr,yr = w.all_world2pix(ra_tyc[mask_dist], dec_tyc[mask_dist], 1,
-                                    quiet=True)
-            mask_inside = ((xr > 0) & (xr < self.imwidth) &
-                           (yr > 0) & (yr < self.imheight))
-            ind_ref = ind[mask_inside]
-
-            numtyc = mask_inside.sum()
-            self.log.write('Fetched {:d} entries from Tycho-2'
-                           ''.format(numtyc))
-
-            # Construct table for return
-            astref_table = Table()
-            astref_table['ra'] = ra_tyc[ind_ref]
-            astref_table['dec'] = dec_tyc[ind_ref]
-            astref_table['mag'] = tycho2[ind_ref]['BTmag']
-
-            return astref_table
-
-        return None
+        return astref_table

@@ -1,10 +1,7 @@
 import os
 import subprocess as sp
 import numpy as np
-import warnings
-from astropy.io import fits
 from astropy.table import Table, vstack
-from astropy import units as u
 
 
 class AstrometryNetIndex:
@@ -14,7 +11,6 @@ class AstrometryNetIndex:
     """
 
     def __init__(self, *args):
-        self.vizquery_path = 'vizquery'
         self.build_index_path = 'build-astrometry-index'
         self.index_dir = './'
         
@@ -62,56 +58,8 @@ class AstrometryNetIndex:
         os.remove(fn_tab1)
         os.remove(fn_tab2)
 
-    def download_tycho2(self, site=None):
-        """
-        Download full Tycho-2 catalogue with vizquery.
-
-        Parameters
-        ----------
-        site : str
-            A site name that vizquery recognizes
-
-        """
-
-        fn_tyc = os.path.join(self.index_dir, 'tycho2_pyplate.fits')
-
-        if not os.path.exists(fn_tyc):
-            try:
-                os.makedirs(self.index_dir)
-            except OSError:
-                if not os.path.isdir(self.index_dir):
-                    raise
-
-            cmd = self.vizquery_path
-            cmd += (' -mime=binfits'
-                    ' -source=I/259/tyc2'
-                    ' -out="_RA _DE pmRA pmDE BTmag VTmag e_BTmag e_VTmag '
-                    'TYC1 TYC2 TYC3 HIP"'
-                    ' -out.max=unlimited')
-
-            if site:
-                cmd += ' -site={}'.format(site)
-
-            # Download Tycho-2 catalogue to a temporary FITS file
-            fn_vizout = os.path.join(self.index_dir, 'vizout.fits')
-
-            with open(fn_vizout, 'wb') as vizout:
-                sp.call(cmd, shell=True, stdout=vizout, cwd=self.index_dir)
-
-            # Copy FITS file and remove first 24 bytes if file begins with "#"
-            with open(fn_tyc, 'wb') as tycout:
-                with open(fn_vizout, 'rb') as viz:
-                    if viz.read(1) == '#':
-                        viz.seek(24)
-                    else:
-                        viz.seek(0)
-
-                    tycout.write(viz.read())
-
-            os.remove(fn_vizout)
-
     def create_index_year(self, year, max_scale=None, min_scale=None,
-                          catalog='gaia', sort_by='Gmag'):
+                          sort_by='Gmag'):
         """
         Create Astrometry.net index for a given epoch.
 
@@ -131,80 +79,32 @@ class AstrometryNetIndex:
         elif min_scale < 1:
             min_scale = 1
 
-        if catalog != 'gaia' and catalog != 'tycho':
-            print('Unknown catalog ({})'.format(catalog))
-            return
+        if sort_by != 'Gmag' and sort_by != 'BPmag' and sort_by != 'RPmag':
+            sort_by = 'Gmag'
 
-        if catalog == 'gaia':
-            if sort_by != 'Gmag' and sort_by != 'BPmag' and sort_by != 'RPmag':
-                sort_by = 'Gmag'
+        fn_gaia = os.path.join(self.index_dir, 'gaiaedr3_pyplate.fits')
+        gaia_tab = Table.read(fn_gaia)
 
-            fn_gaia = os.path.join(self.index_dir, 'gaiaedr3_pyplate.fits')
-            gaia_tab = Table.read(fn_gaia)
+        year_tab = Table()
+        year_tab['RA'] = (gaia_tab['ra'] 
+                          + (year - 2016.0 + 0.5)
+                          * gaia_tab['pmra'] 
+                          / np.cos(gaia_tab['dec'] * np.pi / 180.) 
+                          / 3600000.)
+        year_tab['Dec'] = (gaia_tab['dec']
+                           + (year - 2016.0 + 0.5)
+                           * gaia_tab['pmdec'] / 3600000.)
 
-            year_tab = Table()
-            year_tab['RA'] = (gaia_tab['ra'] 
-                              + (year - 2016.0 + 0.5)
-                              * gaia_tab['pmra'] 
-                              / np.cos(gaia_tab['dec'] * np.pi / 180.) 
-                              / 3600000.)
-            year_tab['Dec'] = (gaia_tab['dec']
-                               + (year - 2016.0 + 0.5)
-                               * gaia_tab['pmdec'] / 3600000.)
+        if sort_by == 'Gmag':
+            year_tab['Gmag'] = gaia_tab['phot_g_mean_mag']
+        elif sort_by == 'BPmag':
+            year_tab['BPmag'] = gaia_tab['phot_bp_mean_mag']
+        elif sort_by == 'RPmag':
+            year_tab['RPmag'] = gaia_tab['phot_rp_mean_mag']
 
-            if sort_by == 'Gmag':
-                year_tab['Gmag'] = gaia_tab['phot_g_mean_mag']
-            elif sort_by == 'BPmag':
-                year_tab['BPmag'] = gaia_tab['phot_bp_mean_mag']
-            elif sort_by == 'RPmag':
-                year_tab['RPmag'] = gaia_tab['phot_rp_mean_mag']
-
-            fn_year = os.path.join(self.index_dir, 
-                                   'gaiaedr3_{:d}.fits'.format(year))
-            year_tab.write(fn_year, format='fits', overwrite=True)
-
-        elif catalog == 'tycho':
-            if sort_by != 'BTmag' and sort_by != 'VTmag':
-                sort_by = 'BTmag'
-
-            tyc = fits.open(os.path.join(self.index_dir, 'tycho2_pyplate.fits'))
-            data = tyc[1].data
-
-            cols = tyc[1].columns[0:2] + tyc[1].columns[4:6]
-            cols[0].name = 'RA'
-            cols[1].name = 'Dec'
-
-            try:
-                hdu = fits.BinTableHDU.from_columns(cols)
-            except AttributeError:
-                hdu = fits.new_table(cols)
-
-            tyc.close()
-
-            hdu.data.field(0)[:] = data.field(0) + (year - 2000. + 0.5) * \
-                    data.field(2) / np.cos(data.field(1) * np.pi / 180.) / 3600000.
-            hdu.data.field(1)[:] = data.field(1) + (year - 2000. + 0.5) * \
-                    data.field(3) / 3600000.
-            hdu.data.field(2)[:] = data.field(4)
-            hdu.data.field(3)[:] = data.field(5)
-
-            # Leave out rows with missing proper motion and magnitudes
-            mask1 = np.isfinite(hdu.data.field(0))
-            mask2 = np.isfinite(hdu.data.field(2))
-            mask3 = np.isfinite(hdu.data.field(3))
-            hdu.data = hdu.data[mask1 & mask2 & mask3]
-
-            # Sort rows
-            if sort_by == 'VTmag':
-                indsort = np.argsort(hdu.data.field(3))
-            else:
-                indsort = np.argsort(hdu.data.field(2))
-
-            hdu.data = hdu.data[indsort]
-
-            fn_year = os.path.join(self.index_dir, 
-                                   'tycho2_{:d}.fits'.format(year))
-            hdu.writeto(fn_year, overwrite=True)
+        fn_year = os.path.join(self.index_dir, 
+                               'gaiaedr3_{:d}.fits'.format(year))
+        year_tab.write(fn_year, format='fits', overwrite=True)
 
         year_index_dir = os.path.join(self.index_dir, 
                                       'index_{:d}'.format(year))
@@ -226,10 +126,8 @@ class AstrometryNetIndex:
 
             sp.call(cmd, shell=True, cwd=self.index_dir)
 
-        #os.remove(fn_tyc_year)
-
     def create_index_loop(self, start_year, end_year, step, max_scale=None, 
-                          min_scale=None, catalog='gaia', sort_by='BTmag'):
+                          min_scale=None, sort_by='Gmag'):
         """
         Create Astrometry.net indexes for a set of epochs.
 
@@ -237,6 +135,5 @@ class AstrometryNetIndex:
 
         for year in np.arange(start_year, end_year+1, step):
             self.create_index_year(year, max_scale=max_scale, 
-                                   min_scale=min_scale, 
-                                   catalog=catalog, sort_by=sort_by)
+                                   min_scale=min_scale, sort_by=sort_by)
 

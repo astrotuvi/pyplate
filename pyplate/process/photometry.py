@@ -1,12 +1,17 @@
 import os
-import math
 import numpy as np
+from collections.abc import Callable
+from dataclasses import dataclass
 from astropy.table import Table
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
 from scipy.ndimage.filters import generic_filter
 from scipy.optimize import curve_fit
 from collections import OrderedDict
+from ..metadata.base import DbRecord, related
+from .context import ProcessContext
+from .solve import SolutionSet
+from .sources import SourceTable
 
 try:
     import statsmodels.api as sm
@@ -23,23 +28,107 @@ def _abscurve(x, x0, a, b, c):
     return a * np.abs(x - x0) + b * (x - x0)**2 + c
 
 
+@dataclass
+class PhotCalib(DbRecord):
+    """A photometric calibration of one solution in one iteration
+    (``phot_calib`` table).
+
+    The columns are described in ``applause_dr5.yaml``.
+
+    Attributes
+    ----------
+    curve
+        The calibration curve: natural magnitude as a function of the plate
+        magnitude (``mag_auto``).
+    """
+
+    table = 'phot_calib'
+
+    calib_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    solution_num: int | None = None
+    iteration: int | None = None
+    color_term: float | None = None
+    color_term_error: float | None = None
+    cterm_stdev_fit: float | None = None
+    cterm_stdev_min: float | None = None
+    cterm_range_min: float | None = None
+    cterm_range_max: float | None = None
+    cterm_iterations: int | None = None
+    cterm_num_stars: int | None = None
+    num_gaia_dr4: int | None = None
+    num_candidate_stars: int | None = None
+    num_calib_stars: int | None = None
+    num_bright_stars: int | None = None
+    num_outliers: int | None = None
+    bright_limit: float | None = None
+    faint_limit: float | None = None
+    mag_range: float | None = None
+    rmse_min: float | None = None
+    rmse_median: float | None = None
+    rmse_max: float | None = None
+    plate_mag_brightest: float | None = None
+    plate_mag_density02: float | None = None
+    plate_mag_brightcut: float | None = None
+    plate_mag_maxden: float | None = None
+    plate_mag_lim: float | None = None
+
+    curve: Callable | None = related(default=None)
+
+
+@dataclass
+class PhotCalibCurve(DbRecord):
+    """A point of a photometric calibration curve (``phot_calib_curve``
+    table).
+
+    The columns are described in ``applause_dr5.yaml``.
+    """
+
+    table = 'phot_calib_curve'
+
+    calibcurve_id: int | None = None
+    calib_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    solution_num: int | None = None
+    iteration: int | None = None
+    plate_mag: float | None = None
+    natmag: float | None = None
+
+
 class PhotometryProcess:
     """
     Plate photometry process class
 
+    The calibrations are collected in ``phot_calib_list`` as dictionaries
+    of ``phot_calib`` columns.
+
+    Parameters
+    ----------
+    ctx
+        Context of the process.
+    sources
+        Sources crossmatched with Gaia; the calibration writes its columns.
+    solution
+        Astrometric solutions.
+
     """
 
-    def __init__(self):
-        self.basefn = ''
-        self.write_phot_dir = ''
-        self.scratch_dir = None
-        self.log = None
-    
-        self.plate_header = None
-        self.platemeta = None
+    def __init__(self, ctx: ProcessContext, sources: SourceTable,
+                 solution: SolutionSet):
+        self.basefn = ctx.basefn
+        self.write_phot_dir = ctx.cfg.files.write_phot_dir
+        self.scratch_dir = ctx.work_dir
+        self.log = ctx.log
+        self.plate_header = ctx.header
 
-        self.sources = None
-        self.plate_solution = None
+        self.sources = sources
+        self.solution = solution
 
         self.phot_cterm_list = []
         self.phot_calib = None
@@ -48,16 +137,6 @@ class PhotometryProcess:
         self.calib_curve = None
         self.faint_limit = None
         self.bright_limit = None
-
-    def assign_conf(self, conf):
-        """
-        Assign the configuration (:class:`pyplate.config.Config`) and set
-        class attributes from it.
-
-        """
-
-        self.conf = conf
-        self.write_phot_dir = conf.files.write_phot_dir
 
     def evaluate_color_term(self, sources, solution_num=0):
         """
@@ -393,7 +472,7 @@ class PhotometryProcess:
 
         """
 
-        num_solutions = self.plate_solution.num_solutions
+        num_solutions = self.solution.num_solutions
 
         assert (solution_num is None or 
                 (solution_num > 0 and solution_num <= num_solutions))

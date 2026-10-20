@@ -43,7 +43,8 @@ from pyplate.config.ini2toml import convert, read_ini
 from pyplate.database.db_pgsql import PgsqlBackend
 from pyplate.process.catalog import StarCatalog
 from pyplate.process.pipeline import PlatePipeline
-from pyplate.process.process import Process
+from pyplate.process.photometry import PhotCalib
+from pyplate.process.process import PlateProcess
 from pyplate.process.sources import SourceTable
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -85,6 +86,27 @@ PROGRAMS = ['sextractor_path', 'psfex_path', 'scamp_path', 'solve_field_path',
 
 # Result tables whose SQL is too large for results_small.sql
 LARGE_TABLES = ['solution_healpix', 'source', 'source_calib', 'source_xmatch']
+
+# Keys of the solution dictionaries of the old code, as saved in
+# summary.json (duplicate solutions also have unique_num)
+SOLUTION_KEYS = ['solution_num', 'ra_icrs', 'dec_icrs', 'ra_icrs_hms',
+                 'dec_icrs_dms', 'fov1', 'fov2', 'half_diag', 'pixel_scale',
+                 'source_density', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2',
+                 'rotation_angle', 'plate_mirrored', 'ncp_close', 'scp_close',
+                 'ncp_on_plate', 'scp_on_plate', 'stc_box', 'stc_polygon',
+                 'header_anet', 'header_scamp', 'header_wcs',
+                 'skycoord_corners', 'x_centroid', 'y_centroid',
+                 'rel_x_centroid', 'rel_y_centroid', 'num_xmatch',
+                 'scamp_dscale', 'scamp_dangle', 'scamp_dx', 'scamp_dy',
+                 'scamp_sigma_1', 'scamp_sigma_2', 'scamp_sigma_mean',
+                 'scamp_chi2', 'scamp_ndeg', 'scamp_distort',
+                 'scamp_iteration', 'num_gaia_dr4', 'healpix_table']
+
+# Keys of the calibration dictionaries of the old code: the phot_calib
+# columns without the IDs
+PHOT_CALIB_KEYS = [c for c in PhotCalib.columns()
+                   if c not in ('calib_id', 'process_id', 'scan_id',
+                                'plate_id', 'archive_id')]
 
 
 class ReferenceCursor(RecordingCursor):
@@ -257,7 +279,7 @@ def install_wrappers():
     # Crossmatch: inputs and outputs of every call
     orig_crossmatch = SourceTable.crossmatch_gaia
 
-    def crossmatch_gaia(self, plate_solution=None, star_catalog=None):
+    def crossmatch_gaia(self, solution_set=None, star_catalog=None):
         STATE.xmatch_count += 1
         n = STATE.xmatch_count
         d = os.path.join(STATE.plate_dir, 'crossmatch')
@@ -269,22 +291,22 @@ def install_wrappers():
         if star_catalog is not None:
             write_table(star_catalog, prefix + 'catalog_in.fits')
 
-        if plate_solution is not None:
+        if solution_set is not None:
             sol_info = {
                 'source_table_plate_epoch': self.plate_epoch,
-                'num_solutions': plate_solution.num_solutions,
-                'mean_pixel_scale': plate_solution.mean_pixel_scale,
-                'imwidth': plate_solution.imwidth,
-                'imheight': plate_solution.imheight,
-                'solutions': [{k: s[k] for k in
+                'num_solutions': solution_set.num_solutions,
+                'mean_pixel_scale': solution_set.mean_pixel_scale,
+                'imwidth': solution_set.imwidth,
+                'imheight': solution_set.imheight,
+                'solutions': [{k: getattr(s, k) for k in
                                ['solution_num', 'header_wcs', 'scamp_sigma_1',
                                 'scamp_sigma_2', 'scamp_ndeg']}
-                              for s in plate_solution.solutions]}
+                              for s in solution_set.solutions]}
 
             with open(prefix + 'solution.json', 'w') as f:
                 json.dump(encode(sol_info), f, indent=1)
 
-        result = orig_crossmatch(self, plate_solution, star_catalog)
+        result = orig_crossmatch(self, solution_set, star_catalog)
         cols = [c for c in MATCH_COLUMNS if c in self.colnames]
         write_table(self[cols], prefix + 'matches.fits')
 
@@ -295,8 +317,9 @@ def install_wrappers():
 
     SourceTable.crossmatch_gaia = crossmatch_gaia
 
-    # Process.finish() removes the scratch directory: save the results first
-    orig_finish = Process.finish
+    # PlateProcess.finish() removes the scratch directory: save the results
+    # first
+    orig_finish = PlateProcess.finish
 
     def finish(self, completed=1):
         try:
@@ -307,17 +330,23 @@ def install_wrappers():
 
         return orig_finish(self, completed)
 
-    Process.finish = finish
+    PlateProcess.finish = finish
 
 
 def save_results(proc, completed):
+    """Save the results in the layout of the old code (Process attributes,
+    PlateSolution and dictionaries)."""
     d = STATE.plate_dir
-    results = {'process': {k: getattr(proc, k, None) for k in
-                           ['filename', 'completed', 'plate_epoch', 'plate_year',
-                            'imwidth', 'imheight', 'num_sources',
-                            'plate_solved', 'num_iterations', 'archive_id',
-                            'scan_id', 'plate_id', 'process_id']}}
-    results['process']['completed'] = completed
+    ctx = proc.ctx
+    record = ctx.record
+    results = {'process': {
+        'filename': ctx.filename, 'completed': completed,
+        'plate_epoch': ctx.plate_epoch, 'plate_year': ctx.plate_year,
+        'imwidth': ctx.imwidth, 'imheight': ctx.imheight,
+        'num_sources': record.num_sources, 'plate_solved': proc.plate_solved,
+        'num_iterations': record.num_iterations,
+        'archive_id': record.archive_id, 'scan_id': record.scan_id,
+        'plate_id': record.plate_id, 'process_id': record.process_id}}
 
     if proc.sources is not None:
         write_table(proc.sources, os.path.join(d, 'sources.fits'))
@@ -325,7 +354,7 @@ def save_results(proc, completed):
                               'columns': proc.sources.colnames,
                               'stats': column_stats(proc.sources)}
 
-    psol = proc.plate_solution
+    psol = proc.solution
 
     if psol is not None:
         attrs = ['num_solutions', 'num_duplicate_solutions', 'pattern_ratio',
@@ -339,26 +368,34 @@ def save_results(proc, completed):
             results['plate_solution'][kind] = []
 
             for i, sol in enumerate(sols):
-                if sol.get('healpix_table') is not None:
-                    write_table(sol['healpix_table'],
+                if sol.healpix_table is not None:
+                    write_table(sol.healpix_table,
                                 os.path.join(d, '{}_{:02d}_healpix.fits'
                                              .format(kind, i + 1)))
 
-                results['plate_solution'][kind].append(dict(sol))
+                keys = SOLUTION_KEYS
+
+                if kind == 'duplicate_solutions':
+                    keys = keys + ['unique_num']
+
+                results['plate_solution'][kind].append(
+                    {k: getattr(sol, k) for k in keys})
 
         if getattr(psol, 'pattern_table', None) is not None:
             write_table(psol.pattern_table,
                         os.path.join(d, 'scanner_pattern.fits'))
 
-    results['phot_calib'] = list(proc.phot_calib_list or [])
+    phot_calib = proc.phot_calib or []
+    results['phot_calib'] = [{k: getattr(c, k) for k in PHOT_CALIB_KEYS}
+                             for c in phot_calib]
 
     # Calibration curves are functions: evaluate them as
-    # Process.output_calibration_db() does
+    # output.write_calibration() does
     curves = []
 
-    for i, calib in enumerate(results['phot_calib']):
+    for c, calib in zip(phot_calib, results['phot_calib']):
         try:
-            curve = proc.phot_calib_curves[i]
+            curve = c.curve
             mags = np.arange(np.floor(calib['plate_mag_brightest'] * 10) / 10.,
                              np.ceil(calib['plate_mag_lim'] * 10) / 10. + 0.01,
                              0.1)

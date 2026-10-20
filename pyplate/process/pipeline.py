@@ -7,7 +7,8 @@ from ..config import load_config
 from ..metadata import ArchiveReader, PlateHeader
 from ..database.database import PlateDB
 from ..image import PlateConverter
-from .process import Process
+from . import output
+from .process import PlateProcess
 
 
 class PlatePipeline:
@@ -101,16 +102,13 @@ class PlatePipeline:
             fn_header = os.path.splitext(fn)[0] + '.hdr'
             h.output_to_file(fn_header)
 
-        proc = Process(fn)
-        proc.assign_conf(self.conf)
-        proc.assign_header(h)
-        proc.assign_metadata(plate)
+        proc = PlateProcess(self.conf, fn, plate=plate, scan=scan, header=h)
 
         if self.plate_epoch is not None:
-            proc.plate_epoch = self.plate_epoch
+            proc.ctx.plate_epoch = self.plate_epoch
 
         if plate_epoch is not None:
-            proc.plate_epoch = plate_epoch
+            proc.ctx.plate_epoch = plate_epoch
 
         proc.setup()
 
@@ -132,21 +130,21 @@ class PlatePipeline:
                 proc.sources.process_coordinates()
 
             if self.output_wcs_file:
-                proc.output_wcs_header()
+                output.write_wcs_header(proc)
 
             if proc.plate_solved:
-                proc.log.write('Updating FITS header with the WCS', 
-                               level=3, event=37)
-                h.insert_wcs(proc.plate_solution.header_wcs)
+                proc.ctx.log.write('Updating FITS header with the WCS', 
+                                   level=3, event=37)
+                h.insert_wcs(proc.solution.header_wcs)
 
             if self.output_header_file:
-                proc.log.write('Writing FITS header to a file', 
-                               level=3, event=38)
+                proc.ctx.log.write('Writing FITS header to a file', 
+                                   level=3, event=38)
                 h.output_to_file(fn_header)
 
             if self.output_header_fits:
-                proc.log.write('Writing FITS header to the FITS file', 
-                               level=3, event=39)
+                proc.ctx.log.write('Writing FITS header to the FITS file', 
+                                   level=3, event=39)
                 h.output_to_fits(fn)
 
                 # Get metadata for the updated FITS file
@@ -162,25 +160,29 @@ class PlatePipeline:
                 platedb.close_connection()
         
             if self.crossmatch_gaia:
-                proc.query_star_catalog(mag_range=[0,12])
-                proc.sources.log = proc.log
-                proc.sources.crossmatch_gaia(proc.plate_solution,
-                                             proc.star_catalog)
+                proc.crossmatch()
 
             if self.calibrate_photometry:
                 proc.calibrate_photometry()
 
-            if self.output_solution_db:
-                proc.output_solution_db()
+            if (self.output_solution_db or self.output_calibration_db or
+                self.output_sources_db):
+                platedb = PlateDB(self.conf.database, self.conf.files)
+                platedb.open_connection()
 
-            if self.output_calibration_db:
-                proc.output_calibration_db()
+                if self.output_solution_db:
+                    output.write_solution(platedb, proc)
 
-            if self.output_sources_db:
-                proc.output_sources_db()
+                if self.output_calibration_db:
+                    output.write_calibration(platedb, proc)
+
+                if self.output_sources_db:
+                    output.write_sources(platedb, proc)
+
+                platedb.close_connection()
 
             if self.output_sources_csv:
-                proc.output_sources_csv()
+                output.write_sources_csv(proc)
 
         proc.finish()
 

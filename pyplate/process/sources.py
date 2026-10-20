@@ -1,29 +1,13 @@
-import os
-import glob
-import shutil
-import sys
-import math
-import datetime as dt
-import subprocess as sp
 import numpy as np
 import warnings
-import xml.etree.ElementTree as ET
-from astropy import __version__ as astropy_version
 from astropy import wcs
-from astropy.io import fits, votable
 from astropy.table import Table, Column, MaskedColumn, vstack, join
-from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
+from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.coordinates import Galactic, GeocentricMeanEcliptic
 from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
 from astropy.time import Time
-from astropy.stats import sigma_clip
-from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
-from scipy.ndimage.filters import generic_filter
-from scipy.linalg import lstsq
 from collections import OrderedDict
-from ..database.database import PlateDB
-from .._version import __version__
 
 try:
     from scipy.spatial import cKDTree as KDT
@@ -31,27 +15,10 @@ except ImportError:
     from scipy.spatial import KDTree as KDT
 
 try:
-    from sklearn.cluster import DBSCAN
-    have_sklearn = True
-except ImportError:
-    have_sklearn = False
-
-try:
-    import MySQLdb
-except ImportError:
-    pass
-
-try:
     import healpy
     have_healpy = True
 except ImportError:
     have_healpy = False
-
-try:
-    import statsmodels.api as sm
-    have_statsmodels = True
-except ImportError:
-    have_statsmodels = False
 
 
 _source_meta = OrderedDict([
@@ -178,66 +145,16 @@ class SourceTable(Table):
     """
 
     def __init__(self, *args, **kwargs):
-        num_sources = kwargs.pop('num_sources', None)
         super().__init__(*args, **kwargs)
 
-        #self.filename = os.path.basename(filename)
-        #self.archive_id = archive_id
-        self.basefn = ''
-        self.fn_fits = ''
-        self.process_id = None
-        self.scan_id = None
-        self.plate_id = None
         self.log = None
+        self.plate = None
 
-        self.work_dir = ''
-        self.scratch_dir = None
-        self.write_source_dir = ''
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
-
+        # Epoch to which crossmatch_gaia() moves the Gaia positions
         self.plate_epoch = 1950
-        self.plate_year = int(self.plate_epoch)
-        self.threshold_sigma = 4.
-        self.use_filter = False
-        self.filter_path = None
-        self.use_psf = False
-        self.psf_threshold_sigma = 20.
-        self.psf_model_sigma = 20.
-        self.min_model_sources = 100
-        self.max_model_sources = 10000
-        self.sip = 3
-        self.skip_bright = 10
-        self.distort = 3
-        self.subfield_distort = 1
-        self.max_recursion_depth = 5
-        self.force_recursion_depth = 0
-        self.circular_film = False
-        self.crossmatch_radius = None
-        self.crossmatch_nsigma = 10.
-        self.crossmatch_nlogarea = 2.
-        self.crossmatch_maxradius = 20.
 
-        self.plate_header = None
-        self.platemeta = None
-        self.imwidth = None
-        self.imheight = None
-        self.plate_solved = False
-        self.mean_pixscale = None
-        self.num_sources = num_sources
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
-        self.min_ra = None
-        self.max_ra = None
-        self.min_dec = None
-        self.max_dec = None
-        self.ncp_close = None
-        self.scp_close = None
-        self.ncp_on_plate = None
-        self.scp_on_plate = None
-        self.pattern_x = None
-        self.pattern_y = None
-        self.pattern_ratio = None
         self.num_crossmatch_gaia = None
         self.neighbors_gaia = None
 
@@ -293,18 +210,6 @@ class SourceTable(Table):
         self['phot_range_flags'] = 0
         self['phot_calib_flags'] = 0
 
-    def assign_conf(self, conf):
-        """
-        Assign the configuration (:class:`pyplate.config.Config`) and set
-        class attributes from it.
-
-        """
-
-        from .settings import conf_attributes
-
-        self.conf = conf
-        self.__dict__.update(conf_attributes(conf))
-
     def copy_from_sextractor(self, xycat):
         """
         Copy source data from SExtractor output file.
@@ -319,47 +224,47 @@ class SourceTable(Table):
                     if _source_meta[n][2]]:
             self[k] = xycat[1].data.field(v)
 
-    def apply_scanner_pattern(self, plate_solution=None):
+    def apply_scanner_pattern(self, solution_set=None):
         """
         Correct source coordinates for scanner pattern.
 
         Parameters
         ----------
-        plate_solution: PlateSolution instance
+        solution_set: SolutionSet instance
 
         """
 
-        from .solve import PlateSolution
-        assert isinstance(plate_solution, PlateSolution)
-        assert plate_solution.pattern_ratio is not None
+        from .solve import SolutionSet
+        assert isinstance(solution_set, SolutionSet)
+        assert solution_set.pattern_ratio is not None
 
-        if plate_solution.pattern_ratio > 1.5:
+        if solution_set.pattern_ratio > 1.5:
             y_source = self['y_source']
-            self['y_source'] = (y_source - plate_solution.pattern_y(y_source))
-        elif plate_solution.pattern_ratio < 2./3.:
+            self['y_source'] = (y_source - solution_set.pattern_y(y_source))
+        elif solution_set.pattern_ratio < 2./3.:
             x_source = self['x_source']
-            self['x_source'] = (x_source - plate_solution.pattern_x(x_source))
+            self['x_source'] = (x_source - solution_set.pattern_x(x_source))
 
-    def crossmatch_gaia(self, plate_solution=None, star_catalog=None):
+    def crossmatch_gaia(self, solution_set=None, star_catalog=None):
         """
         Crossmatch sources with Gaia objects, considering multiple solutions.
 
         Parameters:
         -----------
-        plate_solution : :class:`solve.PlateSolution`
+        solution_set : :class:`solve.SolutionSet`
             Plate solution with one or more astrometric solutions
         star_catalog : :class:`catalog.StarCatalog`
             External star catalog with Gaia data
 
         """
 
-        from .solve import PlateSolution
+        from .solve import SolutionSet
         from .catalog import StarCatalog
 
         self.log.write('Crossmatching sources with Gaia objects',
                        level=3, event=44)
 
-        if plate_solution is None or plate_solution.num_solutions == 0:
+        if solution_set is None or solution_set.num_solutions == 0:
             self.log.write('Cannot crossmatch sources with Gaia objects '
                            'due to missing astrometric solutions!',
                            level=2, event=44)
@@ -371,13 +276,13 @@ class SourceTable(Table):
                            level=2, event=44)
             return
 
-        assert isinstance(plate_solution, PlateSolution)
+        assert isinstance(solution_set, SolutionSet)
         assert isinstance(star_catalog, StarCatalog)
 
-        # Take parameters from plate_solution
-        num_solutions = plate_solution.num_solutions
-        solutions = plate_solution.solutions
-        mean_pixscale = plate_solution.mean_pixel_scale
+        # Take parameters from solution_set
+        num_solutions = solution_set.num_solutions
+        solutions = solution_set.solutions
+        mean_pixscale = solution_set.mean_pixel_scale
 
         # Number of Gaia stars
         num_gaia = len(star_catalog)
@@ -399,7 +304,7 @@ class SourceTable(Table):
         index_ref = np.empty((0,), dtype=np.int32)
 
         # Build a list of Gaia stars in image coordinates
-        for i in np.arange(plate_solution.num_solutions):
+        for i in np.arange(solution_set.num_solutions):
             solution = solutions[i]
 
             # If there is a column named 'solution_num', then take only
@@ -409,7 +314,7 @@ class SourceTable(Table):
             else:
                 mask_sol = np.full(num_gaia, True)
 
-            w = wcs.WCS(solution['header_wcs'])
+            w = wcs.WCS(solution.header_wcs)
 
             try:
                 xr,yr = w.all_world2pix(ra_ref[mask_sol], dec_ref[mask_sol], 1)
@@ -419,8 +324,8 @@ class SourceTable(Table):
                                .format(i + 1, e))
                 continue
 
-            mask_inside = ((xr > 0.5) & (xr < plate_solution.imwidth) &
-                           (yr > 0.5) & (yr < plate_solution.imheight))
+            mask_inside = ((xr > 0.5) & (xr < solution_set.imwidth) &
+                           (yr > 0.5) & (yr < solution_set.imheight))
             num_inside = mask_inside.sum()
             xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
             xy_ref = np.vstack((xy_ref, xyr))
@@ -429,12 +334,12 @@ class SourceTable(Table):
                                    np.arange(num_gaia)[mask_sol][mask_inside]))
 
         # Calculate mean astrometric error
-        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in solutions
-                             if sol['scamp_sigma_1'] is not None])
-        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in solutions
-                             if sol['scamp_sigma_2'] is not None])
-        ndeg = np.array([sol['scamp_ndeg'] for sol in solutions
-                         if sol['scamp_sigma_1'] is not None])
+        sigma1 = u.Quantity([sol.scamp_sigma_1 for sol in solutions
+                             if sol.scamp_sigma_1 is not None])
+        sigma2 = u.Quantity([sol.scamp_sigma_2 for sol in solutions
+                             if sol.scamp_sigma_2 is not None])
+        ndeg = np.array([sol.scamp_ndeg for sol in solutions
+                         if sol.scamp_sigma_1 is not None])
 
         # Keep values only for solutions with scamp_ndeg > 10
         mask_ndeg = ndeg > 10
@@ -497,15 +402,15 @@ class SourceTable(Table):
         tab_grp = Table(grp.aggregate(len)['solution_num', 'source_num'])
         tab_grp.rename_column('source_num', 'num_gaia_dr4')
 
-        for i in np.arange(plate_solution.num_solutions):
+        for i in np.arange(solution_set.num_solutions):
             solution = solutions[i]
             m = tab_grp['solution_num'] == i + 1
 
             if m.sum() > 0:
                 num_gaia_dr4 = tab_grp['num_gaia_dr4'][m].data[0]
-                solution['num_gaia_dr4'] = num_gaia_dr4
+                solution.num_gaia_dr4 = num_gaia_dr4
             else:
-                solution['num_gaia_dr4'] = 0
+                solution.num_gaia_dr4 = 0
 
         # Crossmatch: find all neighbours for sources
         kdt_ref = KDT(xy_ref)
@@ -565,35 +470,35 @@ class SourceTable(Table):
             self.neighbors_gaia = nbs
 
         # Process coordinates again, because solution_num assignments may have changed
-        self.process_coordinates(plate_solution=plate_solution)
+        self.process_coordinates(solution_set=solution_set)
 
-    def process_coordinates(self, plate_solution=None):
+    def process_coordinates(self, solution_set=None):
         """
         Calculate HEALPix numbers, (X, Y, Z) on the unit sphere, nearest
         neighbor distance, zenith angle, air mass.
 
         Parameters:
         -----------
-        plate_solution : :class:`solve.PlateSolution`
+        solution_set : :class:`solve.SolutionSet`
             Plate solution with one or more astrometric solutions
 
         """
 
         self.log.write('Processing source coordinates', level=3, event=60)
 
-        if plate_solution is None or plate_solution.num_solutions == 0:
+        if solution_set is None or solution_set.num_solutions == 0:
             self.log.write('Cannot process source coordinates '
                            'due to missing astrometric solutions!',
                            level=2, event=60)
             return
 
         # Loop over solutions and transform image coordinates to RA and Dec
-        for i,solution in enumerate(plate_solution.solutions):
-            w = wcs.WCS(solution['header_wcs'])
+        for i,solution in enumerate(solution_set.solutions):
+            w = wcs.WCS(solution.header_wcs)
 
             # If there is only one solution, then transform coordinates of
             # all sources
-            if plate_solution.num_solutions == 1:
+            if solution_set.num_solutions == 1:
                 m = np.isfinite(self['x_source'])
             else:
                 m = self['solution_num'] == i + 1
@@ -605,10 +510,10 @@ class SourceTable(Table):
                 self['dec_icrs'][m] = dec
 
                 # Assign astrometric errors
-                if (solution['scamp_sigma_1'] is not None
-                    and solution['scamp_sigma_2'] is not None):
-                    self['ra_error'][m] = solution['scamp_sigma_1']
-                    self['dec_error'][m] = solution['scamp_sigma_2']
+                if (solution.scamp_sigma_1 is not None
+                    and solution.scamp_sigma_2 is not None):
+                    self['ra_error'][m] = solution.scamp_sigma_1
+                    self['dec_error'][m] = solution.scamp_sigma_2
 
         # Check if we have any usable coordinates
         bool_finite = (np.isfinite(self['ra_icrs']) &
@@ -642,10 +547,10 @@ class SourceTable(Table):
 
             # Loop over solutions and calculate healpix statistics for each
             # solution
-            for i,solution in enumerate(plate_solution.solutions):
+            for i,solution in enumerate(solution_set.solutions):
                 # Find all healpixes inside solution corners
-                lat = solution['skycoord_corners'].dec.deg
-                lon = solution['skycoord_corners'].ra.deg
+                lat = solution.skycoord_corners.dec.deg
+                lon = solution.skycoord_corners.ra.deg
                 vertices = healpy.pixelfunc.ang2vec(lon, lat, lonlat=True)
                 pix_inside = healpy.query_polygon(1024, vertices,
                                                   inclusive=False, nest=True)
@@ -669,7 +574,7 @@ class SourceTable(Table):
                 else:
                     tab_sum = tab_inside
 
-                solution['healpix_table'] = tab_sum
+                solution.healpix_table = tab_sum
 
         # Create SkyCoord from RA and Dec
         coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
@@ -694,23 +599,23 @@ class SourceTable(Table):
 
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
-        if (self.platemeta and 
-                self.platemeta.site_latitude and 
-                self.platemeta.site_longitude and 
-                (self.platemeta.numexp == 1) and
-                self.platemeta.exposures and
-                self.platemeta.exposures[0].ut_mid):
+        if (self.plate and 
+                self.plate.site_latitude and 
+                self.plate.site_longitude and 
+                (self.plate.numexp == 1) and
+                self.plate.exposures and
+                self.plate.exposures[0].ut_mid):
             self.log.write('Calculating zenith angle and air mass for sources', 
                            level=3, event=61)
-            lon = self.platemeta.site_longitude
-            lat = self.platemeta.site_latitude
+            lon = self.plate.site_longitude
+            lat = self.plate.site_latitude
             height = 0.
 
-            if self.platemeta.site_elevation:
-                height = self.platemeta.site_elevation
+            if self.plate.site_elevation:
+                height = self.plate.site_elevation
 
             loc = EarthLocation.from_geodetic(lon, lat, height)
-            date_avg = Time(self.platemeta.exposures[0].ut_mid, 
+            date_avg = Time(self.plate.exposures[0].ut_mid, 
                             format='isot', scale='ut1')
             c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
             self['zenith_angle'][ind_finite] = c_altaz.zen.deg
