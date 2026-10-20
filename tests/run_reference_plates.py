@@ -45,7 +45,6 @@ from pyplate.process.catalog import StarCatalog
 from pyplate.process.pipeline import PlatePipeline
 from pyplate.process.photometry import PhotCalib
 from pyplate.process.process import PlateProcess
-from pyplate.process.sources import SourceTable
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -69,7 +68,7 @@ HOSTNAME = 'reference-host'
 # Mock IDs returned by the recording database for the scan lookup
 SCAN_ID, PLATE_ID = 9001, 9002
 
-# Source-table columns written by crossmatch_gaia()
+# Source-table columns written by the crossmatch
 MATCH_COLUMNS = ['source_num', 'solution_num', 'match_radius', 'gaiadr4_id',
                  'gaiadr4_gmag', 'gaiadr4_bpmag', 'gaiadr4_rpmag',
                  'gaiadr4_bp_rp', 'gaiadr4_dist', 'gaiadr4_neighbors']
@@ -277,23 +276,24 @@ def install_wrappers():
     StarCatalog.query_gaia_sql = query_gaia_sql
 
     # Crossmatch: inputs and outputs of every call
-    orig_crossmatch = SourceTable.crossmatch_gaia
+    orig_match = PlateProcess.match_catalog
 
-    def crossmatch_gaia(self, solution_set=None, star_catalog=None):
+    def match_catalog(self, star_catalog):
         STATE.xmatch_count += 1
         n = STATE.xmatch_count
         d = os.path.join(STATE.plate_dir, 'crossmatch')
         prefix = os.path.join(d, 'xmatch_{:02d}_'.format(n))
+        solution_set = self.solution
 
         if n == 1:
-            write_table(self, prefix + 'sources_in.fits')
+            write_table(self.sources, prefix + 'sources_in.fits')
 
         if star_catalog is not None:
             write_table(star_catalog, prefix + 'catalog_in.fits')
 
         if solution_set is not None:
             sol_info = {
-                'source_table_plate_epoch': self.plate_epoch,
+                'crossmatch_epoch': self.ctx.plate_epoch,
                 'num_solutions': solution_set.num_solutions,
                 'mean_pixel_scale': solution_set.mean_pixel_scale,
                 'imwidth': solution_set.imwidth,
@@ -306,16 +306,17 @@ def install_wrappers():
             with open(prefix + 'solution.json', 'w') as f:
                 json.dump(encode(sol_info), f, indent=1)
 
-        result = orig_crossmatch(self, solution_set, star_catalog)
-        cols = [c for c in MATCH_COLUMNS if c in self.colnames]
-        write_table(self[cols], prefix + 'matches.fits')
+        result = orig_match(self, star_catalog)
+        cols = [c for c in MATCH_COLUMNS if c in self.sources.colnames]
+        write_table(self.sources[cols], prefix + 'matches.fits')
 
-        if getattr(self, 'neighbors_gaia', None) is not None:
-            write_table(self.neighbors_gaia, prefix + 'neighbors.fits')
+        if self.association is not None:
+            write_table(self.association.neighbors,
+                        prefix + 'neighbors.fits')
 
         return result
 
-    SourceTable.crossmatch_gaia = crossmatch_gaia
+    PlateProcess.match_catalog = match_catalog
 
     # PlateProcess.finish() removes the scratch directory: save the results
     # first

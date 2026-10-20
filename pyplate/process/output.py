@@ -146,8 +146,8 @@ def write_sources(db: PlateDB, proc: PlateProcess) -> None:
 
     db.write_sources(proc.sources, write_csv=write_csv, **kwargs)
 
-    if proc.sources.neighbors_gaia is not None:
-        db.write_source_xmatches(proc.sources.neighbors_gaia,
+    if proc.association is not None:
+        db.write_source_xmatches(proc.association.neighbors,
                                  write_csv=write_csv, **kwargs)
 
 

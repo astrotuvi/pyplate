@@ -100,7 +100,7 @@ pyplate/
       __init__.py
       reference.py          ReferenceStars: catalogue moved to the plate epoch and projected
       pairs.py              all source–star pairs within the search radius
-      tolerance.py          match radius from the astrometric errors
+      tolerance.py          match and search radii from the astrometric errors
       matcher.py            Matcher interface, Association
       nearest.py            NearestMatcher
 ```
@@ -626,6 +626,7 @@ class PlateProcess:
     def classify_artifacts(self)
     def solve_plate(self)
     def crossmatch(self)
+    def match_catalog(self, star_catalog)   # one crossmatch (6.5)
     def calibrate_photometry(self)   # current depth loop, adapted only (6.6)
     def finish(self)
 ```
@@ -667,12 +668,13 @@ table's columns.
 
 | Current | Becomes |
 |---|---|
-| `Process.extract_sources` (~720 lines) | `extraction.py`: `write_sextractor_config`, `run_sextractor`, `run_psfex`, `build_source_table`; `sources.py`: `compute_annular_bins`, `flag_edge_sources`, `apply_psf_coordinates` |
-| `SolveProcess.solve_plate` (~260) | a loop over `find_next_solution()` + `multiexp.find_pattern()` |
-| `find_astrometric_solution` (~585) | `select_solve_sources` (by exposure number, by nearest-neighbour pattern for multiple exposures, or in force mode); `anet.solve_field` (writes the source list and backend config, runs `solve-field`, retries without SIP); `Solution.from_anet`; `select_reference_stars`; `scamp.refine` |
-| `improve_astrometric_solutions` (~370) | `scamp.refine`, `scamp.parse_results` |
-| `find_multiexp_pattern` (~235) | `multiexp.py` helpers |
-| `SourceTable.crossmatch_gaia` (~230) | the `crossmatch/` package |
+| `Process.extract_sources` (~720 lines) | `PlateProcess.extract_sources` runs `extraction.py`: `measure_sky`, `extract_catalog`, `extract_psf_model_sources`, `run_psfex`, `extract_psf_catalog` (each writes its files with `write_sextractor_config` and runs `run_sextractor`), `build_source_table`; then `SourceTable.compute_annular_bins`, `flag_edge_sources` and `apply_psf_coordinates` (`sources.py`) |
+| `Process.classify_artifacts` | `artifacts.predict` (the Keras model) |
+| `SolveProcess.solve_plate` (~260) | `select_solve_sources`, `multiexp.find_pattern()`, a loop over `find_next_solution()` and `add_solution()` (unique or duplicate), `improve_solutions()` twice, `solution_set()` |
+| `find_astrometric_solution` (~585) | `find_next_solution`: `select_sources` (by exposure number, by nearest-neighbour pattern for multiple exposures, or in force mode); `anet.solve_field` (writes the source list and backend config, runs `solve-field`, retries without SIP); `Solution.from_anet`; `select_reference_stars`; `refine_solution` (`scamp.write_reference_catalog`, `scamp.write_tan_ahead`, `scamp.refine`, `scamp.parse_results`); `remove_matched_sources` |
+| `improve_astrometric_solutions` (~370) | `improve_solutions`: isolated reference stars and sources, `crossmatch_cartesian`, `multiexp.find_scanner_pattern`, the pattern table, and for each solution `scamp.refine`, `scamp.parse_results`, `scamp.set_statistics` |
+| `find_multiexp_pattern` (~235) | `multiexp.find_pattern` and its helpers: star clusters, cluster centres, scale and rotation across the plate, exposure offsets, exposure numbers |
+| `SourceTable.crossmatch_gaia` (~230) | the `crossmatch/` package, run by `PlateProcess.match_catalog` (6.5) |
 
 `ProcessLog` moves to `process/log.py`. Event and level numbers stay as they
 are.
@@ -688,11 +690,15 @@ separate package and collected in one object, `Association`.
 
 #### Steps
 
+`PlateProcess.match_catalog(star_catalog)` runs, for each catalogue
+(`crossmatch()` with G < 12, and every iteration of
+`calibrate_photometry()`):
+
 ```python
-refs = ReferenceStars.from_catalog(catalog, solution, ctx)    # reference.py
-match_radius, search_radius = tolerance.radii(solution)       # tolerance.py
-pairs = find_pairs(sources, refs, search_radius)              # pairs.py
-association = NearestMatcher(match_radius).associate(sources, refs, pairs)
+refs = ReferenceStars.from_catalog(catalog, solution_set, ctx.plate_epoch, log)  # reference.py
+radii = tolerance.radii(solution_set)                                             # tolerance.py
+pairs = find_pairs(sources, refs, radii.search)                                   # pairs.py
+association = NearestMatcher(radii).associate(sources, refs, pairs)               # nearest.py
 sources.add_matches(association, refs)
 ```
 
@@ -700,21 +706,25 @@ sources.add_matches(association, refs)
    plate epoch with proper motions and converted to pixel coordinates with
    each solution's WCS. Only stars inside the image are kept. On a plate with
    several exposures a star appears once per solution, so a reference star is
-   identified by `(gaiadr4_id, solution_num)`.
-2. **Radii** (`tolerance.py`): the current SCAMP-sigma logic gives two radii:
+   identified by its catalogue row and its solution (`index`,
+   `solution_num`, `xy`).
+2. **Radii** (`tolerance.py`): the current SCAMP-sigma logic gives two
+   radii, in pixels and in arcsec (`Radii`, with the mean pixel scale):
    - the match radius (5σ), within which a star can be the match of a source;
    - the search radius (20σ, at least 5″), within which a star counts as a
      neighbour.
 3. **Pairs** (`pairs.py`): every source–star pair closer than the search
-   radius, with its distance.
+   radius: `source_index`, `ref_index` and the distance in pixels.
 4. **Matching** (`nearest.py`): `NearestMatcher` picks, for each source, the
    nearest reference star within the match radius, as the current code does.
    It returns an `Association`.
 5. **Copying to the source table**: `SourceTable.add_matches()` copies the
-   match and the matched star's catalogue values into the source columns. The
-   number of matches per solution is stored in `Solution.num_gaia_dr4`.
-   Coordinates are then processed again, as now, because matches may change a
-   source's `solution_num`.
+   match and the matched star's catalogue values into the source columns, and
+   the number of neighbours. As in the current code, a source that is not
+   matched keeps the values of an earlier call (section 9). The number of
+   sources of each solution in the source table is stored in
+   `Solution.num_gaia_dr4`. Coordinates are then processed again, as now,
+   because matches may change a source's `solution_num`.
 
 #### The `Association` object
 
@@ -730,7 +740,8 @@ class Association:
 ```
 
 `matches`: the best match of each source; sources without a match have no
-row.
+row. Besides the columns below it has the working columns `source_index`
+and `ref_index` (row of the source table, index of the reference star).
 
 | Column | Meaning |
 |---|---|
@@ -749,7 +760,7 @@ match. This table is written to `source_xmatch` unchanged.
 | `source_num` | plate source |
 | `gaiadr4_id` | Gaia star |
 | `solution_num` | solution the star's position comes from |
-| `dist` | distance between source and star (arcsec) |
+| `dist` | distance between source and star (pixels) |
 | `x_gaia`, `y_gaia` | star's position on the plate (pixels) |
 | `flag_xmatch` | 1 if this pair is the source's match, otherwise 0 |
 
@@ -775,8 +786,8 @@ the match radius.
 | Result | Destination |
 |---|---|
 | `matches` + catalogue values of the matched star (`gaiadr4_gmag`, `gaiadr4_bp_rp`, BP and RP magnitudes) | `SourceTable` columns; written to `source_calib` |
-| `neighbors` | `source_xmatch` |
-| number of matches per solution | `Solution.num_gaia_dr4`; written to `solution` |
+| `neighbors` (of the last crossmatch, `PlateProcess.association`) | `source_xmatch` |
+| number of matched sources per solution | `Solution.num_gaia_dr4`; written to `solution` |
 
 Photometry reads the matches from the source table, as now. A source with
 `gaiadr4_neighbors == 1` has a single Gaia star nearby and is a candidate
@@ -821,7 +832,7 @@ future blend-aware matcher (section 10) can mark several stars per source in
 | `test_metadata_regression.py` | New results equal the old `compute_values` results in `tests/ver4/metadata/expected.json` (WFPDB, `tests/data` and mock archives; see `tests/ver4/README.md`) |
 | `test_timeutils.py` | ST→UT, HJD, evening dates |
 | `test_config.py` | Parsing, unknown-key errors; `ini2toml` converts the old-format configurations in `tests/ver4` to exactly their TOML versions (`metadata/*.toml`, `header/header.toml`, `plates/plates.toml`) |
-| `test_crossmatch.py` | `NearestMatcher` gives the same results as the old `crossmatch_gaia` |
+| `test_crossmatch.py` | The `crossmatch/` steps give the results of the old `crossmatch_gaia` for its three calls on a part of each reference plate (`tests/ver4/crossmatch`, cut from the reference run with `gen_crossmatch.py`), run at the old epoch 1950: the source columns after each call and the neighbour tables are identical |
 | `test_header.py` | `PlateHeader.from_metadata()` with the mock inputs in `tests/ver4/header/mock_header.json` gives exactly `header.txt`, and after `insert_wcs()` `header_wcs.txt` (see `tests/ver4/README.md`) |
 | Reference-plate comparison | The old pipeline (`run_reference_plates.py`) and the new code give the same results for the reference plates LA02333 and LA02334: sources, solutions, crossmatch, calibration and the result SQL, run with `tests/run_reference_plates.py`, compared exactly with `compare_reference_plates.py --dr5` (two runs of the old code with the same Gaia results were identical, apart from times, paths and CPU times in astrometry.net header comments, which the comparison ignores); run on the machine with the external programs and data (see `tests/ver4/README.md`, section "Reference plates") |
 
@@ -888,6 +899,7 @@ so each fix is a separate, deliberate change:
 |---|---|
 | When the photometric calibration fails for all solutions, the calibrations of the finished iterations are still written to `phot_calib`, without curves. The old code shared one list object between `Process` and `PhotometryProcess` (`__dict__.update`), so the partial results reached the output. `PlateProcess.calibrate_photometry` now does this explicitly. | `phot_calib` rows for a process with `calibrated = 0`. |
 | After solving, `PlatePipeline.single_image()` calls `sources.process_coordinates()` without the solutions; the call only logs a warning. The coordinates are computed only by the crossmatch, which calls it with the solutions. | With `crossmatch_gaia` off, the sources get no sky coordinates (`ra_icrs`, `dec_icrs`, HEALPix, Galactic and ecliptic coordinates, air mass). |
+| The crossmatch is repeated with each catalogue of the photometric calibration, and `add_matches()` only overwrites the sources matched in that call. The first catalogue is limited in G (< 12), the later ones in the plate passband (RP + c·(BP−RP)), so very red stars (BP−RP ≈ 6–7) of the first catalogue are missing from the later ones, and their sources keep the first match. | The source table (and `source_calib`) holds matches with stars that are not in the final catalogue, and that are not in `source_xmatch`; `Solution.num_gaia_dr4` counts them, `process.num_gaia_dr4` does not (for the reference plates 7 of 13,317 sources for LA02333, 2 of 3,254 for LA02334). |
 
 ## 10. Future developments
 

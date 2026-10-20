@@ -52,5 +52,14 @@ PyPlate API
 .. automodule:: pyplate.process.context
     :members:
 
+.. automodule:: pyplate.process.extraction
+    :members:
+
+.. automodule:: pyplate.process.solve
+    :members:
+
+.. automodule:: pyplate.process.crossmatch
+    :members:
+
 .. automodule:: pyplate.process.output
     :members:

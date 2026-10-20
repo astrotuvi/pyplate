@@ -4,14 +4,12 @@ import os
 import shutil
 import datetime as dt
 import subprocess as sp
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from astropy import __version__ as astropy_version
 from astropy.io import fits
-from astropy.table import Table
 from scipy import __version__ as scipy_version
 
 from ..config import Config
@@ -19,24 +17,15 @@ from ..database.database import PlateDB
 from ..metadata import Plate, Scan
 from ..metadata.base import DbRecord
 from .._version import __version__
+from . import artifacts, extraction
 from .catalog import StarCatalog
 from .context import ProcessContext
+from .crossmatch import (Association, NearestMatcher, ReferenceStars,
+                         find_pairs, tolerance)
 from .log import ProcessLog
 from .photometry import PhotCalib, PhotometryProcess
 from .solve import SolutionSet, SolveProcess
 from .sources import SourceTable
-
-try:
-    from scipy.spatial import cKDTree as KDT
-except ImportError:
-    from scipy.spatial import KDTree as KDT
-
-try:
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-    from keras.models import load_model
-    have_keras = True
-except ImportError:
-    have_keras = False
 
 try:
     from statsmodels import __version__ as statsmodels_version
@@ -117,6 +106,9 @@ class PlateProcess:
         Extracted sources.
     solution
         Astrometric solutions.
+    association
+        Crossmatch of the sources with Gaia stars (the last one, made with
+        the deepest catalogue).
     phot_calib
         Photometric calibrations.
     """
@@ -136,6 +128,7 @@ class PlateProcess:
                                   plate_epoch=cfg.solve.plate_epoch)
         self.sources: SourceTable | None = None
         self.solution: SolutionSet | None = None
+        self.association: Association | None = None
         self.phot_calib: list[PhotCalib] | None = None
         self.timestamp = dt.datetime.now()
         self.active = False
@@ -381,44 +374,57 @@ class PlateProcess:
             self.ctx.log.write('Inverted file exists: {}'.format(fn_inverted), 
                                level=4, event=11)
 
-    def extract_sources(self, threshold_sigma=None, use_filter=None,
-                        filter_path=None, use_psf=None, 
-                        psf_threshold_sigma=None, psf_model_sigma=None, 
-                        circular_film=None):
+    def extract_sources(self, threshold_sigma: float | None = None,
+                        use_filter: bool | None = None,
+                        filter_path: str | None = None,
+                        use_psf: bool | None = None,
+                        psf_threshold_sigma: float | None = None,
+                        psf_model_sigma: float | None = None,
+                        circular_film: bool | None = None) -> None:
         """
         Extract sources from a FITS file.
 
+        SExtractor first measures the sky, then extracts the sources;
+        with use_psf, PSFEx builds a PSF model from bright sources and the
+        PSF coordinates replace the coordinates of the bright sources. The
+        sources are put into annular bins and flagged. Existing catalogues
+        in the scratch directory are reused.
+
+        The arguments default to the values in ``[Extraction]``.
+
         Parameters
         ----------
-        threshold_sigma : float
-            SExtractor threshold in sigmas (default 4.0)
-        use_filter : bool
-            Use SExtractor filter for source detection (default False)
-        filter_path : string
+        threshold_sigma
+            SExtractor threshold in sigmas
+        use_filter
+            Use SExtractor filter for source detection
+        filter_path
             Path to SExtractor filter file
-        use_psf : bool
-            Use PSF for bright stars (default False)
-        psf_threshold_sigma : float
-            SExtractor threshold in sigmas for using PSF (default 20.0)
-        psf_model_sigma : float
-            SExtractor threshold in sigmas for PSF model stars (default 20.0)
-        circular_film : bool
-            Assume circular film (default False)
+        use_psf
+            Use PSF for bright stars
+        psf_threshold_sigma
+            SExtractor threshold in sigmas for using PSF
+        psf_model_sigma
+            SExtractor threshold in sigmas for PSF model stars
+        circular_film
+            Assume circular film
         """
 
-        self.ctx.log.write('Extracting sources from image', level=3, event=20)
-        sex_ver = (sp.check_output([self.ctx.cfg.programs.sextractor_path, '--version']).strip()
+        ctx = self.ctx
+        settings = ctx.cfg.extraction
+        ctx.log.write('Extracting sources from image', level=3, event=20)
+        sex_ver = (sp.check_output([ctx.cfg.programs.sextractor_path, '--version']).strip()
                    .decode('utf-8'))
-        self.ctx.log.write('Using {}'.format(sex_ver), level=4, event=20)
+        ctx.log.write('Using {}'.format(sex_ver), level=4, event=20)
 
         if threshold_sigma is None:
-            threshold_sigma = self.ctx.cfg.extraction.threshold_sigma
+            threshold_sigma = settings.threshold_sigma
 
         if use_filter is None:
-            use_filter = self.ctx.cfg.extraction.use_filter
+            use_filter = settings.use_filter
 
         if filter_path is None:
-            filter_path = self.ctx.cfg.extraction.filter_path
+            filter_path = settings.filter_path
 
         if use_filter and filter_path:
             filter_exists = os.path.exists(filter_path)
@@ -427,74 +433,35 @@ class PlateProcess:
 
         if use_filter and not filter_exists:
             use_filter = False
-            self.ctx.log.write('Filter file does not exist: {}'
-                               ''.format(filter_path), 
-                               level=2, event=20)
+            ctx.log.write('Filter file does not exist: {}'
+                          ''.format(filter_path),
+                          level=2, event=20)
+
+        if not use_filter:
+            filter_path = None
 
         if use_psf is None:
-            use_psf = self.ctx.cfg.extraction.use_psf
+            use_psf = settings.use_psf
 
         if psf_threshold_sigma is None:
-            psf_threshold_sigma = self.ctx.cfg.extraction.psf_threshold_sigma
+            psf_threshold_sigma = settings.psf_threshold_sigma
 
         if psf_model_sigma is None:
-            psf_model_sigma = self.ctx.cfg.extraction.psf_model_sigma
+            psf_model_sigma = settings.psf_model_sigma
 
         if circular_film is None:
-            circular_film = self.ctx.cfg.extraction.circular_film
+            circular_film = settings.circular_film
 
-        self.ctx.log.write('Running SExtractor to get sky value', level=3, 
-                           event=21)
-
-        # Create parameter file
-        fn_sex_param = self.ctx.basefn + '_sextractor.param'
-        fconf = open(os.path.join(self.ctx.work_dir, fn_sex_param), 
-                     'w')
-        fconf.write('NUMBER')
-        fconf.close()
-
-        # Create configuration file
-        cnf = 'DETECT_THRESH    {:f}\n'.format(60000)
-        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(60000)
-        cnf += 'THRESH_TYPE      ABSOLUTE\n'
-        cnf += 'FILTER           N\n'
-        cnf += 'SATUR_LEVEL      65000.0\n'
-        cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-        cnf += 'MAG_ZEROPOINT    25.0\n'
-        cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-        cnf += 'CATALOG_TYPE     FITS_1.0\n'
-        cnf += 'CATALOG_NAME     {}_sky.cat\n'.format(self.ctx.basefn)
-        cnf += 'WRITE_XML        Y\n'
-        cnf += 'XML_NAME         sex.xml\n'
-
-        fn_sex_conf = self.ctx.basefn + '_sextractor.conf'
-        self.ctx.log.write('Writing SExtractor configuration file {}'
-                           .format(fn_sex_conf), level=4, event=21)
-        self.ctx.log.write('SExtractor configuration file:\n{}'
-                           .format(cnf), level=5, event=21)
-        fconf = open(os.path.join(self.ctx.work_dir, fn_sex_conf), 
-                     'w')
-        fconf.write(cnf)
-        fconf.close()
-
-        cmd = self.ctx.cfg.programs.sextractor_path
-        cmd += ' %s_inverted.fits' % self.ctx.basefn
-        cmd += ' -c %s' % fn_sex_conf
-        self.ctx.log.write('Subprocess: {}'.format(cmd), 
-                           level=5, event=21)
-        sp.call(cmd, shell=True, stdout=self.ctx.log.handle, 
-                stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
-        self.ctx.log.write('', timestamp=False, double_newline=False)
-
-        tree = ET.parse(os.path.join(self.ctx.work_dir, 'sex.xml'))
-        root = tree.getroot()
+        ctx.log.write('Running SExtractor to get sky value', level=3,
+                      event=21)
+        sky_values = extraction.measure_sky(ctx)
         use_fix_threshold = False
+        sky, sky_sigma = None, None
 
-        if root[1][4][15][11].attrib['name'] == 'Background_Mean':
-            sky = float(root[1][4][15][19][0][0][8].text)
-            sky_sigma = float(root[1][4][15][19][0][0][9].text)
-            self.ctx.log.write('Sky: {:.3f}, sigma: {:.3f}'.format(sky, sky_sigma), 
-                       level=4, event=21)
+        if sky_values is not None:
+            sky, sky_sigma = sky_values
+            ctx.log.write('Sky: {:.3f}, sigma: {:.3f}'.format(sky, sky_sigma),
+                          level=4, event=21)
             self.update_process(sky=sky, sky_sigma=sky_sigma)
 
             if sky < 2*sky_sigma or sky < 100:
@@ -502,665 +469,180 @@ class PlateProcess:
                 psf_model_threshold = 20000
                 psf_threshold_adu = 20000
                 threshold_adu = 5000
-                self.ctx.log.write('Sky value too low, using fixed thresholds', 
-                                   level=4, event=21)
+                ctx.log.write('Sky value too low, using fixed thresholds',
+                              level=4, event=21)
 
         # If SExtractor catalog does not exist then run SExtractor
-        if not os.path.exists(os.path.join(self.ctx.work_dir, 
-                                           self.ctx.basefn + '.cat')):
-            self.ctx.log.write('Running SExtractor without PSF model',
-                               level=3, event=22)
+        if not os.path.exists(os.path.join(ctx.work_dir,
+                                           ctx.basefn + '.cat')):
+            ctx.log.write('Running SExtractor without PSF model',
+                          level=3, event=22)
 
-            if use_filter:
-                self.ctx.log.write('Using filter {}'.format(filter_path), 
-                                   level=4, event=22)
+            if filter_path:
+                ctx.log.write('Using filter {}'.format(filter_path),
+                              level=4, event=22)
 
             if use_fix_threshold:
-                self.ctx.log.write('Using threshold {:f} ADU'.format(threshold_adu), 
-                                   level=4, event=22)
+                ctx.log.write('Using threshold {:f} ADU'.format(threshold_adu),
+                              level=4, event=22)
                 self.update_process(threshold=threshold_adu)
+                extraction.extract_catalog(ctx, threshold_adu, True,
+                                           filter_path)
             else:
                 threshold_adu = sky_sigma * threshold_sigma
-                self.ctx.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
-                                   .format(threshold_sigma, threshold_adu),
-                                   level=4, event=22)
+                ctx.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
+                              .format(threshold_sigma, threshold_adu),
+                              level=4, event=22)
                 self.update_process(threshold=threshold_adu)
+                extraction.extract_catalog(ctx, threshold_sigma, False,
+                                           filter_path)
 
-            fn_sex_param = self.ctx.basefn + '_sextractor.param'
-            fconf = open(os.path.join(self.ctx.work_dir, fn_sex_param), 'w')
-            fconf.write('NUMBER\n')
-            fconf.write('X_IMAGE\n')
-            fconf.write('Y_IMAGE\n')
-            fconf.write('A_IMAGE\n')
-            fconf.write('B_IMAGE\n')
-            fconf.write('THETA_IMAGE\n')
-            fconf.write('ERRA_IMAGE\n')
-            fconf.write('ERRB_IMAGE\n')
-            fconf.write('ERRTHETA_IMAGE\n')
-            fconf.write('ELONGATION\n')
-            fconf.write('XPEAK_IMAGE\n')
-            fconf.write('YPEAK_IMAGE\n')
-            fconf.write('MAG_AUTO\n')
-            fconf.write('MAGERR_AUTO\n')
-            fconf.write('FLUX_AUTO\n')
-            fconf.write('FLUXERR_AUTO\n')
-            fconf.write('MAG_ISO\n')
-            fconf.write('MAGERR_ISO\n')
-            fconf.write('FLUX_ISO\n')
-            fconf.write('FLUXERR_ISO\n')
-            fconf.write('FLUX_MAX\n')
-            fconf.write('FLUX_RADIUS\n')
-            fconf.write('FWHM_IMAGE\n')
-            fconf.write('ISOAREA_IMAGE\n')
-            fconf.write('BACKGROUND\n')
-            fconf.write('FLAGS')
-            fconf.close()
-
-            if use_fix_threshold:
-                cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_adu)
-                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_adu)
-                cnf += 'THRESH_TYPE      ABSOLUTE\n'
-            else:
-                cnf = 'DETECT_THRESH    {:f}\n'.format(threshold_sigma)
-                cnf += 'ANALYSIS_THRESH  {:f}\n'.format(threshold_sigma)
-
-            if use_filter:
-                cnf += 'FILTER           Y\n'
-                cnf += 'FILTER_NAME      {}\n'.format(filter_path)
-            else:
-                cnf += 'FILTER           N\n'
-
-            cnf += 'DEBLEND_NTHRESH  64\n'
-            cnf += 'DEBLEND_MINCONT  0.0001\n'
-            cnf += 'SATUR_LEVEL      65000.0\n'
-            cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-            cnf += 'CLEAN            N\n'
-            #cnf += 'CLEAN_PARAM      0.2\n'
-            #cnf += 'BACKPHOTO_THICK  96\n'
-            cnf += 'MAG_ZEROPOINT    25.0\n'
-            cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-            cnf += 'CATALOG_TYPE     FITS_1.0\n'
-            cnf += 'CATALOG_NAME     {}.cat\n'.format(self.ctx.basefn)
-            cnf += 'NTHREADS         0\n'
-            #cnf += 'DETECT_TYPE      PHOTO\n'
-            #cnf += 'MAG_GAMMA        1.0\n'
-            #cnf += 'MEMORY_OBJSTACK  8000\n'
-            #cnf += 'MEMORY_PIXSTACK  800000\n'
-            #cnf += 'MEMORY_BUFSIZE   256\n'
-
-            fn_sex_conf = self.ctx.basefn + '_sextractor.conf'
-            self.ctx.log.write('Writing SExtractor configuration file {}'
-                               .format(fn_sex_conf), level=4, event=22)
-            self.ctx.log.write('SExtractor configuration file:\n{}'.format(cnf), 
-                               level=5, event=22)
-            fconf = open(os.path.join(self.ctx.work_dir, fn_sex_conf), 'w')
-            fconf.write(cnf)
-            fconf.close()
-
-            cmd = self.ctx.cfg.programs.sextractor_path
-            cmd += ' %s_inverted.fits' % self.ctx.basefn
-            cmd += ' -c %s' % fn_sex_conf
-            self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=22)
-            sp.call(cmd, shell=True, stdout=self.ctx.log.handle, 
-                    stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
-            self.ctx.log.write('', timestamp=False, double_newline=False)
+        enough_psf_sources = None
 
         if use_psf:
-            enough_psf_sources = None
-
             # If PSFEx input file does not exist then run SExtractor
-            fn_psfex_cat = os.path.join(self.ctx.work_dir, 
-                                        self.ctx.basefn + '_psfex.cat')
+            fn_psfex_cat = os.path.join(ctx.work_dir,
+                                        ctx.basefn + '_psfex.cat')
 
             if not os.path.exists(fn_psfex_cat):
-                self.ctx.log.write('Running SExtractor to get sources for PSFEx', 
-                                   level=3, event=23)
+                ctx.log.write('Running SExtractor to get sources for PSFEx',
+                              level=3, event=23)
 
-                while True:
-                    if use_filter:
-                        self.ctx.log.write('Using filter {}'.format(filter_path), 
-                                           level=4, event=23)
-
-                    # Calculate threshold for PSF sources based on 
-                    # extracted sources without PSF model
-                    fn_cat = os.path.join(self.ctx.work_dir, 
-                                          self.ctx.basefn + '.cat')
-                    t = Table.read(fn_cat)
-                    num_sources = len(t)
-                    flux_peak = np.sort(t['FLUX_MAX'])[::-1]
-
-                    if self.ctx.cfg.extraction.min_model_sources < num_sources:
-                        th_max = flux_peak[self.ctx.cfg.extraction.min_model_sources]
-                        th_max_sigma = th_max / sky_sigma
-                    else:
-                        th_max = None
-                        th_max_sigma = None
-
-                    if self.ctx.cfg.extraction.max_model_sources < num_sources:
-                        th_min = flux_peak[self.ctx.cfg.extraction.max_model_sources]
-                        th_min_sigma = th_min / sky_sigma
-                    else:
-                        th_min = None
-                        th_min_sigma = None
-
-                    if use_fix_threshold:
-                        if (th_min is not None and th_min > 0 and
-                            psf_model_threshold < th_min):
-                            psf_model_threshold = th_min
-                        elif (th_max is not None and th_max > 0 and
-                              psf_model_threshold > th_max):
-                            psf_model_threshold = th_max
-
-                        self.ctx.log.write('Using threshold {:f} ADU'
-                                           .format(psf_model_threshold), 
-                                           level=4, event=23)
-                    else:
-                        if (th_min_sigma is not None and th_min_sigma > 0 and
-                            psf_model_sigma < th_min_sigma):
-                            psf_model_sigma = th_min_sigma
-                        elif (th_max_sigma is not None and th_max_sigma > 0 and
-                              psf_model_sigma > th_max_sigma):
-                            psf_model_sigma = th_max_sigma
-
-                        threshold_adu = sky_sigma * psf_model_sigma
-                        self.ctx.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
-                                           .format(psf_model_sigma, threshold_adu), 
-                                           level=4, event=23)
-
-                    # Create parameter file
-                    fn_sex_param = self.ctx.basefn + '_sextractor.param'
-                    fconf = open(os.path.join(self.ctx.work_dir, fn_sex_param), 
-                                 'w')
-                    fconf.write('VIGNET(120,120)\n')
-                    fconf.write('X_IMAGE\n')
-                    fconf.write('Y_IMAGE\n')
-                    fconf.write('MAG_AUTO\n')
-                    fconf.write('FLUX_AUTO\n')
-                    fconf.write('FLUXERR_AUTO\n')
-                    fconf.write('SNR_WIN\n')
-                    fconf.write('FLUX_RADIUS\n')
-                    fconf.write('ELONGATION\n')
-                    fconf.write('FLAGS')
-                    fconf.close()
-
-                    # Create configuration file
-                    if use_fix_threshold:
-                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_threshold)
-                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_threshold)
-                        cnf += 'THRESH_TYPE      ABSOLUTE\n'
-                    else:
-                        cnf = 'DETECT_THRESH    {:f}\n'.format(psf_model_sigma)
-                        cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_model_sigma)
-
-                    if use_filter:
-                        cnf += 'FILTER           Y\n'
-                        cnf += 'FILTER_NAME      {}\n'.format(filter_path)
-                    else:
-                        cnf += 'FILTER           N\n'
-
-                    cnf += 'SATUR_LEVEL      65000.0\n'
-                    cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-                    cnf += 'MAG_ZEROPOINT    25.0\n'
-                    cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-                    cnf += 'CATALOG_TYPE     FITS_LDAC\n'
-                    cnf += 'CATALOG_NAME     {}_psfex.cat\n'.format(self.ctx.basefn)
-
-                    fn_sex_conf = self.ctx.basefn + '_sextractor.conf'
-                    self.ctx.log.write('Writing SExtractor configuration file {}'
-                                       .format(fn_sex_conf), level=4, event=23)
-                    self.ctx.log.write('SExtractor configuration file:\n{}'
-                                       .format(cnf), level=5, event=23)
-                    fconf = open(os.path.join(self.ctx.work_dir, fn_sex_conf), 
-                                 'w')
-                    fconf.write(cnf)
-                    fconf.close()
-
-                    cmd = self.ctx.cfg.programs.sextractor_path
-                    cmd += ' %s_inverted.fits' % self.ctx.basefn
-                    cmd += ' -c %s' % fn_sex_conf
-                    self.ctx.log.write('Subprocess: {}'.format(cmd), 
-                                       level=5, event=23)
-                    sp.call(cmd, shell=True, stdout=self.ctx.log.handle, 
-                            stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
-                    self.ctx.log.write('', timestamp=False, double_newline=False)
-
-                    hcat = fits.getheader(fn_psfex_cat, 2)
-                    num_psf_sources = hcat['NAXIS2']
-                    self.ctx.log.write('Extracted {:d} PSF-model sources'
-                                       .format(num_psf_sources), level=4, event=23)
-                    enough_psf_sources = False
-
-                    if num_psf_sources >= self.ctx.cfg.extraction.min_model_sources: 
-                        enough_psf_sources = True
-                        break
-                    else:
-                        # Repeat with lower threshold to get more sources
-                        if use_fix_threshold:
-                            psf_model_threshold *= 0.9
-                        else:
-                            psf_model_sigma *= 0.9
-
-                        self.ctx.log.write('Too few PSF-model sources (min {:d}), '
-                                           'repeating extraction with lower '
-                                           'threshold'
-                                           .format(self.ctx.cfg.extraction.min_model_sources), 
-                                           level=4, event=23)
-
-                    #if num_psf_sources > self.ctx.cfg.extraction.max_model_sources:
-                    #    # Repeat with higher threshold to get less sources
-                    #    if use_fix_threshold:
-                    #        psf_model_threshold *= 1.2
-                    #    else:
-                    #        psf_model_sigma *= 1.2
-
-                    #    self.ctx.log.write('Too many PSF-model sources (max {:d}), '
-                    #                   'repeating extraction with higher '
-                    #                   'threshold'
-                    #                   .format(self.ctx.cfg.extraction.max_model_sources), 
-                    #                   level=4, event=23)
+                if use_fix_threshold:
+                    enough_psf_sources = self._extract_psf_model_sources(
+                        psf_model_threshold, True, sky_sigma, filter_path)
+                else:
+                    enough_psf_sources = self._extract_psf_model_sources(
+                        psf_model_sigma, False, sky_sigma, filter_path)
 
             # Run PSFEx
             if (enough_psf_sources and
-                not os.path.exists(os.path.join(self.ctx.work_dir, 
-                                                self.ctx.basefn + '_psfex.psf'))):
-                self.ctx.log.write('Running PSFEx', level=3, event=24)
-                psfex_ver = (sp.check_output([self.ctx.cfg.programs.psfex_path, '-v']).strip()
-                             .decode('utf-8'))
-                self.ctx.log.write('Using {}'.format(psfex_ver), level=4, event=24)
-
-                #cnf = 'PHOTFLUX_KEY       FLUX_APER(1)\n'
-                #cnf += 'PHOTFLUXERR_KEY    FLUXERR_APER(1)\n'
-                cnf = 'PHOTFLUX_KEY       FLUX_AUTO\n'
-                cnf += 'PHOTFLUXERR_KEY    FLUXERR_AUTO\n'
-                cnf += 'PSFVAR_KEYS        X_IMAGE,Y_IMAGE\n'
-                cnf += 'PSFVAR_GROUPS      1,1\n'
-                cnf += 'PSFVAR_DEGREES     3\n'
-                cnf += 'SAMPLE_FWHMRANGE   3.0,50.0\n'
-                cnf += 'SAMPLE_VARIABILITY 3.0\n'
-                #cnf += 'PSF_SIZE           25,25\n'
-                cnf += 'PSF_SIZE           50,50\n'
-                cnf += 'CHECKPLOT_TYPE     ellipticity\n'
-                cnf += 'CHECKPLOT_NAME     ellipticity\n'
-                cnf += 'CHECKIMAGE_TYPE    SNAPSHOTS\n'
-                cnf += 'CHECKIMAGE_NAME    snap.fits\n'
-                #cnf += 'CHECKIMAGE_NAME    %s_psfex_snap.fits\n' % self.ctx.basefn
-                #cnf += 'CHECKIMAGE_TYPE    NONE\n'
-                cnf += 'XML_NAME           {}_psfex.xml\n'.format(self.ctx.basefn)
-                cnf += 'VERBOSE_TYPE       LOG\n'
-                cnf += 'NTHREADS           2\n'
-
-                fn_psfex_conf = self.ctx.basefn + '_psfex.conf'
-                self.ctx.log.write('Writing PSFEx configuration file {}'
-                                   .format(fn_psfex_conf), level=4, event=24)
-                self.ctx.log.write('PSFEx configuration file:\n{}'
-                                   .format(cnf), level=5, event=24)
-                fconf = open(os.path.join(self.ctx.work_dir, fn_psfex_conf), 'w')
-                fconf.write(cnf)
-                fconf.close()
-
-                cmd = self.ctx.cfg.programs.psfex_path
-                cmd += ' %s_psfex.cat' % self.ctx.basefn
-                cmd += ' -c %s' % fn_psfex_conf
-                self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=24)
-                sp.call(cmd, shell=True, stdout=self.ctx.log.handle, 
-                        stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
-                self.ctx.log.write('', timestamp=False, double_newline=False)
+                not os.path.exists(os.path.join(ctx.work_dir,
+                                                ctx.basefn + '_psfex.psf'))):
+                extraction.run_psfex(ctx)
 
             # Run SExtractor with PSF
             if (enough_psf_sources and
-                not os.path.exists(os.path.join(self.ctx.work_dir, 
-                                                self.ctx.basefn + '.cat-psf'))):
-                self.ctx.log.write('Running SExtractor with PSF model',
-                                   level=3, event=25)
+                not os.path.exists(os.path.join(ctx.work_dir,
+                                                ctx.basefn + '.cat-psf'))):
+                ctx.log.write('Running SExtractor with PSF model',
+                              level=3, event=25)
 
-                if use_filter:
-                    self.ctx.log.write('Using filter {}'.format(filter_path), 
-                                       level=4, event=25)
+                if filter_path:
+                    ctx.log.write('Using filter {}'.format(filter_path),
+                                  level=4, event=25)
 
                 if use_fix_threshold:
-                    self.ctx.log.write('Using threshold {:f} ADU'
-                                       .format(psf_threshold_adu), 
-                                       level=4, event=25)
+                    ctx.log.write('Using threshold {:f} ADU'
+                                  .format(psf_threshold_adu),
+                                  level=4, event=25)
+                    extraction.extract_psf_catalog(ctx, psf_threshold_adu,
+                                                   True, filter_path)
                 else:
                     threshold_adu = sky_sigma * psf_threshold_sigma
-                    self.ctx.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
-                                       .format(psf_threshold_sigma, threshold_adu), 
-                                       level=4, event=25)
-
-                fn_sex_param = self.ctx.basefn + '_sextractor.param'
-                fconf = open(os.path.join(self.ctx.work_dir, fn_sex_param), 'w')
-                fconf.write('XPEAK_IMAGE\n')
-                fconf.write('YPEAK_IMAGE\n')
-                fconf.write('XPSF_IMAGE\n')
-                fconf.write('YPSF_IMAGE\n')
-                fconf.write('ERRAPSF_IMAGE\n')
-                fconf.write('ERRBPSF_IMAGE\n')
-                fconf.write('ERRTHETAPSF_IMAGE\n')
-                fconf.close()
-
-                if use_fix_threshold:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_adu)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_adu)
-                    cnf += 'THRESH_TYPE      ABSOLUTE\n'
-                else:
-                    cnf = 'DETECT_THRESH    {:f}\n'.format(psf_threshold_sigma)
-                    cnf += 'ANALYSIS_THRESH  {:f}\n'.format(psf_threshold_sigma)
-
-                if use_filter:
-                    cnf += 'FILTER           Y\n'
-                    cnf += 'FILTER_NAME      {}\n'.format(filter_path)
-                else:
-                    cnf += 'FILTER           N\n'
-
-                cnf += 'SATUR_LEVEL      65000.0\n'
-                cnf += 'BACKPHOTO_TYPE   LOCAL\n'
-                #cnf += 'BACKPHOTO_THICK  96\n'
-                cnf += 'MAG_ZEROPOINT    25.0\n'
-                cnf += 'PARAMETERS_NAME  {}\n'.format(fn_sex_param)
-                cnf += 'CATALOG_TYPE     FITS_1.0\n'
-                cnf += 'CATALOG_NAME     {}.cat-psf\n'.format(self.ctx.basefn)
-                cnf += 'PSF_NAME         {}_psfex.psf\n'.format(self.ctx.basefn)
-                cnf += 'NTHREADS         0\n'
-
-                fn_sex_conf = self.ctx.basefn + '_sextractor.conf'
-                self.ctx.log.write('Writing SExtractor configuration file {}'
-                                   .format(fn_sex_conf), level=4, event=25)
-                self.ctx.log.write('SExtractor configuration file:\n{}'
-                                   .format(cnf), level=5, event=25)
-                fconf = open(os.path.join(self.ctx.work_dir, fn_sex_conf), 'w')
-                fconf.write(cnf)
-                fconf.close()
-
-                cmd = self.ctx.cfg.programs.sextractor_path
-                cmd += ' %s_inverted.fits' % self.ctx.basefn
-                cmd += ' -c %s' % fn_sex_conf
-                self.ctx.log.write('Subprocess: {}'.format(cmd), level=5, event=25)
-                sp.call(cmd, shell=True, stdout=self.ctx.log.handle, 
-                        stderr=self.ctx.log.handle, cwd=self.ctx.work_dir)
-                self.ctx.log.write('', timestamp=False, double_newline=False)
+                    ctx.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
+                                  .format(psf_threshold_sigma, threshold_adu),
+                                  level=4, event=25)
+                    extraction.extract_psf_catalog(ctx, psf_threshold_sigma,
+                                                   False, filter_path)
 
         # Read the SExtractor output catalog
-        self.ctx.log.write('Reading sources from the SExtractor output file', 
-                           level=3, event=26)
-        xycat = fits.open(os.path.join(self.ctx.work_dir, self.ctx.basefn + '.cat'))
-        num_sources = len(xycat[1].data)
+        ctx.log.write('Reading sources from the SExtractor output file',
+                      level=3, event=26)
+        self.sources = extraction.build_source_table(ctx)
+        num_sources = len(self.sources)
         self.update_process(num_sources=num_sources)
-        self.ctx.log.write('Extracted {:d} sources'
-                           .format(num_sources), level=4, event=26)
+        ctx.log.write('Extracted {:d} sources'
+                      .format(num_sources), level=4, event=26)
 
-        # Initialise source table
-        self.sources = SourceTable()
-        self.sources.populate(num_sources=num_sources)
-        self.sources.plate = self.ctx.plate
-        self.sources.log = self.ctx.log
-
-        # Copy values from the SExtractor catalog, xycat
-        self.sources.copy_from_sextractor(xycat)
-
-        # Calculate square root of isoarea
-        self.sources['sqrt_isoarea'] = np.sqrt(self.sources['isoarea'])
-
-        # For brevity, define following variables
-        xim = self.sources['x_image']
-        yim = self.sources['y_image']
-        bg = self.sources['background']
-
-        # Calculate mean background in an annulus around the centre of the plate
-        self.sources['dist_center'] = np.sqrt((xim - self.ctx.imwidth / 2.)**2 +
-                                              (yim - self.ctx.imheight / 2.)**2)
-        min_halfwidth = min([self.ctx.imwidth, self.ctx.imheight]) / 2.
-        max_halfwidth = max([self.ctx.imwidth, self.ctx.imheight]) / 2.
-        bannulus = ((self.sources['dist_center'] > 0.1*min_halfwidth) &
-                    (self.sources['dist_center'] < 0.9*min_halfwidth))
-
-        if bannulus.sum() > 3:
-            mean_bg = bg[np.where(bannulus)].mean()
-            std_bg = bg[np.where(bannulus)].std()
-        else:
-            mean_bg = bg.mean()
-            std_bg = bg.std()
-
-        # Calculate distance from edge
-        distarr = np.column_stack((xim, self.ctx.imwidth-xim, 
-                                   yim, self.ctx.imheight-yim))
-        self.sources['dist_edge'] = np.amin(distarr, 1)
-        
-        # Define 8 concentric annular bins + bin9 for edges
-        self.ctx.log.write('Flagging sources', level=3, event=27)
-        sampling = 100
-        imwidth_s = int(self.ctx.imwidth / sampling)
-        imheight_s = int(self.ctx.imheight / sampling)
-        dist_s = np.zeros((imheight_s, imwidth_s))
-        area_all = dist_s.size
-
-        for x in np.arange(imwidth_s):
-            for y in np.arange(imheight_s):
-                dist_s[y,x] = np.sqrt((x*sampling - self.ctx.imwidth/2.)**2 +
-                                 (y*sampling - self.ctx.imheight/2.)**2)
-
-        # Define bin9 as 1/10 of min_halfwidth at all edges
-        bin9_width_s = int(0.1 * min_halfwidth / sampling)
-        dist_s[:bin9_width_s,:] = -100.
-        dist_s[imheight_s-bin9_width_s:,:] = -100.
-        dist_s[:,:bin9_width_s] = -100.
-        dist_s[:,imwidth_s-bin9_width_s:] = -100.
-
-        # Additionally, include in bin9 corner pixels that are closer
-        # to corners than 1/6 of half-diagonal
-        bin9_corner_dist = (np.sqrt(self.ctx.imwidth**2 + self.ctx.imheight**2) * 
-                            5. / 12.)
-        dist_s[np.where(dist_s > bin9_corner_dist)] = -100.
-
-        # Exclude bin9 from dist_s
-        dist_s = dist_s[np.where(dist_s >= 0)]
-        self.sources.rel_area_sixbins = 0.75 * dist_s.size / area_all
-
-        # Divide the rest of pixels between 8 equal-area bins 1-8
-        bin_dist = np.array([np.percentile(dist_s, perc)
-                             for perc in (np.arange(8)+1.)*100./8.])
-        bin_dist[7] = bin9_corner_dist
-        bin_dist = np.insert(bin_dist, 0, 0.)
-
-        for b in np.arange(8)+1:
-            bbin = ((self.sources['dist_center'] >= bin_dist[b-1]) &
-                    (self.sources['dist_center'] < bin_dist[b]))
-            nbin = bbin.sum()
-            self.ctx.log.write('Annular bin {:d} (radius {:8.2f} pixels): '
-                               '{:6d} sources'.format(b, bin_dist[b], nbin), 
-                               double_newline=False, level=4, event=27)
-
-            if nbin > 0:
-                indbin = np.where(bbin)
-                self.sources['annular_bin'][indbin] = b
-
-        bbin = ((self.sources['dist_edge'] < 0.1*min_halfwidth) |
-                (self.sources['dist_center'] >= bin9_corner_dist))
-        nbin = bbin.sum()
-        self.ctx.log.write('Annular bin 9 (radius {:8.2f} pixels): '
-                           '{:6d} sources'.format(bin9_corner_dist, nbin), 
-                           level=4, event=27)
-
-        if nbin > 0:
-            indbin = np.where(bbin)
-            self.sources['annular_bin'][indbin] = 9
-
-        indbin6 = (self.sources['annular_bin'] <= 6)
-        self.sources.num_sources_sixbins = indbin6.sum()
-
-        # Find and flag dubious stars at the edges
-        if circular_film:
-            rim_dist = max_halfwidth - self.sources['dist_center']
-            self.sources['dist_edge'] = rim_dist
-
-            # Consider sources that are further away from centre than 
-            # half-width, to be at the rim.
-            bneg = (rim_dist <= 0)
-
-            if bneg.sum() > 0:
-                rim_dist[np.where(bneg)] = 0.1
-
-            borderbg = max_halfwidth / rim_dist * (np.abs(bg - mean_bg) / 
-                                                   std_bg)
-        else:
-            min_xedgedist = np.minimum(xim, self.ctx.imwidth-xim)
-            min_yedgedist = np.minimum(yim, self.ctx.imheight-yim)
-            min_reldist = np.minimum(min_xedgedist/self.ctx.imwidth,
-                                     min_yedgedist/self.ctx.imheight)
-
-            # Avoid dividing by zero
-            min_reldist[np.where(min_reldist < 1e-5)] = 1e-5
-            
-            # Combine distance from edge with deviation from mean background
-            borderbg = (1. / min_reldist) * (np.abs(bg - mean_bg) / std_bg)
-
-        bclean = ((self.sources['flux_radius'] > 0) & 
-                  (self.sources['elongation'] < 5) & 
-                  (self.sources['magerr_auto'] < 5) &
-                  (borderbg < 100))
-        indclean = np.where(bclean)[0]
-        self.sources['flag_clean'][indclean] = 1
-        self.ctx.log.write('Flagged {:d} clean sources'.format(bclean.sum()),
-                           double_newline=False, level=4, event=27)
-
-        indrim = np.where(borderbg >= 100)[0]
-        self.sources['flag_rim'][indrim] = 1
-        self.ctx.log.write('Flagged {:d} sources at the plate rim'
-                           ''.format(len(indrim)), double_newline=False, 
-                           level=4, event=27)
-
-        indnegrad = np.where(self.sources['flux_radius'] <= 0)[0]
-        self.sources['flag_negradius'][indnegrad] = 1
-        self.ctx.log.write('Flagged {:d} sources with negative FLUX_RADIUS'
-                           ''.format(len(indnegrad)), level=4, event=27)
+        ctx.log.write('Flagging sources', level=3, event=27)
+        self.sources.compute_annular_bins(ctx.imwidth, ctx.imheight, ctx.log)
+        self.sources.flag_edge_sources(ctx.imwidth, ctx.imheight,
+                                       circular_film, ctx.log)
 
         # For bright stars, update coordinates with PSF coordinates
         if use_psf and enough_psf_sources:
-            self.ctx.log.write('Updating coordinates with PSF coordinates '
-                               'for bright sources', level=3, event=28)
+            ctx.log.write('Updating coordinates with PSF coordinates '
+                          'for bright sources', level=3, event=28)
+            fn_psfcat = os.path.join(ctx.work_dir, ctx.basefn + '.cat-psf')
+            num_psf_sources = self.sources.apply_psf_coordinates(fn_psfcat,
+                                                                 ctx.log)
 
-            fn_psfcat = os.path.join(self.ctx.work_dir, self.ctx.basefn + '.cat-psf')
+            if num_psf_sources is not None:
+                self.update_process(num_psf_sources=num_psf_sources)
 
-            if os.path.exists(fn_psfcat):
-                try:
-                    psfcat = fits.open(fn_psfcat)
-                except IOError:
-                    self.ctx.log.write('Could not read PSF coordinates, file {} '
-                                       'is corrupt'.format(fn_psfcat), 
-                                       level=2, event=28)
-                    psfcat = None
+    def _extract_psf_model_sources(self, threshold, absolute, sky_sigma,
+                                   filter_path):
+        """Extract the sources for the PSF model, lowering the threshold
+        (in ADU if absolute, otherwise in sigmas) until there are at least
+        ``[Extraction] min_model_sources``. The threshold is first kept
+        between the peak fluxes of the ``max_model_sources``-th and
+        ``min_model_sources``-th brightest sources. Returns True when there
+        are enough sources."""
+        ctx = self.ctx
+        min_model_sources = ctx.cfg.extraction.min_model_sources
 
-                if psfcat is not None and psfcat[1].header['NAXIS2'] > 0:
-                    xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
-                    ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
+        while True:
+            if filter_path:
+                ctx.log.write('Using filter {}'.format(filter_path),
+                              level=4, event=23)
 
-                    # Match sources in two lists (distance < 1 px)
-                    coords1 = np.empty((num_sources, 2))
-                    coords1[:,0] = self.sources['x_peak']
-                    coords1[:,1] = self.sources['y_peak']
-                    coords2 = np.empty((xpeakpsf.size, 2))
-                    coords2[:,0] = xpeakpsf
-                    coords2[:,1] = ypeakpsf
-                    kdt = KDT(coords2)
-                    ds,ind2 = kdt.query(coords1)
-                    ind1 = np.arange(num_sources)
-                    indmask = ds < 1.
-                    ind1 = ind1[indmask]
-                    ind2 = ind2[indmask]
+            # Calculate threshold for PSF sources based on
+            # extracted sources without PSF model
+            th_min, th_max = extraction.psf_model_thresholds(ctx)
 
-                    num_psf_sources = len(ind1)
-                    self.ctx.log.write('Replacing x,y values from PSF photometry '
-                                       'for {:d} sources'.format(num_psf_sources),
-                                       level=4, event=28)
-                    self.sources['x_psf'][ind1] = \
-                            psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                    self.sources['y_psf'][ind1] = \
-                            psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                    self.sources['erra_psf'][ind1] = \
-                            psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                    self.sources['errb_psf'][ind1] = \
-                            psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                    self.sources['errtheta_psf'][ind1] = \
-                            psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                    self.sources['x_source'][ind1] = \
-                            psfcat[1].data.field('XPSF_IMAGE')[ind2]
-                    self.sources['y_source'][ind1] = \
-                            psfcat[1].data.field('YPSF_IMAGE')[ind2]
-                    self.sources['erra_source'][ind1] = \
-                            psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
-                    self.sources['errb_source'][ind1] = \
-                            psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
-                    self.sources['errtheta_source'][ind1] = \
-                            psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
-                    self.sources['flag_usepsf'][ind1] = 1
-                    self.update_process(num_psf_sources=num_psf_sources)
-                elif psfcat is not None and psfcat[1].header['NAXIS2'] == 0:
-                    self.ctx.log.write('There are no sources with PSF coordinates!',
-                                       level=2, event=28)
-                    self.update_process(num_psf_sources=0)
+            if not absolute:
+                th_min = th_min / sky_sigma if th_min is not None else None
+                th_max = th_max / sky_sigma if th_max is not None else None
+
+            if (th_min is not None and th_min > 0 and
+                threshold < th_min):
+                threshold = th_min
+            elif (th_max is not None and th_max > 0 and
+                  threshold > th_max):
+                threshold = th_max
+
+            if absolute:
+                ctx.log.write('Using threshold {:f} ADU'
+                              .format(threshold),
+                              level=4, event=23)
             else:
-                self.ctx.log.write('Could not read PSF coordinates, '
-                                   'file {} does not exist!'.format(fn_psfcat), 
-                                   level=2, event=28)
-                self.update_process(num_psf_sources=0)
+                threshold_adu = sky_sigma * threshold
+                ctx.log.write('Using threshold {:.1f} sigma ({:.2f} ADU)'
+                              .format(threshold, threshold_adu),
+                              level=4, event=23)
 
-    def classify_artifacts(self):
+            num_psf_sources = extraction.extract_psf_model_sources(
+                ctx, threshold, absolute, filter_path)
+            ctx.log.write('Extracted {:d} PSF-model sources'
+                          .format(num_psf_sources), level=4, event=23)
+
+            if num_psf_sources >= min_model_sources:
+                return True
+
+            # Repeat with lower threshold to get more sources
+            threshold *= 0.9
+            ctx.log.write('Too few PSF-model sources (min {:d}), '
+                          'repeating extraction with lower '
+                          'threshold'
+                          .format(min_model_sources),
+                          level=4, event=23)
+
+    def classify_artifacts(self) -> None:
         """
-        Classify extracted sources as celestial or artifacts.
-
-        Algorithm and model by Gal Matijevic
+        Classify extracted sources as celestial or artifacts
+        (``model_prediction``, see :mod:`pyplate.process.artifacts`).
 
         """
 
         self.ctx.log.write('Classifying artifacts', level=3, event=29)
 
-        if not have_keras:
+        if not artifacts.have_keras:
             self.ctx.log.write('Missing dependency (keras) for artifact '
                                'classification!', level=2, event=29)
             return
 
-        # Read model
-        fn_model = os.path.join(os.path.dirname(__file__), 'artifact_model.keras')
-        model = load_model(fn_model)
-
-        # Read inverted FITS file
-        fn_image = os.path.join(self.ctx.work_dir,
-                                self.ctx.basefn + '_inverted.fits')
-        plate_fits = fits.open(fn_image)
-        plate_data = plate_fits[0].data
-        plate_fits.close()
-
-        # 1/2 of the size of the thumbnail
-        thumb_size = 10
-
-        # number of thumbnails
-        noft = len(self.sources)
-
-        # initialize thumbnails array
-        thumbs = np.zeros((noft, 1, thumb_size * 2, thumb_size * 2))
-
-        for i, (x, y) in enumerate(zip(self.sources['x_image'],
-                                       self.sources['y_image'])):
-            # get the centers
-            xx = min(max(int(np.floor(x)), thumb_size),
-                     plate_data.shape[1] - thumb_size)
-            yy = min(max(int(np.floor(y)), thumb_size),
-                     plate_data.shape[0] - thumb_size)
-            z = plate_data[yy - thumb_size:yy + thumb_size,
-                           xx - thumb_size:xx + thumb_size]
-
-            za, zs = np.mean(z), np.std(z)
-
-            # if there is no variance, every pixel in the thumb is 0 after mean subtraction
-            # so no need to divide
-            if zs < 1e-12:
-                z = z - za
-            else:
-                # Invert to get negative from positive image
-                z = 1. - (z - za) / zs
-
-            thumbs[i][0] = z
-
-        prediction = model.predict(thumbs).flatten()
+        prediction = artifacts.predict(self.ctx, self.sources)
         self.sources['model_prediction'] = prediction
 
         # Count probable artifacts and write the number to the database
@@ -1261,14 +743,82 @@ class PlateProcess:
                                 color_term=color_term)
         return star_catalog
 
-    def crossmatch(self):
+    def crossmatch(self) -> None:
         """
         Crossmatch the sources with Gaia stars brighter than G = 12.
 
         """
 
         star_catalog = self.query_star_catalog(mag_range=[0,12])
-        self.sources.crossmatch_gaia(self.solution, star_catalog)
+        self.match_catalog(star_catalog)
+
+    def match_catalog(self, star_catalog: StarCatalog | None) -> None:
+        """
+        Crossmatch the sources with the stars of a catalogue, moved to the
+        plate epoch (DESIGN.md 6.5).
+
+        The matches and the catalogue values of the matched stars go into
+        the source table and the number of matches of each solution into
+        the solution; the source coordinates are then processed again,
+        because the matches may change the solution of a source. The
+        result is :attr:`association`.
+
+        """
+
+        log = self.ctx.log
+        solution_set = self.solution
+        log.write('Crossmatching sources with Gaia objects',
+                  level=3, event=44)
+
+        if solution_set is None or solution_set.num_solutions == 0:
+            log.write('Cannot crossmatch sources with Gaia objects '
+                      'due to missing astrometric solutions!',
+                      level=2, event=44)
+            return
+
+        if star_catalog is None:
+            log.write('Cannot crossmatch sources with Gaia objects '
+                      'due to missing Gaia catalog data!',
+                      level=2, event=44)
+            return
+
+        log.write('Number of Gaia stars: {:d}'.format(len(star_catalog)),
+                  level=4, event=44, double_newline=False)
+        refs = ReferenceStars.from_catalog(star_catalog, solution_set,
+                                           self.ctx.plate_epoch, log)
+        radii = tolerance.radii(solution_set)
+        log.write('Crossmatch tolerance: {:.2f} arcsec ({:.2f} pixels)'
+                  .format(radii.match_arcsec, radii.match), level=4,
+                  event=44, double_newline=False)
+        log.write('Finding all reference stars around sources within '
+                  'the radius of {:.2f} arcsec ({:.2f} pixels)'
+                  .format(radii.search_arcsec, radii.search),
+                  level=4, event=44)
+        pairs = find_pairs(self.sources, refs, radii.search)
+        association = NearestMatcher(radii).associate(self.sources, refs,
+                                                      pairs)
+        self.sources.add_matches(association, refs)
+
+        # Store number of crossmatched sources to each solution. They are
+        # counted in the source table, which keeps the matches of earlier
+        # calls (DESIGN.md 9).
+        for solution in solution_set.solutions:
+            m = self.sources['solution_num'] == solution.solution_num
+            solution.num_gaia_dr4 = int(m.sum())
+
+        self.association = association
+
+        # Process coordinates again, because solution_num assignments may
+        # have changed
+        self.sources.process_coordinates(solution_set=solution_set)
+
+    @property
+    def num_gaia_matches(self) -> int | None:
+        """Number of sources matched with Gaia stars."""
+        if self.association is None:
+            return None
+
+        return len(self.association.matches)
 
     def calibrate_photometry(self):
         """
@@ -1343,7 +893,7 @@ class PlateProcess:
         if len(phot_calib_curves) == 0 or len(cur_faint_limit) == 0:
             self.phot_calib = [PhotCalib.from_row(c)
                                for c in photproc.phot_calib_list]
-            num_gaia_dr4 = self.sources.num_crossmatch_gaia
+            num_gaia_dr4 = self.num_gaia_matches
             self.update_process(num_gaia_dr4=num_gaia_dr4,
                                 num_iterations=num_iterations,
                                 calibrated=0)
@@ -1400,7 +950,7 @@ class PlateProcess:
                 star_catalog, mag_range=new_mag_range,
                 color_term=weighted_color_term)
             cur_catalog_limit = new_mag_range[1]
-            self.sources.crossmatch_gaia(self.solution, star_catalog)
+            self.match_catalog(star_catalog)
 
             num_calib_solutions = 0
             cur_calib_stars = []
@@ -1486,7 +1036,7 @@ class PlateProcess:
 
             iteration += 1
 
-        num_gaia_dr4 = self.sources.num_crossmatch_gaia
+        num_gaia_dr4 = self.num_gaia_matches
 
         if num_calib_solutions == 0:
             # As above, the calibrations are written without curves

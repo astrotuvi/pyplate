@@ -27,10 +27,13 @@ inputs through the new code and check that the results are unchanged.
 | `plates/` | Configuration of the reference-plate run (`plates.conf`, converted with `ini2toml` as `plates.toml`; `paths.local.example` as template for the local paths) and the published summary of the reference run (`reference/`) |
 | `run_reference_plates.py` | Runs the old pipeline on the reference plates and saves the results (section "Reference plates") |
 | `compare_reference_plates.py` | Compares two reference-plate runs |
+| `crossmatch/<plate>/` | Inputs and outputs of the three crossmatch calls of the old code for a part of each reference plate (section "Crossmatch") |
+| `gen_crossmatch.py` | Cuts `crossmatch/` from the files of a reference run |
 
 The test of the redesigned code against `queries/` is `tests/test_db_queries.py`,
 against `header/` `tests/test_header.py`, against `metadata/`
-`tests/test_metadata_regression.py`; `tests/run_reference_plates.py` runs the
+`tests/test_metadata_regression.py`, against `crossmatch/`
+`tests/test_crossmatch.py`; `tests/run_reference_plates.py` runs the
 redesigned pipeline on the reference plates.
 
 ## Regenerating the reference files
@@ -769,6 +772,11 @@ outside git, like `paths.local`. The schema is `applause_dr5`.
 the misspelt DR4 column `gaiaiedr3_gmag` and the schema name in the result
 SQL.
 
+The crossmatch is wrapped in `PlateProcess.match_catalog()` instead of
+`SourceTable.crossmatch_gaia()`, with the same files; the epoch in
+`xmatch_NN_solution.json` is `crossmatch_epoch` (the plate epoch) instead of
+`source_table_plate_epoch`.
+
 Result of step 1 (run `new1`, 2026-10-19, against `run1`): all source
 columns, all crossmatch outputs, all values in `summary.json` (apart from
 the column names) and all lines of `results.sql` are identical. The
@@ -786,3 +794,54 @@ Intended differences:
 - DR5 column names, `tz_orig` and `TZ-ORIG`, and the metadata differences of
   section "Metadata regression".
 - For LA02333, empty strings from the scan header (see "Plates").
+
+Result of step 3 with the crossmatch epoch of the old code (run `step3a`,
+2026-10-20, against `run1`; the epoch was set to 1950 by a wrapper outside
+git): all source columns, all crossmatch outputs, all values in
+`summary.json` and all lines of `results.sql` are identical, so splitting the
+functions and the crossmatch package do not change the results.
+
+Result of step 3 at the plate epoch (run `step3`, 2026-10-20, against
+`run1`): the run queries the Gaia archive, because the deeper queries depend
+on the calibration. The first query has the same parameters and rows as in
+`run1`; the second and third differ, because the colour term changes. In
+the first crossmatch, where only the epoch differs, more sources are
+matched:
+
+| Plate | Matched in the first call | Matched in the last call | `process.num_gaia_dr4` | Colour term | Bright / faint limit |
+|---|---|---|---|---|---|
+| LA02333 | 4,214 → 4,331 (41 lost, 158 new) | 13,317 → 13,563 | 13,310 → 13,556 | 1.525 → 1.616 | 5.20 / 14.96 → 5.11 / 15.06 |
+| LA02334 | 1,087 → 1,109 (13 lost, 35 new) | 3,254 → 3,279 | 3,252 → 3,277 | 1.611 → 1.617 | 7.70 / 14.88 → 7.78 / 14.87 |
+
+Where both runs match a source in the first call, they match it with the
+same star. The extraction and the astrometric solutions are unchanged
+(apart from `num_gaia_dr4`); the calibration and the source magnitudes
+change. On LA02333 (four solutions) a source gets sky coordinates only when
+a match assigns it to a solution, so 558 sources differ in whether they
+have coordinates, and the HEALPix counts of the solutions change.
+
+## Crossmatch
+
+`crossmatch/<plate>/` holds the inputs and outputs of the three
+`crossmatch_gaia()` calls of the old code (run `run1`) for the sources in a
+box of each reference plate, cut by `gen_crossmatch.py` from the
+`crossmatch/xmatch_NN_*` files of the run (about 500 kB in all):
+
+| File | Contents |
+|---|---|
+| `sources.fits` | `source_num`, `x_source`, `y_source` of the sources in the box (LA02333: x 4600–6100, y 2100–3600 pixels, 579 sources; LA02334: x 4500–6000, y 2100–3600, 348 sources) |
+| `solution.json` | The solutions used (the same in all calls) |
+| `catalog_NN.fits` | The Gaia stars of call `NN` that fall within 100 pixels of the box with any solution, at the epoch of the old crossmatch (1950) |
+| `matches_NN.fits` | The match columns of the sources after call `NN` (DR4 names) |
+| `neighbors_NN.fits` | The neighbour pairs of the sources in call `NN` |
+
+The margin is larger than the search radius, so the sources in the box have
+the same matches and neighbours as on the whole plate. The boxes contain
+sources that keep the match of the first call because their very red star
+is missing from the deeper catalogues (DESIGN.md, section 9). To cut the
+files again from a reference run (default `run1`, in `[Reference]
+output_dir` of `plates/paths.local`):
+
+```
+python tests/ver4/gen_crossmatch.py run1
+```

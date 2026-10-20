@@ -1,7 +1,10 @@
+import os
 import numpy as np
 import warnings
+from typing import TYPE_CHECKING
 from astropy import wcs
-from astropy.table import Table, Column, MaskedColumn, vstack, join
+from astropy.io import fits
+from astropy.table import Table, Column, MaskedColumn, vstack
 from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.coordinates import Galactic, GeocentricMeanEcliptic
 from astropy.coordinates import match_coordinates_sky
@@ -19,6 +22,11 @@ try:
     have_healpy = True
 except ImportError:
     have_healpy = False
+
+from .log import ProcessLog
+
+if TYPE_CHECKING:
+    from .crossmatch import Association, ReferenceStars
 
 
 _source_meta = OrderedDict([
@@ -108,36 +116,6 @@ _source_meta = OrderedDict([
 ])
 
 
-def crossmatch_cartesian(coords_image, coords_ref, tolerance=None):
-    """
-    Crossmatch source coordinates with reference-star coordinates.
-
-    Parameters
-    ----------
-    coords_image : array-like
-        The coordinates of points to match
-    coords_ref : array-like
-        The coordinates of reference points to match
-    tolerance : float
-        Crossmatch distance in pixels (default: 5)
-
-    """
-
-    if tolerance is None:
-        tolerance = 5.
-
-    try:
-        kdt = KDT(coords_ref, balanced_tree=False, compact_nodes=False)
-    except TypeError:
-        kdt = KDT(coords_ref)
-
-    ds,ind_ref = kdt.query(coords_image, k=1, distance_upper_bound=tolerance)
-    mask_xmatch = ds < tolerance
-    ind_image = np.arange(len(coords_image))
-
-    return ind_image[mask_xmatch], ind_ref[mask_xmatch], ds[mask_xmatch]
-
-
 class SourceTable(Table):
     """
     Source table class
@@ -149,14 +127,8 @@ class SourceTable(Table):
 
         self.log = None
         self.plate = None
-
-        # Epoch to which crossmatch_gaia() moves the Gaia positions
-        self.plate_epoch = 1950
-
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
-        self.num_crossmatch_gaia = None
-        self.neighbors_gaia = None
 
     def populate(self, num_sources=0):
         """
@@ -245,148 +217,262 @@ class SourceTable(Table):
             x_source = self['x_source']
             self['x_source'] = (x_source - solution_set.pattern_x(x_source))
 
-    def crossmatch_gaia(self, solution_set=None, star_catalog=None):
+    def compute_annular_bins(self, imwidth: int, imheight: int,
+                             log: ProcessLog) -> None:
         """
-        Crossmatch sources with Gaia objects, considering multiple solutions.
-
-        Parameters:
-        -----------
-        solution_set : :class:`solve.SolutionSet`
-            Plate solution with one or more astrometric solutions
-        star_catalog : :class:`catalog.StarCatalog`
-            External star catalog with Gaia data
+        Compute the distances of the sources from the image centre and the
+        nearest edge, and divide the image into 8 concentric annular bins of
+        equal area, plus bin 9 at the edges and corners. Sets
+        ``dist_center``, ``dist_edge``, ``annular_bin``,
+        ``num_sources_sixbins`` and ``rel_area_sixbins``.
 
         """
 
-        from .solve import SolutionSet
-        from .catalog import StarCatalog
+        # For brevity, define following variables
+        xim = self['x_image']
+        yim = self['y_image']
 
-        self.log.write('Crossmatching sources with Gaia objects',
-                       level=3, event=44)
+        self['dist_center'] = np.sqrt((xim - imwidth / 2.)**2 +
+                                      (yim - imheight / 2.)**2)
+        min_halfwidth = min([imwidth, imheight]) / 2.
 
-        if solution_set is None or solution_set.num_solutions == 0:
-            self.log.write('Cannot crossmatch sources with Gaia objects '
-                           'due to missing astrometric solutions!',
-                           level=2, event=44)
-            return
+        # Calculate distance from edge
+        distarr = np.column_stack((xim, imwidth-xim,
+                                   yim, imheight-yim))
+        self['dist_edge'] = np.amin(distarr, 1)
 
-        if star_catalog is None:
-            self.log.write('Cannot crossmatch sources with Gaia objects '
-                           'due to missing Gaia catalog data!',
-                           level=2, event=44)
-            return
+        # Define 8 concentric annular bins + bin9 for edges
+        sampling = 100
+        imwidth_s = int(imwidth / sampling)
+        imheight_s = int(imheight / sampling)
+        dist_s = np.zeros((imheight_s, imwidth_s))
+        area_all = dist_s.size
 
-        assert isinstance(solution_set, SolutionSet)
-        assert isinstance(star_catalog, StarCatalog)
+        for x in np.arange(imwidth_s):
+            for y in np.arange(imheight_s):
+                dist_s[y,x] = np.sqrt((x*sampling - imwidth/2.)**2 +
+                                 (y*sampling - imheight/2.)**2)
 
-        # Take parameters from solution_set
-        num_solutions = solution_set.num_solutions
-        solutions = solution_set.solutions
-        mean_pixscale = solution_set.mean_pixel_scale
+        # Define bin9 as 1/10 of min_halfwidth at all edges
+        bin9_width_s = int(0.1 * min_halfwidth / sampling)
+        dist_s[:bin9_width_s,:] = -100.
+        dist_s[imheight_s-bin9_width_s:,:] = -100.
+        dist_s[:,:bin9_width_s] = -100.
+        dist_s[:,imwidth_s-bin9_width_s:] = -100.
 
-        # Number of Gaia stars
-        num_gaia = len(star_catalog)
+        # Additionally, include in bin9 corner pixels that are closer
+        # to corners than 1/6 of half-diagonal
+        bin9_corner_dist = (np.sqrt(imwidth**2 + imheight**2) *
+                            5. / 12.)
+        dist_s[np.where(dist_s > bin9_corner_dist)] = -100.
 
-        self.log.write('Number of Gaia stars: {:d}'.format(num_gaia), 
-                       level=4, event=44, double_newline=False)
+        # Exclude bin9 from dist_s
+        dist_s = dist_s[np.where(dist_s >= 0)]
+        self.rel_area_sixbins = 0.75 * dist_s.size / area_all
 
-        # Calculate RA and Dec for the plate epoch
-        ra_ref = (star_catalog['ra']
-                  + (self.plate_epoch - star_catalog['ref_epoch'])
-                  * star_catalog['pmra']
-                  / np.cos(star_catalog['dec'] * np.pi / 180.) / 3600000.)
-        dec_ref = (star_catalog['dec']
-                   + (self.plate_epoch - star_catalog['ref_epoch'])
-                   * star_catalog['pmdec'] / 3600000.)
-        #catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
-        xy_ref = np.empty((0, 2))
-        sol_ref = np.empty((0,), dtype=np.int8)
-        index_ref = np.empty((0,), dtype=np.int32)
+        # Divide the rest of pixels between 8 equal-area bins 1-8
+        bin_dist = np.array([np.percentile(dist_s, perc)
+                             for perc in (np.arange(8)+1.)*100./8.])
+        bin_dist[7] = bin9_corner_dist
+        bin_dist = np.insert(bin_dist, 0, 0.)
 
-        # Build a list of Gaia stars in image coordinates
-        for i in np.arange(solution_set.num_solutions):
-            solution = solutions[i]
+        for b in np.arange(8)+1:
+            bbin = ((self['dist_center'] >= bin_dist[b-1]) &
+                    (self['dist_center'] < bin_dist[b]))
+            nbin = bbin.sum()
+            log.write('Annular bin {:d} (radius {:8.2f} pixels): '
+                      '{:6d} sources'.format(b, bin_dist[b], nbin),
+                      double_newline=False, level=4, event=27)
 
-            # If there is a column named 'solution_num', then take only
-            # reference stars with the current solution number
-            if 'solution_num' in star_catalog.columns:
-                mask_sol = star_catalog['solution_num'] == i + 1
-            else:
-                mask_sol = np.full(num_gaia, True)
+            if nbin > 0:
+                indbin = np.where(bbin)
+                self['annular_bin'][indbin] = b
 
-            w = wcs.WCS(solution.header_wcs)
+        bbin = ((self['dist_edge'] < 0.1*min_halfwidth) |
+                (self['dist_center'] >= bin9_corner_dist))
+        nbin = bbin.sum()
+        log.write('Annular bin 9 (radius {:8.2f} pixels): '
+                  '{:6d} sources'.format(bin9_corner_dist, nbin),
+                  level=4, event=27)
 
-            try:
-                xr,yr = w.all_world2pix(ra_ref[mask_sol], dec_ref[mask_sol], 1)
-            except wcs.NoConvergence as e:
-                self.log.write('Failed to convert sky coordinates to '
-                               'pixel coordinates for solution {:d}: {}'
-                               .format(i + 1, e))
-                continue
+        if nbin > 0:
+            indbin = np.where(bbin)
+            self['annular_bin'][indbin] = 9
 
-            mask_inside = ((xr > 0.5) & (xr < solution_set.imwidth) &
-                           (yr > 0.5) & (yr < solution_set.imheight))
-            num_inside = mask_inside.sum()
-            xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
-            xy_ref = np.vstack((xy_ref, xyr))
-            sol_ref = np.hstack((sol_ref, np.full(num_inside, i + 1)))
-            index_ref = np.hstack((index_ref,
-                                   np.arange(num_gaia)[mask_sol][mask_inside]))
+        indbin6 = (self['annular_bin'] <= 6)
+        self.num_sources_sixbins = indbin6.sum()
 
-        # Calculate mean astrometric error
-        sigma1 = u.Quantity([sol.scamp_sigma_1 for sol in solutions
-                             if sol.scamp_sigma_1 is not None])
-        sigma2 = u.Quantity([sol.scamp_sigma_2 for sol in solutions
-                             if sol.scamp_sigma_2 is not None])
-        ndeg = np.array([sol.scamp_ndeg for sol in solutions
-                         if sol.scamp_sigma_1 is not None])
+    def flag_edge_sources(self, imwidth: int, imheight: int,
+                          circular_film: bool, log: ProcessLog) -> None:
+        """
+        Flag clean sources, sources at the plate rim and sources with
+        negative ``flux_radius``. A source is at the rim if its background
+        deviates from the mean background near the centre by much more
+        than its distance from the edge allows (from the circular rim if
+        circular_film). Needs ``dist_center`` (see
+        :meth:`compute_annular_bins`).
 
-        # Keep values only for solutions with scamp_ndeg > 10
-        mask_ndeg = ndeg > 10
-        sigma1 = sigma1[mask_ndeg]
-        sigma2 = sigma2[mask_ndeg]
-        ndeg = ndeg[mask_ndeg]
+        """
 
-        if len(sigma1) > 0 and len(sigma2) > 0:
-            # Calculate weighted mean of scamp_sigma over all solutions
-            wmean_sigma1 = (sigma1 * ndeg).sum() / ndeg.sum()
-            wmean_sigma2 = (sigma2 * ndeg).sum() / ndeg.sum()
-            mean_scamp_sigma = np.sqrt(wmean_sigma1**2 + wmean_sigma2**2)
+        # For brevity, define following variables
+        xim = self['x_image']
+        yim = self['y_image']
+        bg = self['background']
 
-            # Increase sigma if the sum of scamp_ndeg < 30
-            if ndeg.sum() < 30:
-                mean_scamp_sigma = (30. / ndeg.sum()) * mean_scamp_sigma
+        # Calculate mean background in an annulus around the centre of the plate
+        min_halfwidth = min([imwidth, imheight]) / 2.
+        max_halfwidth = max([imwidth, imheight]) / 2.
+        bannulus = ((self['dist_center'] > 0.1*min_halfwidth) &
+                    (self['dist_center'] < 0.9*min_halfwidth))
 
-            # Use default value if the mean sigma is abnormally low
-            if (mean_scamp_sigma < 0.1 * mean_pixscale * u.pixel
-                and ndeg.mean() < 20):
-                mean_scamp_sigma = 2. * mean_pixscale * u.pixel
+        if bannulus.sum() > 3:
+            mean_bg = bg[np.where(bannulus)].mean()
+            std_bg = bg[np.where(bannulus)].std()
         else:
-            mean_scamp_sigma = 2. * mean_pixscale * u.pixel
+            mean_bg = bg.mean()
+            std_bg = bg.std()
 
-        # Crossmatch sources and Gaia stars
-        coords_plate = np.vstack((self['x_source'], self['y_source'])).T
-        tolerance = ((5. * mean_scamp_sigma / mean_pixscale)
-                     .to(u.pixel).value)
+        # Find and flag dubious stars at the edges
+        if circular_film:
+            rim_dist = max_halfwidth - self['dist_center']
+            self['dist_edge'] = rim_dist
 
-        tolerance_arcsec = (5. * mean_scamp_sigma).to(u.arcsec).value
-        self.log.write('Crossmatch tolerance: {:.2f} arcsec ({:.2f} pixels)'
-                       .format(tolerance_arcsec, tolerance), level=4, event=44,
-                       double_newline=False)
+            # Consider sources that are further away from centre than
+            # half-width, to be at the rim.
+            bneg = (rim_dist <= 0)
 
-        ind_plate, ind_ref, ds = crossmatch_cartesian(coords_plate, xy_ref, 
-                                                      tolerance=tolerance)
-        dist_arcsec = (ds * u.pixel * mean_pixscale).to(u.arcsec).value
-        ind_gaia = index_ref[ind_ref]
-        self['solution_num'][ind_plate] = sol_ref[ind_ref]
-        self['match_radius'][ind_plate] = tolerance_arcsec
-        self['gaiadr4_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
-        self['gaiadr4_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
-        self['gaiadr4_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
-        self['gaiadr4_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
-        self['gaiadr4_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
-        self['gaiadr4_dist'][ind_plate] = dist_arcsec
-        self.num_crossmatch_gaia = len(ind_plate)
+            if bneg.sum() > 0:
+                rim_dist[np.where(bneg)] = 0.1
+
+            borderbg = max_halfwidth / rim_dist * (np.abs(bg - mean_bg) /
+                                                   std_bg)
+        else:
+            min_xedgedist = np.minimum(xim, imwidth-xim)
+            min_yedgedist = np.minimum(yim, imheight-yim)
+            min_reldist = np.minimum(min_xedgedist/imwidth,
+                                     min_yedgedist/imheight)
+
+            # Avoid dividing by zero
+            min_reldist[np.where(min_reldist < 1e-5)] = 1e-5
+
+            # Combine distance from edge with deviation from mean background
+            borderbg = (1. / min_reldist) * (np.abs(bg - mean_bg) / std_bg)
+
+        bclean = ((self['flux_radius'] > 0) &
+                  (self['elongation'] < 5) &
+                  (self['magerr_auto'] < 5) &
+                  (borderbg < 100))
+        indclean = np.where(bclean)[0]
+        self['flag_clean'][indclean] = 1
+        log.write('Flagged {:d} clean sources'.format(bclean.sum()),
+                  double_newline=False, level=4, event=27)
+
+        indrim = np.where(borderbg >= 100)[0]
+        self['flag_rim'][indrim] = 1
+        log.write('Flagged {:d} sources at the plate rim'
+                  ''.format(len(indrim)), double_newline=False,
+                  level=4, event=27)
+
+        indnegrad = np.where(self['flux_radius'] <= 0)[0]
+        self['flag_negradius'][indnegrad] = 1
+        log.write('Flagged {:d} sources with negative FLUX_RADIUS'
+                  ''.format(len(indnegrad)), level=4, event=27)
+
+    def apply_psf_coordinates(self, fn_psfcat: str,
+                              log: ProcessLog) -> int | None:
+        """
+        Replace the coordinates of the sources found in the SExtractor
+        catalogue made with the PSF model (peaks within 1 pixel) by the
+        PSF coordinates, and set ``flag_usepsf``.
+
+        Returns
+        -------
+        int or None
+            Number of sources with PSF coordinates (0 if the catalogue does
+            not exist or is empty), or None if it is corrupt.
+
+        """
+
+        if not os.path.exists(fn_psfcat):
+            log.write('Could not read PSF coordinates, '
+                      'file {} does not exist!'.format(fn_psfcat),
+                      level=2, event=28)
+            return 0
+
+        try:
+            psfcat = fits.open(fn_psfcat)
+        except IOError:
+            log.write('Could not read PSF coordinates, file {} '
+                      'is corrupt'.format(fn_psfcat),
+                      level=2, event=28)
+            return None
+
+        if psfcat[1].header['NAXIS2'] == 0:
+            log.write('There are no sources with PSF coordinates!',
+                      level=2, event=28)
+            return 0
+
+        num_sources = len(self)
+        xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
+        ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
+
+        # Match sources in two lists (distance < 1 px)
+        coords1 = np.empty((num_sources, 2))
+        coords1[:,0] = self['x_peak']
+        coords1[:,1] = self['y_peak']
+        coords2 = np.empty((xpeakpsf.size, 2))
+        coords2[:,0] = xpeakpsf
+        coords2[:,1] = ypeakpsf
+        kdt = KDT(coords2)
+        ds,ind2 = kdt.query(coords1)
+        ind1 = np.arange(num_sources)
+        indmask = ds < 1.
+        ind1 = ind1[indmask]
+        ind2 = ind2[indmask]
+
+        num_psf_sources = len(ind1)
+        log.write('Replacing x,y values from PSF photometry '
+                  'for {:d} sources'.format(num_psf_sources),
+                  level=4, event=28)
+        self['x_psf'][ind1] = psfcat[1].data.field('XPSF_IMAGE')[ind2]
+        self['y_psf'][ind1] = psfcat[1].data.field('YPSF_IMAGE')[ind2]
+        self['erra_psf'][ind1] = psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+        self['errb_psf'][ind1] = psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+        self['errtheta_psf'][ind1] = \
+                psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+        self['x_source'][ind1] = psfcat[1].data.field('XPSF_IMAGE')[ind2]
+        self['y_source'][ind1] = psfcat[1].data.field('YPSF_IMAGE')[ind2]
+        self['erra_source'][ind1] = \
+                psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+        self['errb_source'][ind1] = \
+                psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+        self['errtheta_source'][ind1] = \
+                psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+        self['flag_usepsf'][ind1] = 1
+        return num_psf_sources
+
+    def add_matches(self, association: 'Association',
+                    refs: 'ReferenceStars') -> None:
+        """
+        Copy the matches of a crossmatch and the catalogue values of the
+        matched stars (G, BP and RP magnitudes and BP-RP) to the source
+        columns, and the number of neighbours of each source. Values of
+        sources that are not matched are left as they are.
+
+        """
+
+        matches = association.matches
+        ind_plate = matches['source_index']
+        ind_gaia = refs.index[matches['ref_index']]
+        catalog = refs.catalog
+        self['solution_num'][ind_plate] = matches['solution_num']
+        self['match_radius'][ind_plate] = matches['match_radius']
+        self['gaiadr4_id'][ind_plate] = matches['gaiadr4_id']
+        self['gaiadr4_gmag'][ind_plate] = catalog['mag'][ind_gaia]
+        self['gaiadr4_bpmag'][ind_plate] = catalog['mag1'][ind_gaia]
+        self['gaiadr4_rpmag'][ind_plate] = catalog['mag2'][ind_gaia]
+        self['gaiadr4_bp_rp'][ind_plate] = catalog['color_index'][ind_gaia]
+        self['gaiadr4_dist'][ind_plate] = matches['gaiadr4_dist']
 
         # Mask nan values in listed columns
         for col in ['gaiadr4_gmag', 'gaiadr4_bpmag', 'gaiadr4_rpmag',
@@ -397,80 +483,15 @@ class SourceTable(Table):
         col = 'gaiadr4_id'
         self[col] = MaskedColumn(self[col], mask=(self[col] == 0))
 
-        # Store number of crossmatched sources to each solution
-        grp = self.group_by('solution_num').groups
-        tab_grp = Table(grp.aggregate(len)['solution_num', 'source_num'])
-        tab_grp.rename_column('source_num', 'num_gaia_dr4')
+        # Calculate neighbor counts
+        neighbors = association.neighbors
 
-        for i in np.arange(solution_set.num_solutions):
-            solution = solutions[i]
-            m = tab_grp['solution_num'] == i + 1
-
-            if m.sum() > 0:
-                num_gaia_dr4 = tab_grp['num_gaia_dr4'][m].data[0]
-                solution.num_gaia_dr4 = num_gaia_dr4
-            else:
-                solution.num_gaia_dr4 = 0
-
-        # Crossmatch: find all neighbours for sources
-        kdt_ref = KDT(xy_ref)
-        kdt_plate = KDT(coords_plate)
-        max_distance = ((20. * mean_scamp_sigma / mean_pixscale)
-                        .to(u.pixel).value)
-
-        if (20. * mean_scamp_sigma) < 5 * u.arcsec:
-            max_distance = (5 * u.arcsec / mean_pixscale).to(u.pixel).value
-
-        max_dist_arcsec = (max_distance * u.pixel * mean_pixscale).to(u.arcsec).value
-        self.log.write('Finding all reference stars around sources within '
-                       'the radius of {:.2f} arcsec ({:.2f} pixels)'
-                       .format(max_dist_arcsec, max_distance),
-                       level=4, event=44)
-
-        mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
-        mtrx_keys = np.array([a for a in mtrx.keys()])
-
-        # Check if there are neighbors at all
-        if len(mtrx_keys) > 0:
-            k_plate = mtrx_keys[:,0]
-            k_ref = mtrx_keys[:,1]
-            dist = np.fromiter(mtrx.values(), dtype=float) * u.pixel
-
-            # Construct neighbors table
-            nbs = Table()
-            nbs['source_num'] = self['source_num'][k_plate]
-            nbs['gaiadr4_id'] = star_catalog['source_id'][index_ref[k_ref]]
-            nbs['dist'] = dist
-            nbs['solution_num'] = sol_ref[k_ref]
-            nbs['x_gaia'] = xy_ref[k_ref,0]
-            nbs['y_gaia'] = xy_ref[k_ref,1]
-
-            # Create the flag_xmatch column by joining the neighbors table
-            # with the source table
-            tab = Table()
-            tab['source_num'] = self['source_num']
-            tab['gaiadr4_id'] = MaskedColumn(self['gaiadr4_id']).filled(0)
-            tab['flag_xmatch'] = np.int8(1)
-            jtab = join(nbs, tab, keys=('source_num', 'gaiadr4_id'),
-                        join_type='left')
-            jtab['flag_xmatch'] = MaskedColumn(jtab['flag_xmatch']).filled(0)
-            self.neighbors_gaia = jtab
-
-            # Calculate neighbor counts
-            source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
+        if len(neighbors) > 0:
+            source_num, cnt = np.unique(neighbors['source_num'].data,
+                                        return_counts=True)
             mask = np.isin(self['source_num'], source_num)
             ind_mask = np.where(mask)[0]
             self['gaiadr4_neighbors'][ind_mask] = cnt
-        else:
-            # Create empty neighbors table
-            nbs = Table(names=('source_num', 'gaiadr4_id', 'dist',
-                               'solution_num', 'x_gaia', 'y_gaia',
-                               'flag_xmatch'),
-                        dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8', 'i1'))
-            self.neighbors_gaia = nbs
-
-        # Process coordinates again, because solution_num assignments may have changed
-        self.process_coordinates(solution_set=solution_set)
 
     def process_coordinates(self, solution_set=None):
         """

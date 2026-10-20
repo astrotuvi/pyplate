@@ -1,4 +1,7 @@
 from . import astrometry
+from . import artifacts
+from . import crossmatch
+from . import extraction
 from . import photometry
 from . import solve
 from . import sources
@@ -10,5 +13,6 @@ from .process import PlateProcess, Process
 from .sources import SourceTable
 from .catalog import StarCatalog
 
-__all__ = ['astrometry', 'photometry', 'solve',
-           'sources', 'catalog', 'process', 'output', 'pipeline']
+__all__ = ['astrometry', 'artifacts', 'crossmatch', 'extraction',
+           'photometry', 'solve', 'sources', 'catalog', 'process', 'output',
+           'pipeline']

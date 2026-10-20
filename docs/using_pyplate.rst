@@ -95,8 +95,9 @@ directories and settings come from the configuration::
 
 The steps share ``proc.ctx`` (configuration, metadata, image size, plate
 epoch, log and the ``process`` table row). The results are ``proc.sources``,
-``proc.solution`` and, after ``crossmatch()`` and
-``calibrate_photometry()``, ``proc.phot_calib``. The functions in
+``proc.solution``, after ``crossmatch()`` ``proc.association`` (the Gaia
+matches and neighbours of the sources) and after
+``calibrate_photometry()`` ``proc.phot_calib``. The functions in
 ``pyplate.process.output`` write them to the database and to files.
 
 
