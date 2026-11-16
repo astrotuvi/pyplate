@@ -1,26 +1,31 @@
 PyPlate API
 ===========
 
-:mod:`metadata` module
-----------------------
+:mod:`config` subpackage
+------------------------
+
+.. automodule:: pyplate.config
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`metadata` subpackage
+--------------------------
 
 .. automodule:: pyplate.metadata
     :members:
     :undoc-members:
     :show-inheritance:
 
-:mod:`solve` module
--------------------
+:mod:`database` subpackage
+--------------------------
 
-.. automodule:: pyplate.solve
+.. automodule:: pyplate.database.database
     :members:
     :undoc-members:
     :show-inheritance:
 
-:mod:`database` module
-----------------------
-
-.. automodule:: pyplate.database
+.. automodule:: pyplate.database.schema
     :members:
     :undoc-members:
     :show-inheritance:
@@ -33,20 +38,28 @@ PyPlate API
     :undoc-members:
     :show-inheritance:
 
-:mod:`pipeline` module
-----------------------
+:mod:`process` subpackage
+-------------------------
 
-.. automodule:: pyplate.pipeline
+.. automodule:: pyplate.process.pipeline
     :members:
     :undoc-members:
     :show-inheritance:
 
-:mod:`conf` module
-------------------
+.. automodule:: pyplate.process.process
+    :members: PlateProcess, Process
 
-.. automodule:: pyplate.conf
+.. automodule:: pyplate.process.context
     :members:
-    :undoc-members:
-    :show-inheritance:
 
+.. automodule:: pyplate.process.extraction
+    :members:
 
+.. automodule:: pyplate.process.solve
+    :members:
+
+.. automodule:: pyplate.process.crossmatch
+    :members:
+
+.. automodule:: pyplate.process.output
+    :members:

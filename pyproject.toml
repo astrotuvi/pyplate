@@ -7,6 +7,7 @@ name = "pyplate"
 dynamic = ["version"]
 description = "A Python package for processing astronomical photographic plates"
 readme = "README.md"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
@@ -30,7 +31,6 @@ dependencies = [
     "ephem",
     "pytimeparse",
     "pytz",
-    "unicodecsv",
     "unidecode",
     "PyYAML",
     "Pillow",

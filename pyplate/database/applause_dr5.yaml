@@ -1,0 +1,642 @@
+# APPLAUSE DR5 schema in the backend-neutral format (DESIGN.md, section 5.3).
+# Column descriptions are to be added (DESIGN.md, decision 14).
+#
+# Changes compared with applause_dr4.yaml (DESIGN.md, section 5.4): Gaia
+# columns named for Gaia DR4 (gaiadr4_*, num_gaia_dr4; also in index names
+# and the source_xmatch primary key), the new columns exposure.jd_mid_orig
+# and plate.tz_orig, and no index on source.exposure_id (the table has no
+# such column).
+#
+# The keys pgsql and mysql give the full column definition for one backend,
+# where the tables differ from the definition generated from the type.
+
+schema: applause_dr5
+
+tables:
+
+- name: archive
+  timestamps: true
+  primary_key: [archive_id]
+  columns:
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: archive_name, type: varchar(80)}
+  - {name: institute, type: varchar(80)}
+
+- name: plate
+  timestamps: true
+  primary_key: [plate_id]
+  columns:
+  - {name: plate_id, type: serial}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: plate_num, type: char(10)}
+  - {name: plate_num_orig, type: char(10)}
+  - {name: wfpdb_id, type: char(15)}
+  - {name: series, type: varchar(80)}
+  - {name: plate_format, type: char(7)}
+  - {name: plate_size1, type: real}
+  - {name: plate_size2, type: real}
+  - {name: emulsion, type: varchar(80)}
+  - {name: filter, type: varchar(80)}
+  - {name: development, type: varchar(80)}
+  - {name: plate_quality, type: varchar(80)}
+  - {name: plate_notes, type: varchar(255)}
+  - {name: date_orig, type: date, pgsql: "character varying(80) COLLATE ucs_basic"}
+  - {name: tz_orig, type: varchar(40)}
+  - {name: numexp, type: tinyint, unsigned: true}
+  - {name: observatory, type: varchar(80)}
+  - {name: site_name, type: varchar(80)}
+  - {name: site_longitude, type: double}
+  - {name: site_latitude, type: double}
+  - {name: site_elevation, type: real}
+  - {name: telescope, type: varchar(80)}
+  - {name: ota_name, type: varchar(80)}
+  - {name: ota_diameter, type: real}
+  - {name: ota_aperture, type: real}
+  - {name: ota_foclen, type: real}
+  - {name: ota_scale, type: real}
+  - {name: instrument, type: varchar(80)}
+  - {name: method_code, type: tinyint, unsigned: true}
+  - {name: prism, type: varchar(80)}
+  - {name: prism_angle, type: varchar(10)}
+  - {name: dispersion, type: real}
+  - {name: grating, type: varchar(80)}
+  - {name: air_temperature, type: real}
+  - {name: sky_calmness, type: varchar(10)}
+  - {name: sky_sharpness, type: varchar(10)}
+  - {name: sky_transparency, type: varchar(10)}
+  - {name: sky_conditions, type: varchar(80)}
+  - {name: observer, type: varchar(80)}
+  - {name: observer_notes, type: varchar(255)}
+  - {name: notes, type: varchar(255)}
+  - {name: bibcode, type: varchar(80)}
+  indexes:
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: wfpdb_ind, columns: [wfpdb_id]}
+  - {name: method_ind, columns: [method_code]}
+
+- name: exposure
+  timestamps: true
+  primary_key: [exposure_id]
+  columns:
+  - {name: exposure_id, type: serial}
+  - {name: plate_id, type: int, unsigned: true, null: false}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: exposure_num, type: tinyint, unsigned: true, null: false}
+  - {name: object_name, type: varchar(80)}
+  - {name: object_type_code, type: char(2)}
+  - {name: ra_orig, type: char(11)}
+  - {name: dec_orig, type: char(11)}
+  - {name: flag_coord, type: char(1)}
+  - {name: ra_icrs, type: double}
+  - {name: dec_icrs, type: double}
+  - {name: date_orig_start, type: varchar(80)}
+  - {name: date_orig_end, type: varchar(80)}
+  - {name: time_orig_start, type: varchar(255)}
+  - {name: time_orig_end, type: varchar(255)}
+  - {name: jd_mid_orig, type: double}
+  - {name: flag_time, type: char(1)}
+  - {name: ut_start, type: datetime}
+  - {name: ut_mid, type: datetime}
+  - {name: ut_weighted, type: datetime}
+  - {name: ut_end, type: datetime}
+  - {name: year_start, type: double}
+  - {name: year_mid, type: double}
+  - {name: year_weighted, type: double}
+  - {name: year_end, type: double}
+  - {name: jd_start, type: double}
+  - {name: jd_mid, type: double}
+  - {name: jd_weighted, type: double}
+  - {name: jd_end, type: double}
+  - {name: hjd_mid, type: double}
+  - {name: hjd_weighted, type: double}
+  - {name: exptime, type: real}
+  - {name: num_sub, type: tinyint, unsigned: true}
+  - {name: method_code, type: tinyint, unsigned: true}
+  - {name: focus, type: real}
+  indexes:
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: ra_icrs_ind, columns: [ra_icrs]}
+  - {name: dec_icrs_ind, columns: [dec_icrs]}
+
+- name: exposure_sub
+  timestamps: true
+  primary_key: [subexposure_id]
+  primary_key_name: subexposure_pky
+  columns:
+  - {name: subexposure_id, type: serial}
+  - {name: exposure_id, type: int, unsigned: true, null: false}
+  - {name: plate_id, type: int, unsigned: true, null: false}
+  - {name: exposure_num, type: tinyint, unsigned: true, null: false}
+  - {name: subexposure_num, type: tinyint, unsigned: true, null: false}
+  - {name: date_orig_start, type: varchar(10)}
+  - {name: time_orig_start, type: varchar(40)}
+  - {name: time_orig_end, type: varchar(40)}
+  - {name: ut_start, type: datetime}
+  - {name: ut_mid, type: datetime}
+  - {name: ut_end, type: datetime}
+  - {name: jd_start, type: double}
+  - {name: jd_mid, type: double}
+  - {name: jd_end, type: double}
+  - {name: exptime, type: real}
+  indexes:
+  - {name: exposure_ind, columns: [exposure_id]}
+  - {name: plate_ind, columns: [plate_id]}
+
+- name: scan
+  timestamps: true
+  primary_key: [scan_id]
+  columns:
+  - {name: scan_id, type: serial}
+  - {name: plate_id, type: int, unsigned: true, null: false}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: filename_scan, type: varchar(255)}
+  - {name: filename_wedge, type: varchar(255)}
+  - {name: naxis1, type: smallint, unsigned: true}
+  - {name: naxis2, type: smallint, unsigned: true}
+  - {name: minval, type: int}
+  - {name: maxval, type: int}
+  - {name: scanner, type: varchar(80)}
+  - {name: scan_res1, type: smallint, unsigned: true}
+  - {name: scan_res2, type: smallint, unsigned: true}
+  - {name: pixel_size1, type: real}
+  - {name: pixel_size2, type: real}
+  - {name: scan_software, type: varchar(80)}
+  - {name: scan_gamma, type: real}
+  - {name: scan_focus, type: varchar(80)}
+  - {name: wedge, type: varchar(80)}
+  - {name: scan_date, type: datetime}
+  - {name: scan_author, type: varchar(80)}
+  - {name: scan_notes, type: varchar(255)}
+  - {name: origin, type: varchar(80)}
+  - {name: file_datetime, type: datetime}
+  - {name: file_size, type: int, unsigned: true, pgsql: "bigint"}
+  - {name: fits_checksum, type: char(16)}
+  - {name: fits_datasum, type: char(10)}
+  indexes:
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: preview
+  timestamps: true
+  primary_key: [preview_id]
+  columns:
+  - {name: preview_id, type: serial}
+  - {name: plate_id, type: int, unsigned: true, null: false}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: preview_type, type: tinyint}
+  - {name: filename, type: varchar(255)}
+  - {name: file_format, type: varchar(80)}
+  - {name: image_width, type: smallint, unsigned: true}
+  - {name: image_height, type: smallint, unsigned: true}
+  - {name: image_datetime, type: datetime}
+  - {name: file_datetime, type: datetime}
+  - {name: file_size, type: int, unsigned: true}
+  indexes:
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: logbook
+  timestamps: true
+  primary_key: [logbook_id]
+  columns:
+  - {name: logbook_id, type: serial}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: logbook_num, type: char(10)}
+  - {name: logbook_title, type: varchar(80)}
+  - {name: logbook_type, type: tinyint}
+  - {name: logbook_notes, type: varchar(255)}
+  indexes:
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: logpage
+  timestamps: true
+  primary_key: [logpage_id]
+  columns:
+  - {name: logpage_id, type: serial}
+  - {name: logbook_id, type: int, unsigned: true}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: logpage_type, type: tinyint}
+  - {name: page_num, type: smallint}
+  - {name: logpage_order, type: smallint}
+  - {name: filename, type: varchar(255)}
+  - {name: file_format, type: varchar(80)}
+  - {name: image_width, type: smallint, unsigned: true}
+  - {name: image_height, type: smallint, unsigned: true}
+  - {name: image_datetime, type: datetime}
+  - {name: file_datetime, type: datetime}
+  - {name: file_size, type: int, unsigned: true}
+  indexes:
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: plate_logpage
+  timestamps: true
+  columns:
+  - {name: plate_id, type: int, unsigned: true, null: false}
+  - {name: logpage_id, type: int, unsigned: true, null: false}
+  - {name: logpage_order, type: tinyint}
+  indexes:
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: logpage_ind, columns: [logpage_id]}
+
+- name: source
+  timestamps: true
+  primary_key: [source_id]
+  columns:
+  - {name: source_id, type: bigint, unsigned: true, null: false}
+  - {name: process_id, type: int, unsigned: true, null: false}
+  - {name: scan_id, type: int, unsigned: true, null: false}
+  - {name: plate_id, type: int, unsigned: true, null: false}
+  - {name: archive_id, type: int, unsigned: true, null: false}
+  - {name: source_num, type: int, unsigned: true}
+  - {name: x_source, type: double}
+  - {name: y_source, type: double}
+  - {name: a_source, type: real}
+  - {name: b_source, type: real}
+  - {name: theta_source, type: real}
+  - {name: erra_source, type: real}
+  - {name: errb_source, type: real}
+  - {name: errtheta_source, type: real}
+  - {name: elongation, type: real}
+  - {name: x_peak, type: int}
+  - {name: y_peak, type: int}
+  - {name: flag_usepsf, type: tinyint}
+  - {name: x_image, type: double}
+  - {name: y_image, type: double}
+  - {name: erra_image, type: real}
+  - {name: errb_image, type: real}
+  - {name: errtheta_image, type: real}
+  - {name: x_psf, type: double}
+  - {name: y_psf, type: double}
+  - {name: erra_psf, type: real}
+  - {name: errb_psf, type: real}
+  - {name: errtheta_psf, type: real}
+  - {name: mag_auto, type: real}
+  - {name: magerr_auto, type: real}
+  - {name: flux_auto, type: real}
+  - {name: fluxerr_auto, type: real}
+  - {name: mag_iso, type: real}
+  - {name: magerr_iso, type: real}
+  - {name: flux_iso, type: real}
+  - {name: fluxerr_iso, type: real}
+  - {name: flux_max, type: real}
+  - {name: flux_radius, type: real}
+  - {name: isoarea, type: int}
+  - {name: sqrt_isoarea, type: real}
+  - {name: background, type: real}
+  - {name: sextractor_flags, type: smallint}
+  - {name: dist_center, type: double}
+  - {name: dist_edge, type: double}
+  - {name: annular_bin, type: tinyint}
+  - {name: flag_rim, type: tinyint}
+  - {name: flag_negradius, type: tinyint}
+  - {name: flag_clean, type: tinyint}
+  - {name: model_prediction, type: real}
+  indexes:
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: annularbin_ind, columns: [annular_bin]}
+
+- name: source_calib
+  timestamps: true
+  primary_key: [source_id]
+  columns:
+  - {name: source_id, type: bigint, unsigned: true, null: false}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: solution_num, type: smallint, unsigned: true}
+  - {name: annular_bin, type: tinyint}
+  - {name: dist_center, type: double}
+  - {name: dist_edge, type: double}
+  - {name: sextractor_flags, type: smallint}
+  - {name: model_prediction, type: real}
+  - {name: ra_icrs, type: double}
+  - {name: dec_icrs, type: double}
+  - {name: ra_error, type: real}
+  - {name: dec_error, type: real}
+  - {name: gal_lon, type: double}
+  - {name: gal_lat, type: double}
+  - {name: ecl_lon, type: double}
+  - {name: ecl_lat, type: double}
+  - {name: x_sphere, type: double}
+  - {name: y_sphere, type: double}
+  - {name: z_sphere, type: double}
+  - {name: healpix256, type: int}
+  - {name: healpix1024, type: int}
+  - {name: nn_dist, type: real}
+  - {name: zenith_angle, type: real}
+  - {name: airmass, type: real}
+  - {name: natmag, type: real}
+  - {name: natmag_error, type: real}
+  - {name: bpmag, type: real}
+  - {name: bpmag_error, type: real}
+  - {name: rpmag, type: real}
+  - {name: rpmag_error, type: real}
+  - {name: natmag_plate, type: real}
+  - {name: natmag_correction, type: real}
+  - {name: natmag_residual, type: real}
+  - {name: phot_range_flags, type: tinyint}
+  - {name: phot_calib_flags, type: tinyint}
+  - {name: color_term, type: real}
+  - {name: cat_natmag, type: real}
+  - {name: match_radius, type: real}
+  - {name: gaiadr4_id, type: bigint}
+  - {name: gaiadr4_gmag, type: real}
+  - {name: gaiadr4_bp_rp, type: real}
+  - {name: gaiadr4_dist, type: real}
+  - {name: gaiadr4_neighbors, type: int}
+  indexes:
+  - {name: source_ind, columns: [source_id]}
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: annularbin_ind, columns: [annular_bin]}
+  - {name: ra_icrs_ind, columns: [ra_icrs]}
+  - {name: dec_icrs_ind, columns: [dec_icrs]}
+  - {name: x_ind, columns: [x_sphere]}
+  - {name: y_ind, columns: [y_sphere]}
+  - {name: z_ind, columns: [z_sphere]}
+  - {name: healpix256_ind, columns: [healpix256]}
+  - {name: nndist_ind, columns: [nn_dist]}
+  - {name: natmag_ind, columns: [natmag]}
+  - {name: bmag_ind, columns: [bpmag]}
+  - {name: vmag_ind, columns: [rpmag]}
+  - {name: gaiadr4_ind, columns: [gaiadr4_id]}
+
+- name: source_xmatch
+  timestamps: true
+  primary_key: [source_id, gaiadr4_id]
+  columns:
+  - {name: source_id, type: bigint, unsigned: true, null: false, pgsql: "bigint not null"}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: dist, type: real}
+  - {name: solution_num, type: smallint, unsigned: true}
+  - {name: gaiadr4_id, type: bigint}
+  - {name: x_gaia, type: double}
+  - {name: y_gaia, type: double}
+  - {name: flag_xmatch, type: tinyint}
+  indexes:
+  - {name: source_ind, columns: [source_id]}
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: gaiadr4_id_ind, columns: [gaiadr4_id]}
+
+- name: solution_set
+  timestamps: true
+  primary_key: [solutionset_id]
+  primary_key_name: solutionset_pky
+  columns:
+  - {name: solutionset_id, type: serial}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: num_solutions, type: smallint, unsigned: true}
+  - {name: num_duplicate_solutions, type: smallint, unsigned: true}
+  - {name: pattern_ratio, type: real}
+  - {name: mean_pixel_scale, type: real}
+  - {name: min_pixel_scale, type: real}
+  - {name: max_pixel_scale, type: real}
+  - {name: mean_fov1, type: real}
+  - {name: mean_fov2, type: real}
+  - {name: source_density, type: real}
+  - {name: max_separation, type: real}
+  - {name: header_wcs, type: text}
+  indexes:
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: solution
+  timestamps: true
+  primary_key: [solution_id]
+  columns:
+  - {name: solution_id, type: serial}
+  - {name: solutionset_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: solution_num, type: smallint}
+  - {name: ra_icrs, type: double}
+  - {name: dec_icrs, type: double}
+  - {name: fov1, type: real}
+  - {name: fov2, type: real}
+  - {name: pixel_scale, type: real}
+  - {name: source_density, type: real}
+  - {name: cd1_1, type: double}
+  - {name: cd1_2, type: double}
+  - {name: cd2_1, type: double}
+  - {name: cd2_2, type: double}
+  - {name: rotation_angle, type: real}
+  - {name: plate_mirrored, type: bool}
+  - {name: ncp_on_plate, type: bool}
+  - {name: scp_on_plate, type: bool}
+  - {name: stc_box, type: varchar(100)}
+  - {name: stc_polygon, type: varchar(200)}
+  - {name: header_wcs, type: text}
+  - {name: header_anet, type: text}
+  - {name: header_scamp, type: text}
+  - {name: scamp_dscale, type: real}
+  - {name: scamp_dangle, type: real}
+  - {name: scamp_dx, type: real}
+  - {name: scamp_dy, type: real}
+  - {name: scamp_sigma_1, type: real}
+  - {name: scamp_sigma_2, type: real}
+  - {name: scamp_sigma_mean, type: real}
+  - {name: scamp_chi2, type: real}
+  - {name: scamp_ndeg, type: int}
+  - {name: scamp_distort, type: int}
+  - {name: scamp_iteration, type: int}
+  - {name: x_centroid, type: real}
+  - {name: y_centroid, type: real}
+  - {name: rel_x_centroid, type: real}
+  - {name: rel_y_centroid, type: real}
+  - {name: num_xmatch, type: int}
+  - {name: num_gaia_dr4, type: int}
+  indexes:
+  - {name: solutionset_ind, columns: [solutionset_id]}
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: ra_icrs_ind, columns: [ra_icrs]}
+  - {name: dec_icrs_ind, columns: [dec_icrs]}
+
+- name: solution_healpix
+  timestamps: true
+  columns:
+  - {name: solution_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: solutionset_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: solution_num, type: smallint}
+  - {name: healpix1024, type: int}
+  - {name: num_sources, type: smallint}
+  indexes:
+  - {name: solution_ind, columns: [solution_id]}
+  - {name: solutionset_ind, columns: [solutionset_id]}
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: healpix_ind, columns: [healpix1024]}
+
+- name: scanner_pattern
+  timestamps: true
+  primary_key: [pattern_id]
+  primary_key_name: pattern_pky
+  columns:
+  - {name: pattern_id, type: serial}
+  - {name: solutionset_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: axis, type: bool}
+  - {name: coord, type: real}
+  - {name: shift, type: real}
+  - {name: extrapolated, type: bool}
+  indexes:
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: phot_calib
+  timestamps: true
+  primary_key: [calib_id]
+  primary_key_name: calib_pky
+  columns:
+  - {name: calib_id, type: serial}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: solution_num, type: smallint, unsigned: true}
+  - {name: iteration, type: smallint, unsigned: true}
+  - {name: color_term, type: real}
+  - {name: color_term_error, type: real}
+  - {name: cterm_stdev_fit, type: real}
+  - {name: cterm_stdev_min, type: real}
+  - {name: cterm_range_min, type: real}
+  - {name: cterm_range_max, type: real}
+  - {name: cterm_iterations, type: tinyint, unsigned: true}
+  - {name: cterm_num_stars, type: int, unsigned: true}
+  - {name: num_gaia_dr4, type: int, unsigned: true}
+  - {name: num_candidate_stars, type: int, unsigned: true}
+  - {name: num_calib_stars, type: int, unsigned: true}
+  - {name: num_bright_stars, type: int, unsigned: true}
+  - {name: num_outliers, type: int, unsigned: true}
+  - {name: bright_limit, type: real}
+  - {name: faint_limit, type: real}
+  - {name: mag_range, type: real}
+  - {name: rmse_min, type: real}
+  - {name: rmse_median, type: real}
+  - {name: rmse_max, type: real}
+  - {name: plate_mag_brightest, type: real}
+  - {name: plate_mag_density02, type: real}
+  - {name: plate_mag_brightcut, type: real}
+  - {name: plate_mag_maxden, type: real}
+  - {name: plate_mag_lim, type: real}
+  indexes:
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: phot_calib_curve
+  timestamps: true
+  primary_key: [calibcurve_id]
+  primary_key_name: calibcurve_pky
+  columns:
+  - {name: calibcurve_id, type: serial}
+  - {name: calib_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: process_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: scan_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: plate_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: archive_id, type: int, unsigned: true, null: false, pgsql: "integer"}
+  - {name: solution_num, type: smallint, unsigned: true}
+  - {name: iteration, type: smallint, unsigned: true}
+  - {name: plate_mag, type: real}
+  - {name: natmag, type: real}
+  indexes:
+  - {name: calib_ind, columns: [calib_id]}
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+
+- name: process
+  primary_key: [process_id]
+  columns:
+  - {name: process_id, type: serial}
+  - {name: scan_id, type: int, unsigned: true}
+  - {name: plate_id, type: int, unsigned: true}
+  - {name: archive_id, type: int, unsigned: true}
+  - {name: filename, type: varchar(255)}
+  - {name: num_exposures, type: smallint, unsigned: true}
+  - {name: plate_epoch, type: real}
+  - {name: hostname, type: varchar(80)}
+  - {name: timestamp_start, type: timestamp, default: now}
+  - {name: timestamp_end, type: timestamp, pgsql: "timestamp with time zone default null"}
+  - {name: duration, type: int, unsigned: true}
+  - {name: sky, type: real}
+  - {name: sky_sigma, type: real}
+  - {name: use_psf, type: bool, unsigned: true}
+  - {name: threshold, type: real}
+  - {name: num_sources, type: int, unsigned: true}
+  - {name: num_psf_sources, type: int, unsigned: true}
+  - {name: num_true_sources, type: int, unsigned: true}
+  - {name: num_artifacts, type: int, unsigned: true}
+  - {name: solved, type: bool, unsigned: true}
+  - {name: num_solutions, type: smallint, unsigned: true}
+  - {name: pattern_ratio, type: real}
+  - {name: num_gaia_dr4, type: int, unsigned: true}
+  - {name: color_term, type: real}
+  - {name: bright_limit, type: real}
+  - {name: faint_limit, type: real}
+  - {name: mag_range, type: real}
+  - {name: num_calib, type: int, unsigned: true}
+  - {name: num_iterations, type: smallint, unsigned: true}
+  - {name: calibrated, type: bool, unsigned: true}
+  - {name: completed, type: bool, unsigned: true}
+  - {name: pyplate_version, type: varchar(15)}
+  indexes:
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: filename_ind, columns: [filename]}
+
+- name: process_log
+  primary_key: [processlog_id]
+  primary_key_name: processlog_pky
+  columns:
+  - {name: processlog_id, type: serial}
+  - {name: process_id, type: int, unsigned: true, null: false}
+  - {name: timestamp_log, type: timestamp, default: now, null: false}
+  - {name: scan_id, type: int, unsigned: true}
+  - {name: plate_id, type: int, unsigned: true}
+  - {name: archive_id, type: int, unsigned: true}
+  - {name: level, type: tinyint}
+  - {name: event, type: smallint}
+  - {name: solution_num, type: smallint, unsigned: true}
+  - {name: message, type: text}
+  indexes:
+  - {name: process_ind, columns: [process_id]}
+  - {name: scan_ind, columns: [scan_id]}
+  - {name: plate_ind, columns: [plate_id]}
+  - {name: archive_ind, columns: [archive_id]}
+  - {name: event_ind, columns: [event]}

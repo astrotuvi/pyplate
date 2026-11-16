@@ -1,35 +1,16 @@
 import os
-import glob
-import shutil
-import sys
-import math
-import datetime as dt
-import subprocess as sp
 import numpy as np
 import warnings
-import xml.etree.ElementTree as ET
-from astropy import __version__ as astropy_version
+from typing import TYPE_CHECKING
 from astropy import wcs
-from astropy.io import fits, votable
-from astropy.table import Table, Column, MaskedColumn, vstack, join
-from astropy.coordinates import Angle, EarthLocation, SkyCoord, ICRS, AltAz
+from astropy.io import fits
+from astropy.table import Table, Column, MaskedColumn, vstack
+from astropy.coordinates import EarthLocation, SkyCoord, AltAz
 from astropy.coordinates import Galactic, GeocentricMeanEcliptic
 from astropy.coordinates import match_coordinates_sky
 from astropy import units as u
 from astropy.time import Time
-from astropy.stats import sigma_clip
-from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
-from scipy.ndimage.filters import generic_filter
-from scipy.linalg import lstsq
 from collections import OrderedDict
-from ..database.database import PlateDB
-from ..conf import read_conf
-from .._version import __version__
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
 
 try:
     from scipy.spatial import cKDTree as KDT
@@ -37,27 +18,15 @@ except ImportError:
     from scipy.spatial import KDTree as KDT
 
 try:
-    from sklearn.cluster import DBSCAN
-    have_sklearn = True
-except ImportError:
-    have_sklearn = False
-
-try:
-    import MySQLdb
-except ImportError:
-    pass
-
-try:
     import healpy
     have_healpy = True
 except ImportError:
     have_healpy = False
 
-try:
-    import statsmodels.api as sm
-    have_statsmodels = True
-except ImportError:
-    have_statsmodels = False
+from .log import ProcessLog
+
+if TYPE_CHECKING:
+    from .crossmatch import Association, ReferenceStars
 
 
 _source_meta = OrderedDict([
@@ -137,44 +106,14 @@ _source_meta = OrderedDict([
     ('color_term',          ('f4', '%7.4f', '')),
     ('cat_natmag',          ('f4', '%7.4f', '')),
     ('match_radius',        ('f4', '%7.3f', '')),
-    ('gaiaedr3_id',         ('i8', '%d', '')),
-    ('gaiaedr3_gmag',       ('f4', '%7.4f', '')),
-    ('gaiaedr3_bpmag',      ('f4', '%7.4f', '')),
-    ('gaiaedr3_rpmag',      ('f4', '%7.4f', '')),
-    ('gaiaedr3_bp_rp',      ('f4', '%7.4f', '')),
-    ('gaiaedr3_dist',       ('f4', '%6.3f', '')),
-    ('gaiaedr3_neighbors',  ('i4', '%3d', ''))
+    ('gaiadr4_id',         ('i8', '%d', '')),
+    ('gaiadr4_gmag',       ('f4', '%7.4f', '')),
+    ('gaiadr4_bpmag',      ('f4', '%7.4f', '')),
+    ('gaiadr4_rpmag',      ('f4', '%7.4f', '')),
+    ('gaiadr4_bp_rp',      ('f4', '%7.4f', '')),
+    ('gaiadr4_dist',       ('f4', '%6.3f', '')),
+    ('gaiadr4_neighbors',  ('i4', '%3d', ''))
 ])
-
-
-def crossmatch_cartesian(coords_image, coords_ref, tolerance=None):
-    """
-    Crossmatch source coordinates with reference-star coordinates.
-
-    Parameters
-    ----------
-    coords_image : array-like
-        The coordinates of points to match
-    coords_ref : array-like
-        The coordinates of reference points to match
-    tolerance : float
-        Crossmatch distance in pixels (default: 5)
-
-    """
-
-    if tolerance is None:
-        tolerance = 5.
-
-    try:
-        kdt = KDT(coords_ref, balanced_tree=False, compact_nodes=False)
-    except TypeError:
-        kdt = KDT(coords_ref)
-
-    ds,ind_ref = kdt.query(coords_image, k=1, distance_upper_bound=tolerance)
-    mask_xmatch = ds < tolerance
-    ind_image = np.arange(len(coords_image))
-
-    return ind_image[mask_xmatch], ind_ref[mask_xmatch], ds[mask_xmatch]
 
 
 class SourceTable(Table):
@@ -184,68 +123,12 @@ class SourceTable(Table):
     """
 
     def __init__(self, *args, **kwargs):
-        num_sources = kwargs.pop('num_sources', None)
         super().__init__(*args, **kwargs)
 
-        #self.filename = os.path.basename(filename)
-        #self.archive_id = archive_id
-        self.basefn = ''
-        self.fn_fits = ''
-        self.process_id = None
-        self.scan_id = None
-        self.plate_id = None
         self.log = None
-
-        self.work_dir = ''
-        self.scratch_dir = None
-        self.write_source_dir = ''
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
-
-        self.plate_epoch = 1950
-        self.plate_year = int(self.plate_epoch)
-        self.threshold_sigma = 4.
-        self.use_filter = False
-        self.filter_path = None
-        self.use_psf = False
-        self.psf_threshold_sigma = 20.
-        self.psf_model_sigma = 20.
-        self.min_model_sources = 100
-        self.max_model_sources = 10000
-        self.sip = 3
-        self.skip_bright = 10
-        self.distort = 3
-        self.subfield_distort = 1
-        self.max_recursion_depth = 5
-        self.force_recursion_depth = 0
-        self.circular_film = False
-        self.crossmatch_radius = None
-        self.crossmatch_nsigma = 10.
-        self.crossmatch_nlogarea = 2.
-        self.crossmatch_maxradius = 20.
-
-        self.plate_header = None
-        self.platemeta = None
-        self.imwidth = None
-        self.imheight = None
-        self.plate_solved = False
-        self.mean_pixscale = None
-        self.num_sources = num_sources
+        self.plate = None
         self.num_sources_sixbins = None
         self.rel_area_sixbins = None
-        self.min_ra = None
-        self.max_ra = None
-        self.min_dec = None
-        self.max_dec = None
-        self.ncp_close = None
-        self.scp_close = None
-        self.ncp_on_plate = None
-        self.scp_on_plate = None
-        self.pattern_x = None
-        self.pattern_y = None
-        self.pattern_ratio = None
-        self.num_crossmatch_gaia = None
-        self.neighbors_gaia = None
 
     def populate(self, num_sources=0):
         """
@@ -280,12 +163,12 @@ class SourceTable(Table):
         self['nn_dist'] = np.nan
         self['zenith_angle'] = np.nan
         self['airmass'] = np.nan
-        self['gaiaedr3_gmag'] = np.nan
-        self['gaiaedr3_bpmag'] = np.nan
-        self['gaiaedr3_rpmag'] = np.nan
-        self['gaiaedr3_bp_rp'] = np.nan
-        self['gaiaedr3_dist'] = np.nan
-        self['gaiaedr3_neighbors'] = 0
+        self['gaiadr4_gmag'] = np.nan
+        self['gaiadr4_bpmag'] = np.nan
+        self['gaiadr4_rpmag'] = np.nan
+        self['gaiadr4_bp_rp'] = np.nan
+        self['gaiadr4_dist'] = np.nan
+        self['gaiadr4_neighbors'] = 0
         self['natmag'] = np.nan
         self['natmag_error'] = np.nan
         self['bpmag'] = np.nan
@@ -298,124 +181,6 @@ class SourceTable(Table):
         self['cat_natmag'] = np.nan
         self['phot_range_flags'] = 0
         self['phot_calib_flags'] = 0
-
-    def assign_conf(self, conf):
-        """
-        Parse configuration and set class attributes.
-
-        """
-
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-            
-        self.conf = conf
-
-        try:
-            self.archive_id = conf.getint('Archive', 'archive_id')
-        except ValueError:
-            print('Error in configuration file '
-                  '([{}], {})'.format('Archive', attr))
-        except configparser.Error:
-            pass
-
-        for attr in ['sextractor_path', 'scamp_path', 'psfex_path',
-                     'solve_field_path', 'wcs_to_tan_path']:
-            try:
-                setattr(self, attr, conf.get('Programs', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['fits_dir', 'index_dir', 'gaia_dir', 'tycho2_dir', 
-                     'work_dir', 'write_log_dir', 'write_phot_dir',
-                     'write_source_dir', 'write_wcs_dir',
-                     'write_db_source_dir', 'write_db_source_calib_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        if self.write_log_dir:
-            self.enable_log = True
-
-        for attr in ['use_gaia_fits', 'use_tycho2_fits', 
-                     'use_ucac4_db', 'use_apass_db',
-                     'enable_db_log', 'write_sources_csv']:
-            try:
-                setattr(self, attr, conf.getboolean('Database', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['ucac4_db_host', 'ucac4_db_user', 'ucac4_db_name', 
-                     'ucac4_db_passwd', 'ucac4_db_table',
-                     'apass_db_host', 'apass_db_user', 'apass_db_name', 
-                     'apass_db_passwd', 'apass_db_table',
-                     'output_db_host', 'output_db_user',
-                     'output_db_name', 'output_db_passwd']:
-            try:
-                setattr(self, attr, conf.get('Database', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['use_filter', 'use_psf', 'circular_film']:
-            try:
-                setattr(self, attr, conf.getboolean('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['plate_epoch', 'threshold_sigma', 
-                     'psf_threshold_sigma', 'psf_model_sigma', 
-                     'crossmatch_radius', 'crossmatch_nsigma', 
-                     'crossmatch_nlogarea', 'crossmatch_maxradius']:
-            try:
-                setattr(self, attr, conf.getfloat('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['sip', 'skip_bright', 'distort', 'subfield_distort', 
-                     'max_recursion_depth', 'force_recursion_depth', 
-                     'min_model_sources', 'max_model_sources']:
-            try:
-                setattr(self, attr, conf.getint('Solve', attr))
-            except ValueError:
-                print('Error in configuration file '
-                      '([{}], {})'.format('Solve', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['filter_path', 'astref_catalog', 'photref_catalog']:
-            try:
-                setattr(self, attr, conf.get('Solve', attr))
-            except configparser.Error:
-                pass
-
-        # Read UCAC4 and APASS table column names from the dedicated sections,
-        # named after the tables
-        if conf.has_section(self.ucac4_db_table):
-            for attr in self.ucac4_columns.keys():
-                try:
-                    colstr = conf.get(self.ucac4_db_table, attr)
-                    _,typ = self.ucac4_columns[attr]
-                    self.ucac4_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
-
-        if conf.has_section(self.apass_db_table):
-            for attr in self.apass_columns.keys():
-                try:
-                    colstr = conf.get(self.apass_db_table, attr)
-                    _,typ = self.apass_columns[attr]
-                    self.apass_columns[attr] = (colstr, typ)
-                except configparser.Error:
-                    pass
 
     def copy_from_sextractor(self, xycat):
         """
@@ -431,281 +196,330 @@ class SourceTable(Table):
                     if _source_meta[n][2]]:
             self[k] = xycat[1].data.field(v)
 
-    def apply_scanner_pattern(self, plate_solution=None):
+    def apply_scanner_pattern(self, solution_set=None):
         """
         Correct source coordinates for scanner pattern.
 
         Parameters
         ----------
-        plate_solution: PlateSolution instance
+        solution_set: SolutionSet instance
 
         """
 
-        from .solve import PlateSolution
-        assert isinstance(plate_solution, PlateSolution)
-        assert plate_solution.pattern_ratio is not None
+        from .solve import SolutionSet
+        assert isinstance(solution_set, SolutionSet)
+        assert solution_set.pattern_ratio is not None
 
-        if plate_solution.pattern_ratio > 1.5:
+        if solution_set.pattern_ratio > 1.5:
             y_source = self['y_source']
-            self['y_source'] = (y_source - plate_solution.pattern_y(y_source))
-        elif plate_solution.pattern_ratio < 2./3.:
+            self['y_source'] = (y_source - solution_set.pattern_y(y_source))
+        elif solution_set.pattern_ratio < 2./3.:
             x_source = self['x_source']
-            self['x_source'] = (x_source - plate_solution.pattern_x(x_source))
+            self['x_source'] = (x_source - solution_set.pattern_x(x_source))
 
-    def crossmatch_gaia(self, plate_solution=None, star_catalog=None):
+    def compute_annular_bins(self, imwidth: int, imheight: int,
+                             log: ProcessLog) -> None:
         """
-        Crossmatch sources with Gaia objects, considering multiple solutions.
-
-        Parameters:
-        -----------
-        plate_solution : :class:`solve.PlateSolution`
-            Plate solution with one or more astrometric solutions
-        star_catalog : :class:`catalog.StarCatalog`
-            External star catalog with Gaia data
+        Compute the distances of the sources from the image centre and the
+        nearest edge, and divide the image into 8 concentric annular bins of
+        equal area, plus bin 9 at the edges and corners. Sets
+        ``dist_center``, ``dist_edge``, ``annular_bin``,
+        ``num_sources_sixbins`` and ``rel_area_sixbins``.
 
         """
 
-        from .solve import PlateSolution
-        from .catalog import StarCatalog
+        # For brevity, define following variables
+        xim = self['x_image']
+        yim = self['y_image']
 
-        self.log.write('Crossmatching sources with Gaia objects',
-                       level=3, event=44)
+        self['dist_center'] = np.sqrt((xim - imwidth / 2.)**2 +
+                                      (yim - imheight / 2.)**2)
+        min_halfwidth = min([imwidth, imheight]) / 2.
 
-        if plate_solution is None or plate_solution.num_solutions == 0:
-            self.log.write('Cannot crossmatch sources with Gaia objects '
-                           'due to missing astrometric solutions!',
-                           level=2, event=44)
-            return
+        # Calculate distance from edge
+        distarr = np.column_stack((xim, imwidth-xim,
+                                   yim, imheight-yim))
+        self['dist_edge'] = np.amin(distarr, 1)
 
-        if star_catalog is None:
-            self.log.write('Cannot crossmatch sources with Gaia objects '
-                           'due to missing Gaia catalog data!',
-                           level=2, event=44)
-            return
+        # Define 8 concentric annular bins + bin9 for edges
+        sampling = 100
+        imwidth_s = int(imwidth / sampling)
+        imheight_s = int(imheight / sampling)
+        dist_s = np.zeros((imheight_s, imwidth_s))
+        area_all = dist_s.size
 
-        assert isinstance(plate_solution, PlateSolution)
-        assert isinstance(star_catalog, StarCatalog)
+        for x in np.arange(imwidth_s):
+            for y in np.arange(imheight_s):
+                dist_s[y,x] = np.sqrt((x*sampling - imwidth/2.)**2 +
+                                 (y*sampling - imheight/2.)**2)
 
-        # Take parameters from plate_solution
-        num_solutions = plate_solution.num_solutions
-        solutions = plate_solution.solutions
-        mean_pixscale = plate_solution.mean_pixel_scale
+        # Define bin9 as 1/10 of min_halfwidth at all edges
+        bin9_width_s = int(0.1 * min_halfwidth / sampling)
+        dist_s[:bin9_width_s,:] = -100.
+        dist_s[imheight_s-bin9_width_s:,:] = -100.
+        dist_s[:,:bin9_width_s] = -100.
+        dist_s[:,imwidth_s-bin9_width_s:] = -100.
 
-        # Number of Gaia stars
-        num_gaia = len(star_catalog)
+        # Additionally, include in bin9 corner pixels that are closer
+        # to corners than 1/6 of half-diagonal
+        bin9_corner_dist = (np.sqrt(imwidth**2 + imheight**2) *
+                            5. / 12.)
+        dist_s[np.where(dist_s > bin9_corner_dist)] = -100.
 
-        self.log.write('Number of Gaia stars: {:d}'.format(num_gaia), 
-                       level=4, event=44, double_newline=False)
+        # Exclude bin9 from dist_s
+        dist_s = dist_s[np.where(dist_s >= 0)]
+        self.rel_area_sixbins = 0.75 * dist_s.size / area_all
 
-        # Calculate RA and Dec for the plate epoch
-        ra_ref = (star_catalog['ra']
-                  + (self.plate_epoch - star_catalog['ref_epoch'])
-                  * star_catalog['pmra']
-                  / np.cos(star_catalog['dec'] * np.pi / 180.) / 3600000.)
-        dec_ref = (star_catalog['dec']
-                   + (self.plate_epoch - star_catalog['ref_epoch'])
-                   * star_catalog['pmdec'] / 3600000.)
-        #catalog = SkyCoord(ra_ref, dec_ref, frame='icrs')
-        xy_ref = np.empty((0, 2))
-        sol_ref = np.empty((0,), dtype=np.int8)
-        index_ref = np.empty((0,), dtype=np.int32)
+        # Divide the rest of pixels between 8 equal-area bins 1-8
+        bin_dist = np.array([np.percentile(dist_s, perc)
+                             for perc in (np.arange(8)+1.)*100./8.])
+        bin_dist[7] = bin9_corner_dist
+        bin_dist = np.insert(bin_dist, 0, 0.)
 
-        # Build a list of Gaia stars in image coordinates
-        for i in np.arange(plate_solution.num_solutions):
-            solution = solutions[i]
+        for b in np.arange(8)+1:
+            bbin = ((self['dist_center'] >= bin_dist[b-1]) &
+                    (self['dist_center'] < bin_dist[b]))
+            nbin = bbin.sum()
+            log.write('Annular bin {:d} (radius {:8.2f} pixels): '
+                      '{:6d} sources'.format(b, bin_dist[b], nbin),
+                      double_newline=False, level=4, event=27)
 
-            # If there is a column named 'solution_num', then take only
-            # reference stars with the current solution number
-            if 'solution_num' in star_catalog.columns:
-                mask_sol = star_catalog['solution_num'] == i + 1
-            else:
-                mask_sol = np.full(num_gaia, True)
+            if nbin > 0:
+                indbin = np.where(bbin)
+                self['annular_bin'][indbin] = b
 
-            w = wcs.WCS(solution['header_wcs'])
+        bbin = ((self['dist_edge'] < 0.1*min_halfwidth) |
+                (self['dist_center'] >= bin9_corner_dist))
+        nbin = bbin.sum()
+        log.write('Annular bin 9 (radius {:8.2f} pixels): '
+                  '{:6d} sources'.format(bin9_corner_dist, nbin),
+                  level=4, event=27)
 
-            try:
-                xr,yr = w.all_world2pix(ra_ref[mask_sol], dec_ref[mask_sol], 1)
-            except wcs.NoConvergence as e:
-                self.log.write('Failed to convert sky coordinates to '
-                               'pixel coordinates for solution {:d}: {}'
-                               .format(i + 1, e))
-                continue
+        if nbin > 0:
+            indbin = np.where(bbin)
+            self['annular_bin'][indbin] = 9
 
-            mask_inside = ((xr > 0.5) & (xr < plate_solution.imwidth) &
-                           (yr > 0.5) & (yr < plate_solution.imheight))
-            num_inside = mask_inside.sum()
-            xyr = np.vstack((xr[mask_inside], yr[mask_inside])).T
-            xy_ref = np.vstack((xy_ref, xyr))
-            sol_ref = np.hstack((sol_ref, np.full(num_inside, i + 1)))
-            index_ref = np.hstack((index_ref,
-                                   np.arange(num_gaia)[mask_sol][mask_inside]))
+        indbin6 = (self['annular_bin'] <= 6)
+        self.num_sources_sixbins = indbin6.sum()
 
-        # Calculate mean astrometric error
-        sigma1 = u.Quantity([sol['scamp_sigma_1'] for sol in solutions
-                             if sol['scamp_sigma_1'] is not None])
-        sigma2 = u.Quantity([sol['scamp_sigma_2'] for sol in solutions
-                             if sol['scamp_sigma_2'] is not None])
-        ndeg = np.array([sol['scamp_ndeg'] for sol in solutions
-                         if sol['scamp_sigma_1'] is not None])
+    def flag_edge_sources(self, imwidth: int, imheight: int,
+                          circular_film: bool, log: ProcessLog) -> None:
+        """
+        Flag clean sources, sources at the plate rim and sources with
+        negative ``flux_radius``. A source is at the rim if its background
+        deviates from the mean background near the centre by much more
+        than its distance from the edge allows (from the circular rim if
+        circular_film). Needs ``dist_center`` (see
+        :meth:`compute_annular_bins`).
 
-        # Keep values only for solutions with scamp_ndeg > 10
-        mask_ndeg = ndeg > 10
-        sigma1 = sigma1[mask_ndeg]
-        sigma2 = sigma2[mask_ndeg]
-        ndeg = ndeg[mask_ndeg]
+        """
 
-        if len(sigma1) > 0 and len(sigma2) > 0:
-            # Calculate weighted mean of scamp_sigma over all solutions
-            wmean_sigma1 = (sigma1 * ndeg).sum() / ndeg.sum()
-            wmean_sigma2 = (sigma2 * ndeg).sum() / ndeg.sum()
-            mean_scamp_sigma = np.sqrt(wmean_sigma1**2 + wmean_sigma2**2)
+        # For brevity, define following variables
+        xim = self['x_image']
+        yim = self['y_image']
+        bg = self['background']
 
-            # Increase sigma if the sum of scamp_ndeg < 30
-            if ndeg.sum() < 30:
-                mean_scamp_sigma = (30. / ndeg.sum()) * mean_scamp_sigma
+        # Calculate mean background in an annulus around the centre of the plate
+        min_halfwidth = min([imwidth, imheight]) / 2.
+        max_halfwidth = max([imwidth, imheight]) / 2.
+        bannulus = ((self['dist_center'] > 0.1*min_halfwidth) &
+                    (self['dist_center'] < 0.9*min_halfwidth))
 
-            # Use default value if the mean sigma is abnormally low
-            if (mean_scamp_sigma < 0.1 * mean_pixscale * u.pixel
-                and ndeg.mean() < 20):
-                mean_scamp_sigma = 2. * mean_pixscale * u.pixel
+        if bannulus.sum() > 3:
+            mean_bg = bg[np.where(bannulus)].mean()
+            std_bg = bg[np.where(bannulus)].std()
         else:
-            mean_scamp_sigma = 2. * mean_pixscale * u.pixel
+            mean_bg = bg.mean()
+            std_bg = bg.std()
 
-        # Crossmatch sources and Gaia stars
-        coords_plate = np.vstack((self['x_source'], self['y_source'])).T
-        tolerance = ((5. * mean_scamp_sigma / mean_pixscale)
-                     .to(u.pixel).value)
+        # Find and flag dubious stars at the edges
+        if circular_film:
+            rim_dist = max_halfwidth - self['dist_center']
+            self['dist_edge'] = rim_dist
 
-        tolerance_arcsec = (5. * mean_scamp_sigma).to(u.arcsec).value
-        self.log.write('Crossmatch tolerance: {:.2f} arcsec ({:.2f} pixels)'
-                       .format(tolerance_arcsec, tolerance), level=4, event=44,
-                       double_newline=False)
+            # Consider sources that are further away from centre than
+            # half-width, to be at the rim.
+            bneg = (rim_dist <= 0)
 
-        ind_plate, ind_ref, ds = crossmatch_cartesian(coords_plate, xy_ref, 
-                                                      tolerance=tolerance)
-        dist_arcsec = (ds * u.pixel * mean_pixscale).to(u.arcsec).value
-        ind_gaia = index_ref[ind_ref]
-        self['solution_num'][ind_plate] = sol_ref[ind_ref]
-        self['match_radius'][ind_plate] = tolerance_arcsec
-        self['gaiaedr3_id'][ind_plate] = star_catalog['source_id'][ind_gaia]
-        self['gaiaedr3_gmag'][ind_plate] = star_catalog['mag'][ind_gaia]
-        self['gaiaedr3_bpmag'][ind_plate] = star_catalog['mag1'][ind_gaia]
-        self['gaiaedr3_rpmag'][ind_plate] = star_catalog['mag2'][ind_gaia]
-        self['gaiaedr3_bp_rp'][ind_plate] = star_catalog['color_index'][ind_gaia]
-        self['gaiaedr3_dist'][ind_plate] = dist_arcsec
-        self.num_crossmatch_gaia = len(ind_plate)
+            if bneg.sum() > 0:
+                rim_dist[np.where(bneg)] = 0.1
+
+            borderbg = max_halfwidth / rim_dist * (np.abs(bg - mean_bg) /
+                                                   std_bg)
+        else:
+            min_xedgedist = np.minimum(xim, imwidth-xim)
+            min_yedgedist = np.minimum(yim, imheight-yim)
+            min_reldist = np.minimum(min_xedgedist/imwidth,
+                                     min_yedgedist/imheight)
+
+            # Avoid dividing by zero
+            min_reldist[np.where(min_reldist < 1e-5)] = 1e-5
+
+            # Combine distance from edge with deviation from mean background
+            borderbg = (1. / min_reldist) * (np.abs(bg - mean_bg) / std_bg)
+
+        bclean = ((self['flux_radius'] > 0) &
+                  (self['elongation'] < 5) &
+                  (self['magerr_auto'] < 5) &
+                  (borderbg < 100))
+        indclean = np.where(bclean)[0]
+        self['flag_clean'][indclean] = 1
+        log.write('Flagged {:d} clean sources'.format(bclean.sum()),
+                  double_newline=False, level=4, event=27)
+
+        indrim = np.where(borderbg >= 100)[0]
+        self['flag_rim'][indrim] = 1
+        log.write('Flagged {:d} sources at the plate rim'
+                  ''.format(len(indrim)), double_newline=False,
+                  level=4, event=27)
+
+        indnegrad = np.where(self['flux_radius'] <= 0)[0]
+        self['flag_negradius'][indnegrad] = 1
+        log.write('Flagged {:d} sources with negative FLUX_RADIUS'
+                  ''.format(len(indnegrad)), level=4, event=27)
+
+    def apply_psf_coordinates(self, fn_psfcat: str,
+                              log: ProcessLog) -> int | None:
+        """
+        Replace the coordinates of the sources found in the SExtractor
+        catalogue made with the PSF model (peaks within 1 pixel) by the
+        PSF coordinates, and set ``flag_usepsf``.
+
+        Returns
+        -------
+        int or None
+            Number of sources with PSF coordinates (0 if the catalogue does
+            not exist or is empty), or None if it is corrupt.
+
+        """
+
+        if not os.path.exists(fn_psfcat):
+            log.write('Could not read PSF coordinates, '
+                      'file {} does not exist!'.format(fn_psfcat),
+                      level=2, event=28)
+            return 0
+
+        try:
+            psfcat = fits.open(fn_psfcat)
+        except IOError:
+            log.write('Could not read PSF coordinates, file {} '
+                      'is corrupt'.format(fn_psfcat),
+                      level=2, event=28)
+            return None
+
+        if psfcat[1].header['NAXIS2'] == 0:
+            log.write('There are no sources with PSF coordinates!',
+                      level=2, event=28)
+            return 0
+
+        num_sources = len(self)
+        xpeakpsf = psfcat[1].data.field('XPEAK_IMAGE')
+        ypeakpsf = psfcat[1].data.field('YPEAK_IMAGE')
+
+        # Match sources in two lists (distance < 1 px)
+        coords1 = np.empty((num_sources, 2))
+        coords1[:,0] = self['x_peak']
+        coords1[:,1] = self['y_peak']
+        coords2 = np.empty((xpeakpsf.size, 2))
+        coords2[:,0] = xpeakpsf
+        coords2[:,1] = ypeakpsf
+        kdt = KDT(coords2)
+        ds,ind2 = kdt.query(coords1)
+        ind1 = np.arange(num_sources)
+        indmask = ds < 1.
+        ind1 = ind1[indmask]
+        ind2 = ind2[indmask]
+
+        num_psf_sources = len(ind1)
+        log.write('Replacing x,y values from PSF photometry '
+                  'for {:d} sources'.format(num_psf_sources),
+                  level=4, event=28)
+        self['x_psf'][ind1] = psfcat[1].data.field('XPSF_IMAGE')[ind2]
+        self['y_psf'][ind1] = psfcat[1].data.field('YPSF_IMAGE')[ind2]
+        self['erra_psf'][ind1] = psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+        self['errb_psf'][ind1] = psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+        self['errtheta_psf'][ind1] = \
+                psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+        self['x_source'][ind1] = psfcat[1].data.field('XPSF_IMAGE')[ind2]
+        self['y_source'][ind1] = psfcat[1].data.field('YPSF_IMAGE')[ind2]
+        self['erra_source'][ind1] = \
+                psfcat[1].data.field('ERRAPSF_IMAGE')[ind2]
+        self['errb_source'][ind1] = \
+                psfcat[1].data.field('ERRBPSF_IMAGE')[ind2]
+        self['errtheta_source'][ind1] = \
+                psfcat[1].data.field('ERRTHETAPSF_IMAGE')[ind2]
+        self['flag_usepsf'][ind1] = 1
+        return num_psf_sources
+
+    def add_matches(self, association: 'Association',
+                    refs: 'ReferenceStars') -> None:
+        """
+        Copy the matches of a crossmatch and the catalogue values of the
+        matched stars (G, BP and RP magnitudes and BP-RP) to the source
+        columns, and the number of neighbours of each source. Values of
+        sources that are not matched are left as they are.
+
+        """
+
+        matches = association.matches
+        ind_plate = matches['source_index']
+        ind_gaia = refs.index[matches['ref_index']]
+        catalog = refs.catalog
+        self['solution_num'][ind_plate] = matches['solution_num']
+        self['match_radius'][ind_plate] = matches['match_radius']
+        self['gaiadr4_id'][ind_plate] = matches['gaiadr4_id']
+        self['gaiadr4_gmag'][ind_plate] = catalog['mag'][ind_gaia]
+        self['gaiadr4_bpmag'][ind_plate] = catalog['mag1'][ind_gaia]
+        self['gaiadr4_rpmag'][ind_plate] = catalog['mag2'][ind_gaia]
+        self['gaiadr4_bp_rp'][ind_plate] = catalog['color_index'][ind_gaia]
+        self['gaiadr4_dist'][ind_plate] = matches['gaiadr4_dist']
 
         # Mask nan values in listed columns
-        for col in ['gaiaedr3_gmag', 'gaiaedr3_bpmag', 'gaiaedr3_rpmag',
-                    'gaiaedr3_bp_rp', 'gaiaedr3_dist']:
+        for col in ['gaiadr4_gmag', 'gaiadr4_bpmag', 'gaiadr4_rpmag',
+                    'gaiadr4_bp_rp', 'gaiadr4_dist']:
             self[col] = MaskedColumn(self[col], mask=np.isnan(self[col]))
 
         # Mask zeros in the ID column
-        col = 'gaiaedr3_id'
+        col = 'gaiadr4_id'
         self[col] = MaskedColumn(self[col], mask=(self[col] == 0))
 
-        # Store number of crossmatched sources to each solution
-        grp = self.group_by('solution_num').groups
-        tab_grp = Table(grp.aggregate(len)['solution_num', 'source_num'])
-        tab_grp.rename_column('source_num', 'num_gaia_edr3')
+        # Calculate neighbor counts
+        neighbors = association.neighbors
 
-        for i in np.arange(plate_solution.num_solutions):
-            solution = solutions[i]
-            m = tab_grp['solution_num'] == i + 1
-
-            if m.sum() > 0:
-                num_gaia_edr3 = tab_grp['num_gaia_edr3'][m].data[0]
-                solution['num_gaia_edr3'] = num_gaia_edr3
-            else:
-                solution['num_gaia_edr3'] = 0
-
-        # Crossmatch: find all neighbours for sources
-        kdt_ref = KDT(xy_ref)
-        kdt_plate = KDT(coords_plate)
-        max_distance = ((20. * mean_scamp_sigma / mean_pixscale)
-                        .to(u.pixel).value)
-
-        if (20. * mean_scamp_sigma) < 5 * u.arcsec:
-            max_distance = (5 * u.arcsec / mean_pixscale).to(u.pixel).value
-
-        max_dist_arcsec = (max_distance * u.pixel * mean_pixscale).to(u.arcsec).value
-        self.log.write('Finding all reference stars around sources within '
-                       'the radius of {:.2f} arcsec ({:.2f} pixels)'
-                       .format(max_dist_arcsec, max_distance),
-                       level=4, event=44)
-
-        mtrx = kdt_plate.sparse_distance_matrix(kdt_ref, max_distance)
-        mtrx_keys = np.array([a for a in mtrx.keys()])
-
-        # Check if there are neighbors at all
-        if len(mtrx_keys) > 0:
-            k_plate = mtrx_keys[:,0]
-            k_ref = mtrx_keys[:,1]
-            dist = np.fromiter(mtrx.values(), dtype=float) * u.pixel
-
-            # Construct neighbors table
-            nbs = Table()
-            nbs['source_num'] = self['source_num'][k_plate]
-            nbs['gaiaedr3_id'] = star_catalog['source_id'][index_ref[k_ref]]
-            nbs['dist'] = dist
-            nbs['solution_num'] = sol_ref[k_ref]
-            nbs['x_gaia'] = xy_ref[k_ref,0]
-            nbs['y_gaia'] = xy_ref[k_ref,1]
-
-            # Create the flag_xmatch column by joining the neighbors table
-            # with the source table
-            tab = Table()
-            tab['source_num'] = self['source_num']
-            tab['gaiaedr3_id'] = MaskedColumn(self['gaiaedr3_id']).filled(0)
-            tab['flag_xmatch'] = np.int8(1)
-            jtab = join(nbs, tab, keys=('source_num', 'gaiaedr3_id'),
-                        join_type='left')
-            jtab['flag_xmatch'] = MaskedColumn(jtab['flag_xmatch']).filled(0)
-            self.neighbors_gaia = jtab
-
-            # Calculate neighbor counts
-            source_num, cnt = np.unique(nbs['source_num'].data, return_counts=True)
+        if len(neighbors) > 0:
+            source_num, cnt = np.unique(neighbors['source_num'].data,
+                                        return_counts=True)
             mask = np.isin(self['source_num'], source_num)
             ind_mask = np.where(mask)[0]
-            self['gaiaedr3_neighbors'][ind_mask] = cnt
-        else:
-            # Create empty neighbors table
-            nbs = Table(names=('source_num', 'gaiaedr3_id', 'dist',
-                               'solution_num', 'x_gaia', 'y_gaia',
-                               'flag_xmatch'),
-                        dtype=('i4', 'i8', 'f4', 'i2', 'f8', 'f8', 'i1'))
-            self.neighbors_gaia = nbs
+            self['gaiadr4_neighbors'][ind_mask] = cnt
 
-        # Process coordinates again, because solution_num assignments may have changed
-        self.process_coordinates(plate_solution=plate_solution)
-
-    def process_coordinates(self, plate_solution=None):
+    def process_coordinates(self, solution_set=None):
         """
         Calculate HEALPix numbers, (X, Y, Z) on the unit sphere, nearest
         neighbor distance, zenith angle, air mass.
 
         Parameters:
         -----------
-        plate_solution : :class:`solve.PlateSolution`
+        solution_set : :class:`solve.SolutionSet`
             Plate solution with one or more astrometric solutions
 
         """
 
         self.log.write('Processing source coordinates', level=3, event=60)
 
-        if plate_solution is None or plate_solution.num_solutions == 0:
+        if solution_set is None or solution_set.num_solutions == 0:
             self.log.write('Cannot process source coordinates '
                            'due to missing astrometric solutions!',
                            level=2, event=60)
             return
 
         # Loop over solutions and transform image coordinates to RA and Dec
-        for i,solution in enumerate(plate_solution.solutions):
-            w = wcs.WCS(solution['header_wcs'])
+        for i,solution in enumerate(solution_set.solutions):
+            w = wcs.WCS(solution.header_wcs)
 
             # If there is only one solution, then transform coordinates of
             # all sources
-            if plate_solution.num_solutions == 1:
+            if solution_set.num_solutions == 1:
                 m = np.isfinite(self['x_source'])
             else:
                 m = self['solution_num'] == i + 1
@@ -717,10 +531,10 @@ class SourceTable(Table):
                 self['dec_icrs'][m] = dec
 
                 # Assign astrometric errors
-                if (solution['scamp_sigma_1'] is not None
-                    and solution['scamp_sigma_2'] is not None):
-                    self['ra_error'][m] = solution['scamp_sigma_1']
-                    self['dec_error'][m] = solution['scamp_sigma_2']
+                if (solution.scamp_sigma_1 is not None
+                    and solution.scamp_sigma_2 is not None):
+                    self['ra_error'][m] = solution.scamp_sigma_1
+                    self['dec_error'][m] = solution.scamp_sigma_2
 
         # Check if we have any usable coordinates
         bool_finite = (np.isfinite(self['ra_icrs']) &
@@ -754,10 +568,10 @@ class SourceTable(Table):
 
             # Loop over solutions and calculate healpix statistics for each
             # solution
-            for i,solution in enumerate(plate_solution.solutions):
+            for i,solution in enumerate(solution_set.solutions):
                 # Find all healpixes inside solution corners
-                lat = solution['skycoord_corners'].dec.deg
-                lon = solution['skycoord_corners'].ra.deg
+                lat = solution.skycoord_corners.dec.deg
+                lon = solution.skycoord_corners.ra.deg
                 vertices = healpy.pixelfunc.ang2vec(lon, lat, lonlat=True)
                 pix_inside = healpy.query_polygon(1024, vertices,
                                                   inclusive=False, nest=True)
@@ -781,7 +595,7 @@ class SourceTable(Table):
                 else:
                     tab_sum = tab_inside
 
-                solution['healpix_table'] = tab_sum
+                solution.healpix_table = tab_sum
 
         # Create SkyCoord from RA and Dec
         coords = SkyCoord(ra_finite, dec_finite, unit=(u.deg, u.deg))
@@ -806,23 +620,23 @@ class SourceTable(Table):
 
         # Calculate zenith angle and air mass for each source
         # Check for location and single exposure
-        if (self.platemeta and 
-                self.platemeta['site_latitude'] and 
-                self.platemeta['site_longitude'] and 
-                (self.platemeta['numexp'] == 1) and
-                self.platemeta['date_avg'] and
-                self.platemeta['date_avg'][0]):
+        if (self.plate and 
+                self.plate.site_latitude and 
+                self.plate.site_longitude and 
+                (self.plate.numexp == 1) and
+                self.plate.exposures and
+                self.plate.exposures[0].ut_mid):
             self.log.write('Calculating zenith angle and air mass for sources', 
                            level=3, event=61)
-            lon = self.platemeta['site_longitude']
-            lat = self.platemeta['site_latitude']
+            lon = self.plate.site_longitude
+            lat = self.plate.site_latitude
             height = 0.
 
-            if self.platemeta['site_elevation']:
-                height = self.platemeta['site_elevation']
+            if self.plate.site_elevation:
+                height = self.plate.site_elevation
 
             loc = EarthLocation.from_geodetic(lon, lat, height)
-            date_avg = Time(self.platemeta['date_avg'][0], 
+            date_avg = Time(self.plate.exposures[0].ut_mid, 
                             format='isot', scale='ut1')
             c_altaz = coords.transform_to(AltAz(obstime=date_avg, location=loc))
             self['zenith_angle'][ind_finite] = c_altaz.zen.deg

@@ -1,1420 +1,704 @@
-import numpy as np
-import time
-import socket
-import os
+"""PlateDB: writes records and results to the database, for every backend."""
 import csv
+import os
+import socket
+from collections.abc import Iterable, Sequence
+from typing import Any
+
 import astropy.units as u
-from collections import OrderedDict
-from astropy.time import Time
+import numpy as np
 from astropy.io import fits
-from .db_pgsql import DB_pgsql
-from .db_mysql import DB_mysql
-from .db_yaml import fetch_ordered_tables
-from ..conf import read_conf
+
 from .._version import __version__
+from ..config import DatabaseConfig, FilesConfig
+from ..metadata import (Archive, Logbook, Logpage, Plate, Preview, Scan)
+from .backend import Backend
+from .db_mysql import MysqlBackend
+from .db_pgsql import PgsqlBackend
+from .db_sqlite import SqliteBackend
+from .schema import Schema, load_schema
 
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
+BACKENDS = {'pgsql': PgsqlBackend, 'mysql': MysqlBackend,
+            'sqlite': SqliteBackend}
+
+# Rows sent with one executemany()
+BATCH_SIZE = 1000
+
+# Columns set by the result writers before the table columns
+RESULT_IDS = ('process_id', 'scan_id', 'plate_id', 'archive_id')
+SOLUTION_IDS = ('solutionset_id',) + RESULT_IDS
+SOURCE_IDS = ('source_id',) + RESULT_IDS
+HEALPIX_IDS = ('solution_id',) + SOLUTION_IDS + ('solution_num',)
 
 
-# Special class for handling None (NULL) values when writing data to
-# CSV files for later ingestion into the database
-# http://stackoverflow.com/questions/11379300/csv-reader-behavior-with-none-and-empty-string
-class csvWriter(object):
-    def __init__(self, csvfile, *args, **kwargs):
-        self.writer = csv.writer(csvfile, *args, **kwargs)
+class CsvWriter:
+    """CSV writer that writes None as ``\\N`` (NULL for database loading)."""
 
-    def writerow(self, row):
+    def __init__(self, f, *args, **kwargs):
+        self.writer = csv.writer(f, *args, **kwargs)
+
+    def writerow(self, row: Sequence) -> None:
         self.writer.writerow(['\\N' if val is None else val for val in row])
 
-    def writerows(self, rows):
-        map(self.writerow, rows)
+
+def _finite(value: Any) -> Any:
+    """None instead of NaN and infinity."""
+    try:
+        if not np.isfinite(value):
+            return None
+    except TypeError:
+        pass
+
+    return value
+
+
+def _result_value(value: Any) -> Any:
+    """Value of a solution or solution-set attribute for the database."""
+    if isinstance(value, u.Quantity):
+        value = value.value
+    elif isinstance(value, fits.Header):
+        value = value.tostring(sep='\\n')
+    elif isinstance(value, bool):
+        value = int(value)
+
+    return _finite(value)
 
 
 class PlateDB:
+    """Database access, the same for every backend.
+
+    Parameters
+    ----------
+    cfg
+        ``[Database]`` with its ``connection`` table.
+    files
+        ``[Files]``, for the directories of the CSV output of sources.
+    schema
+        Schema to use instead of the one named in the configuration.
+    backend
+        Backend to use instead of the one named in the configuration
+        (tests use a backend with a recording cursor).
+    hostname, version
+        Written by :meth:`write_process_start` instead of the host name and
+        the pyplate version.
     """
-    Plate database class.
 
-    """
-
-    def __init__(self, **kwargs):
-        """Initialise PlateDB class
-
-        Parameters
-        ----------
-        rdbms : str
-            Database management system ('pgsql', 'mysql')
-        host : str
-            Database host name
-        port : int
-            Port number for database connection
-        socket : str
-            Socket for database connection on localhost
-        user : str
-            Database user name
-        password : str
-            Database password
-        database : str
-            Database name
-        schema : str
-            Database schema
-        """
-
-        self.rdbms = kwargs.pop('rdbms', None)
-        self.host = kwargs.pop('host', 'localhost')
-        self.port = kwargs.pop('port', None)
-        self.socket = kwargs.pop('socket', None)
-        self.user = kwargs.pop('user', '')
-        self.database = kwargs.pop('database', '')
-        self.password = kwargs.pop('password', '')
-        self.schema = kwargs.pop('schema', None)
-        self.schema_dict = None
-        self.yaml = kwargs.pop('yaml', None)
-        self.conf = None
-        self.write_db_source_dir = ''
-        self.write_db_source_calib_dir = ''
-        self.write_db_source_xmatch_dir = ''
-        self.write_db_solution_healpix_dir = ''
-        self.dr_num = 0
-        self.process_num_digits = 6
-        self.source_num_digits = 7
-
-        if self.rdbms == 'pgsql':
-            self.db = DB_pgsql(schema=self.schema)
-        elif self.rdbms == 'mysql':
-            self.db = DB_mysql(schema=self.schema)
-        else:
-            self.db = None
-
-        # Read database schema
-        if self.rdbms is not None and self.schema is not None:
-            self.read_schema()
-
-    def assign_conf(self, conf, section=None):
-        """
-        Assign and parse configuration.
-
-        """
-
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
-        self.conf = conf
-
-        for attr in ['write_log_dir', 'write_db_source_dir', 
-                     'write_db_source_calib_dir', 'write_db_source_xmatch_dir',
-                     'write_db_solution_healpix_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['dr_num', 'process_num_digits', 'source_num_digits']:
-            try:
-                setattr(self, attr, conf.getint('Database', attr))
-            except configparser.Error:
-                pass
-
-        if section is None:
-            try:
-                section = conf.get('Database', 'output_db')
-            except configparser.Error:
-                section = None
-
-        for attr in ['rdbms', 'host', 'user', 'database', 'password',
-                     'schema', 'yaml']:
-            try:
-                setattr(self, attr, conf.get(section, attr))
-            except configparser.Error:
-                pass
-
-            if attr == 'schema' and self.schema == '':
-                self.schema = None
-
-        for attr in ['port']:
-            try:
-                setattr(self, attr, conf.getint(section, attr))
-            except configparser.Error:
-                pass
-
-        # Create database handler based on configuration
-        if self.rdbms == 'pgsql':
-            self.db = DB_pgsql(schema=self.schema)
-        elif self.rdbms == 'mysql':
-            self.db = DB_mysql(schema=self.schema)
-
-        # Apply conf to self.db
-        if self.db is not None:
-            self.db.assign_conf(self.conf, section=section)
-
-            # Read database schema
-            if self.schema is not None:
-                self.db.read_schema()
-                self.read_schema()
-
-    def read_schema(self, schema=None, yaml=None):
-        """Read schema from schema YAML file.
-
-        Parameters
-        ----------
-        schema : str
-            Database schema name
-        yaml : str
-            Schema YAML file
-        """
+    def __init__(self, cfg: DatabaseConfig, files: FilesConfig | None = None,
+                 schema: Schema | None = None,
+                 backend: Backend | None = None,
+                 hostname: str | None = None, version: str | None = None):
+        conn = cfg.connection
+        self.cfg = cfg
+        self.files = files or FilesConfig()
 
         if schema is None:
-            schema = self.schema
+            name = conn.schema if conn is not None else None
+            yaml = conn.yaml if conn is not None else None
+            schema = load_schema(yaml or '{}.yaml'.format(name or
+                                                          'applause_dr5'),
+                                 name=name)
 
-        if yaml is None:
-            yaml = self.yaml
+        self.schema = schema
 
-        if yaml is None and schema is not None:
-            yaml = '{}.yaml'.format(self.schema)
+        if backend is None:
+            if conn is None:
+                raise ValueError('No [Database.connection]')
 
-        path_yaml = os.path.join(os.path.dirname(__file__), yaml)
-        d1, _ = fetch_ordered_tables(path_yaml, self.rdbms, True,
-                                     new_name=schema)
-        self.schema_dict = d1
+            if conn.rdbms not in BACKENDS:
+                raise ValueError('Unknown rdbms {!r}; one of {}'
+                                 .format(conn.rdbms, sorted(BACKENDS)))
 
-        if self.db is not None:
-            self.db.read_schema(schema=schema, yaml=yaml)
+            backend = BACKENDS[conn.rdbms](conn, schema_name=schema.name)
 
-    def table_name(self, table):
-        """
-        Combine schema and table names
+        self.backend = backend
+        self.hostname = hostname
+        self.version = version
 
-        Paramaters
-        ----------
-        table : str
-            Table name
-        """
+    # --- Connection and schema -------------------------------------------
 
-        if self.schema:
-            return '{}.{}'.format(self.schema, table)
-        else:
-            return table
+    def open_connection(self) -> None:
+        self.backend.connect()
 
-    def get_table_dict(self, table):
-        """
-        Combine schema and table names and get table structure from schema_dict
+    def close_connection(self) -> None:
+        self.backend.close()
 
-        Paramaters
-        ----------
-        table : str
-            Table name
-        """
+    def schema_sql(self, mode: str) -> list[str]:
+        """Statements to create or drop the tables or indexes; ``mode`` is
+        one of :data:`pyplate.database.ddl.MODES`."""
+        return self.backend.ddl(self.schema, mode)
 
-        table_name = self.table_name(table)
-
-        if self.schema_dict and table_name in self.schema_dict:
-            return self.schema_dict[table_name].copy()
-        else:
-            return None
-
-    def open_connection(self, rdbms=None, host=None, port=None, socket=None,
-                        user=None, password=None, database=None, schema=None):
-        """
-        Open database connection.
-
-        Parameters
-        ----------
-        rdbms : str
-            Database management system ('pgsql', 'mysql')
-        host : str
-            Database host name
-        port : int
-            Port number for database connection
-        socket : str
-            Socket for database connection on localhost
-        user : str
-            Database user name
-        password : str
-            Database password
-        database : str
-            Database name
-        schema : str
-            Database schema
-
-        """
-
-        if rdbms is None:
-            rdbms = self.rdbms
-
-        if host is None:
-            host = self.host
-
-        if port is None:
-            port = self.port
-
-        if socket is None:
-            socket = self.socket
-
-        if user is None:
-            user = self.user
-
-        if password is None:
-            password = self.password
-
-        if database is None:
-            database = self.database
-
-        if schema is not None:
-            self.schema = schema
-
-        if rdbms == 'pgsql':
-            if self.db is None:
-                self.db = DB_pgsql()
-                self.db.assign_conf(self.conf)
-
-            self.db.open_connection(host=host, port=port,
-                                    user=user, password=password,
-                                    database=database)
-        elif rdbms == 'mysql':
-            if self.db is None:
-                self.db = DB_mysql()
-                self.db.assign_conf(self.conf)
-
-            self.db.open_connection(host=host, port=port, socket=socket,
-                                    user=user, password=password,
-                                    database=database)
-
-    def close_connection(self):
-        """
-        Close database connection.
-
-        """
-
-        if self.db is not None:
-            self.db.close_connection()
-
-    def create_schema(self, table=None, execute=False):
-        """Create database schema
-
-        Parameters
-        ----------
-        table : str
-            Table name, if only single table is created
-        execute : bool
-            If True, execute schema creation; if False, only print the schema
-            creation statements
-        """
-
-        if self.db is not None:
-            sql = self.db.get_schema_sql(table=table, mode='create_schema')
-
+    def run_schema_sql(self, mode: str, execute: bool = False) -> None:
+        """Execute the statements of :meth:`schema_sql`, or print them."""
+        for sql in self.schema_sql(mode):
             if execute:
-                self.db.execute_query(sql)
+                self.backend.execute(sql)
             else:
-                print(sql)
+                print(sql + ';\n')
 
-    def drop_schema(self, table=None, execute=False):
-        """Drop database schema
+    def create_schema(self, execute: bool = False) -> None:
+        self.run_schema_sql('create_schema', execute)
+
+    def drop_schema(self, execute: bool = False) -> None:
+        self.run_schema_sql('drop_schema', execute)
+
+    # --- Generic statements ----------------------------------------------
+
+    def _columns(self, table: str, row: dict, first: Sequence[str]) -> list:
+        """Columns to write: ``first``, then the table columns in schema
+        order; only those in the row, and without an unset serial ID."""
+        t = self.schema[table]
+        cols = [c for c in first if c in row and c in t.column_names]
+        cols += [c for c in t.column_names if c in row and c not in cols]
+        serial = t.serial
+
+        if serial is not None and row.get(serial.name) is None:
+            cols = [c for c in cols if c != serial.name]
+
+        return cols
+
+    def _values(self, table: str, row: dict, cols: list[str]) -> list:
+        t = self.schema[table]
+        return [self.backend.prepare_value(t.column(c), row[c]) for c in cols]
+
+    def _insert_sql(self, table: str, cols: list[str]) -> str:
+        return 'INSERT INTO {} ({}) VALUES ({})'.format(
+            self.backend.qualify(table), ','.join(cols),
+            ','.join([self.backend.placeholder] * len(cols)))
+
+    def insert(self, table: str, row: dict[str, Any],
+               first: Sequence[str] = (), return_id: bool = False
+               ) -> int | None:
+        """Insert a row; return its ID with ``return_id``.
 
         Parameters
         ----------
-        table : str
-            Table name, if only single table is dropped
-        execute : bool
-            If True, execute schema creation; if False, only print the schema
-            creation statements
+        table
+            Table name.
+        row
+            Values by column; keys that are not columns of the table are
+            ignored.
+        first
+            Columns written first, before the others in schema order.
+        return_id
+            Return the ID of the new row (its serial column).
         """
+        cols = self._columns(table, row, first)
+        sql = self._insert_sql(table, cols)
+        values = self._values(table, row, cols)
 
-        if self.db is not None:
-            sql = self.db.get_schema_sql(table=table, mode='drop_schema')
+        if return_id:
+            return self.backend.insert_returning_id(
+                sql, values, self.schema[table].serial.name)
 
-            if execute:
-                self.db.execute_query(sql)
-            else:
-                print(sql)
+        self.backend.execute(sql, values)
+        return None
 
-    def write_plate(self, platemeta):
+    def insert_many(self, table: str, rows: Iterable[dict[str, Any]],
+                    first: Sequence[str] = ()) -> None:
+        """Insert rows with ``executemany``, in batches of 1000.
+
+        The columns are those of the first row.
         """
-        Write plate entry to the database.
+        batch = []
+        sql = None
+        cols = None
 
-        Parameters
-        ----------
-        platemeta : Plate
-            Plate metadata instance
+        for row in rows:
+            if cols is None:
+                cols = self._columns(table, row, first)
+                sql = self._insert_sql(table, cols)
+
+            batch.append(self._values(table, row, cols))
+
+            if len(batch) == BATCH_SIZE:
+                self.backend.executemany(sql, batch)
+                batch = []
+
+        if batch:
+            self.backend.executemany(sql, batch)
+
+    def update(self, table: str, row: dict[str, Any],
+               key: dict[str, Any]) -> None:
+        """Update the row with the given key; ``row`` gives the columns to
+        set, in order."""
+        t = self.schema[table]
+        cols = [c for c in row if c in t.column_names]
+
+        if not cols:
+            return
+
+        p = self.backend.placeholder
+        sql = 'UPDATE {} SET {} WHERE {}'.format(
+            self.backend.qualify(table),
+            ','.join('{}={}'.format(c, p) for c in cols),
+            ' AND '.join('{}={}'.format(k, p) for k in key))
+        self.backend.execute(sql, self._values(table, row, cols) +
+                             list(key.values()))
+
+    def upsert(self, table: str, row: dict[str, Any],
+               key_cols: Sequence[str]) -> None:
+        """Insert a row, or update the row with the same key columns."""
+        cols = self._columns(table, row, key_cols)
+        sql = self.backend.upsert_sql(table, cols, list(key_cols))
+        self.backend.execute(sql, self._values(table, row, cols))
+
+    def _select_one(self, sql: str, params: Sequence) -> tuple | None:
+        return self.backend.query(sql, params)
+
+    # --- Metadata records --------------------------------------------------
+
+    @staticmethod
+    def _require_archive_id(record) -> None:
+        if record.archive_id is None:
+            raise ValueError('{} has no archive_id; it is needed for writing '
+                             'to the database ([Archive] archive_id)'
+                             .format(type(record).__name__))
+
+    def write_archive(self, archive: Archive) -> None:
+        """Insert the archive, or update it if it exists."""
+        self._require_archive_id(archive)
+        self.upsert('archive', archive.to_row(), ['archive_id'])
+
+    def write_plate(self, plate: Plate) -> int:
+        """Write a plate with its exposures, sub-exposures, scans, previews
+        and plate–logpage links; set the IDs in the records.
 
         Returns
         -------
-        plate_id : int
-            Plate ID number
-
+        int
+            The plate ID.
         """
+        self._require_archive_id(plate)
+        plate_id = self.insert('plate', plate.to_row(), return_id=True)
+        plate.plate_id = plate_id
 
-        # Create a dictionary of keywords that differ from database schema
-        pmeta_dict = {}
-        pmeta_dict['plate_id'] = 'db_plate_id'
-        pmeta_dict['flag_coord'] = 'coord_flag'
-        pmeta_dict['ra_icrs'] = 'ra_deg'
-        pmeta_dict['dec_icrs'] = 'dec_deg'
-        pmeta_dict['date_orig_start'] = 'date_orig'
-        pmeta_dict['date_orig_end'] = 'date_orig_end'
-        pmeta_dict['time_orig_start'] = 'tms_orig'
-        pmeta_dict['time_orig_end'] = 'tme_orig'
-        pmeta_dict['flag_time'] = 'time_flag'
-        pmeta_dict['ut_start'] = 'date_obs'
-        pmeta_dict['ut_mid'] = 'date_avg'
-        pmeta_dict['ut_weighted'] = 'date_weighted'
-        pmeta_dict['ut_end'] = 'date_end'
-        pmeta_dict['year_start'] = 'year'
-        pmeta_dict['year_mid'] = 'year_avg'
-        pmeta_dict['jd_start'] = 'jd'
-        pmeta_dict['jd_mid'] = 'jd_avg'
-        pmeta_dict['hjd_mid'] = 'hjd_avg'
-        pmeta_dict['num_sub'] = 'numsub'
+        for exp in plate.exposures:
+            exp.plate_id = plate_id
+            exp.exposure_id = self.insert('exposure', exp.to_row(),
+                                          first=('exposure_num',),
+                                          return_id=True)
 
-        # The plate table
-        col_list = []
-        val_tuple = ()
+            for sub in exp.subexposures:
+                sub.exposure_id = exp.exposure_id
+                sub.plate_id = plate_id
+                sub.exposure_num = exp.exposure_num
+                self.insert('exposure_sub', sub.to_row())
 
-        if (isinstance(platemeta['db_plate_id'], int) and 
-            (platemeta['db_plate_id'] > 0)):
-            col_list.append('plate_id')
-            val_tuple = val_tuple + (platemeta['db_plate_id'],)
+        for scan in plate.scans:
+            scan.plate_id = plate_id
+            self.write_scan(scan)
 
-        plate_table = self.get_table_dict('plate')
-        del plate_table['plate_id']
+        for preview in plate.previews:
+            preview.plate_id = plate_id
+            self.write_preview(preview)
 
-        for k,v in plate_table.items():
-            # Take a keyword from pmeta_dict if it is there
-            kw = pmeta_dict[k] if k in pmeta_dict else k
+        self.write_plate_logpages(plate)
+        return plate_id
 
-            if kw in platemeta:
-                col_list.append(k)
+    def _plate_id(self, plate_num: str | None, archive_id: int | None,
+                  wfpdb_id: str | None) -> int | None:
+        plate_id = self.get_plate_id(plate_num, archive_id)
 
-                # Validate date type and insert NULL instead of invalid value
-                if v == 'DATE':
-                    try:
-                        d = Time(platemeta.get_value(kw), scale='tai')
+        if plate_id is None:
+            plate_id = self.get_plate_id_wfpdb(wfpdb_id)
 
-                        if d >= Time('1000-01-01', scale='tai'):
-                            val_tuple += (platemeta.get_value(kw),)
-                        else:
-                            val_tuple += (None,)
-                    except ValueError:
-                        val_tuple += (None,)
-                else:
-                    val_tuple += (platemeta.get_value(kw),)
+        return plate_id
 
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
+    def write_plate_logpages(self, plate: Plate) -> None:
+        """Write the plate–logpage links of ``plate.logpages``.
 
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING plate_id'
-               .format(self.table_name('plate'), col_str, val_str))
-        plate_id = self.db.execute_query(sql, val_tuple)
-        platemeta['db_plate_id'] = plate_id
-
-        # The exposure table
-        for exp in range(platemeta['numexp']):
-            exp_num = exp + 1
-            col_list = ['exposure_num']
-            val_tuple = (exp_num,)
-
-            exposure_table = self.get_table_dict('exposure')
-
-            for k in exposure_table.keys():
-                # Take a keyword from pmeta_dict if it is there
-                kw = pmeta_dict[k] if k in pmeta_dict else k
-
-                if kw in platemeta:
-                    col_list.append(k)
-                    val_tuple += (platemeta.get_value(kw, exp=exp),)
-
-            col_str = ','.join(col_list)
-            val_str = ','.join(['%s'] * len(col_list))
-
-            sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING exposure_id'
-                   .format(self.table_name('exposure'), col_str, val_str))
-            exposure_id = self.db.execute_query(sql, val_tuple)
-
-            # The exposure_sub table
-            if len(platemeta['numsub']) > exp and platemeta['numsub'][exp] > 1:
-                for subexp in np.arange(platemeta['numsub'][exp]):
-                    subexp_num = subexp + 1
-                    col_list = ['exposure_id', 'plate_id',
-                                'exposure_num', 'subexposure_num']
-                    val_tuple = (exposure_id, plate_id, exp_num,
-                                 subexp_num)
-
-                    expmeta = platemeta.exposures[exp]
-                    exposure_sub_table = self.get_table_dict('exposure_sub')
-                    del exposure_sub_table['plate_id']
-
-                    for k in exposure_sub_table.keys():
-                        # Take a keyword from pmeta_dict if it is there
-                        kw = pmeta_dict[k] if k in pmeta_dict else k
-
-                        if kw in expmeta:
-                            col_list.append(k)
-                            val_tuple += (expmeta.get_value(kw, exp=subexp),)
-
-                    col_str = ','.join(col_list)
-                    val_str = ','.join(['%s'] * len(col_list))
-
-                    sql = ('INSERT INTO {} ({}) VALUES ({})'
-                           .format(self.table_name('exposure_sub'), col_str,
-                                   val_str))
-                    self.db.execute_query(sql, val_tuple)
-
-    def write_plate_logpage(self, platemeta):
+        The list position is ``logpage_order``. The logpages are looked up
+        by file name; without ``plate.plate_id`` the plate is looked up by
+        ``plate_num`` or ``wfpdb_id`` (once for each logpage, as in the old
+        code).
         """
-        Write plate-logpage relations to the database.
+        for order, logpage in enumerate(plate.logpages):
+            if logpage is None or not logpage.filename:
+                continue
 
-        Parameters
-        ----------
-        platemeta : Plate
-            Plate metadata instance
+            plate_id = plate.plate_id or self._plate_id(
+                plate.plate_num, plate.archive_id, plate.wfpdb_id)
+            logpage_id = self.get_logpage_id(logpage.filename,
+                                             plate.archive_id)
 
-        """
+            if plate_id and logpage_id:
+                self.insert('plate_logpage', {'plate_id': plate_id,
+                                              'logpage_id': logpage_id,
+                                              'logpage_order': order})
 
-        fn_list = [platemeta['fn_cover']]
-        fn_list.extend(platemeta['fn_log'])
+    def write_scan(self, scan: Scan, plate_num: str | None = None,
+                   wfpdb_id: str | None = None) -> int:
+        """Write a scan; without ``scan.plate_id``, the plate is looked up
+        by ``plate_num`` or ``wfpdb_id``. Returns the scan ID."""
+        self._require_archive_id(scan)
 
-        for order,filename in enumerate(fn_list):
-            if filename:
-                col_list = ['plate_id', 'logpage_id', 'logpage_order']
+        if not scan.plate_id:
+            scan.plate_id = self._plate_id(plate_num, scan.archive_id,
+                                           wfpdb_id)
 
-                if (isinstance(platemeta['db_plate_id'], int) and 
-                    (platemeta['db_plate_id'] > 0)):
-                    plate_id = platemeta['db_plate_id']
-                else:
-                    plate_id = self.get_plate_id(platemeta['plate_num'],
-                                                 platemeta['archive_id'])
+        scan.scan_id = self.insert('scan', scan.to_row(),
+                                   first=('plate_id', 'scan_id'),
+                                   return_id=True)
+        return scan.scan_id
 
-                    if plate_id is None:
-                        plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
+    def update_scan(self, scan: Scan, filecols: bool = False) -> None:
+        """Update a scan; with ``filecols`` only the file columns
+        (``file_datetime``, ``file_size``, ``fits_checksum``,
+        ``fits_datasum``). Without ``scan.scan_id`` the scan is looked up by
+        file name."""
+        scan_id = scan.scan_id
 
-                logpage_id = self.get_logpage_id(filename, 
-                                                 platemeta['archive_id'])
-
-                if plate_id and logpage_id:
-                    val_tuple = (plate_id, logpage_id, order)
-                    col_str = ','.join(col_list)
-                    val_str = ','.join(['%s'] * len(col_list))
-                    sql = ('INSERT INTO {} ({}) VALUES ({})'
-                           .format(self.table_name('plate_logpage'), col_str,
-                                   val_str))
-                    self.db.execute_query(sql, val_tuple)
-
-    def write_scan(self, platemeta):
-        """
-        Write scan entry to the database.
-
-        Parameters
-        ----------
-        platemeta : Plate
-            Plate metadata instance
-
-        Returns
-        -------
-        scan_id : int
-            Scan ID number
-
-        """
-
-        # Create a dictionary of keywords that differ from database schema
-        pmeta_dict = {}
-        pmeta_dict['plate_id'] = 'db_plate_id'
-        pmeta_dict['filename_scan'] = 'filename'
-        pmeta_dict['filename_wedge'] = 'fn_wedge'
-        pmeta_dict['naxis1'] = 'fits_naxis1'
-        pmeta_dict['naxis2'] = 'fits_naxis2'
-        pmeta_dict['minval'] = 'fits_minval'
-        pmeta_dict['maxval'] = 'fits_maxval'
-        pmeta_dict['pixel_size1'] = 'pix_size1'
-        pmeta_dict['pixel_size2'] = 'pix_size2'
-        pmeta_dict['scan_date'] = 'datescan'
-        pmeta_dict['file_datetime'] = 'fits_datetime'
-        pmeta_dict['file_size'] = 'fits_size'
-
-        if (isinstance(platemeta['db_plate_id'], int) and 
-            (platemeta['db_plate_id'] > 0)):
-            plate_id = platemeta['db_plate_id']
-        else:
-            plate_id = self.get_plate_id(platemeta['plate_num'],
-                                         platemeta['archive_id'])
-
-            if plate_id is None:
-                plate_id = self.get_plate_id_wfpdb(platemeta['wfpdb_id'])
-
-        col_list = ['plate_id']
-        val_tuple = (plate_id,)
-
-        # Add scan_id only if it is given in platemeta
-        if (isinstance(platemeta['scan_id'], int) and
-            (platemeta['scan_id'] > 0)):
-            col_list.append('scan_id')
-            val_tuple += (platemeta['scan_id'],)
-
-        # Get scan table columns from database schema
-        scan_table = self.get_table_dict('scan')
-        del scan_table['plate_id']
-        del scan_table['scan_id']
-
-        for k,v in scan_table.items():
-            # Take a keyword from pmeta_dict if it is there
-            kw = pmeta_dict[k] if k in pmeta_dict else k
-
-            if kw in platemeta:
-                col_list.append(k)
-
-                val_tuple = val_tuple \
-                        + (platemeta.get_value(kw), )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING scan_id'
-               .format(self.table_name('scan'), col_str, val_str))
-        scan_id = self.db.execute_query(sql, val_tuple)
-
-        return scan_id
-
-    def update_scan(self, platemeta, filecols=False):
-        """
-        Update scan entry in the database.
-
-        Parameters
-        ----------
-        platemeta : Plate
-            Plate metadata instance
-        filecols : bool
-            If True, only specific file-related columns are updated
-
-        """
-
-        # Create a dictionary of keywords that differ from database schema
-        pmeta_dict = {}
-        pmeta_dict['plate_id'] = 'db_plate_id'
-        pmeta_dict['filename_scan'] = 'filename'
-        pmeta_dict['filename_wedge'] = 'fn_wedge'
-        pmeta_dict['naxis1'] = 'fits_naxis1'
-        pmeta_dict['naxis2'] = 'fits_naxis2'
-        pmeta_dict['minval'] = 'fits_minval'
-        pmeta_dict['maxval'] = 'fits_maxval'
-        pmeta_dict['pixel_size1'] = 'pix_size1'
-        pmeta_dict['pixel_size2'] = 'pix_size2'
-        pmeta_dict['scan_date'] = 'datescan'
-        pmeta_dict['file_datetime'] = 'fits_datetime'
-        pmeta_dict['file_size'] = 'fits_size'
-
-        if (isinstance(platemeta['scan_id'], int) and 
-            (platemeta['scan_id'] > 0)):
-            scan_id = platemeta['scan_id']
-        else:
-            scan_id,_ = self.get_scan_id(platemeta['filename'],
-                                         platemeta['archive_id'])
+        if not scan_id:
+            scan_id, _ = self.get_scan_id(scan.filename_scan, scan.archive_id)
 
             if scan_id is None:
                 print('Cannot update scan metadata in the database '
                       '(filename={}, archive_id={})'
-                      ''.format(platemeta['filename'],
-                                platemeta['archive_id']))
+                      .format(scan.filename_scan, scan.archive_id))
                 return
 
-        col_list = []
-        val_tuple = ()
-
-        # Get scan table columns from database schema
-        scan_table = self.get_table_dict('scan')
-        del scan_table['scan_id']
-
-        columns = [k for k in scan_table.keys()]
-
-        # Update only specific columns
         if filecols:
-            columns = ['file_datetime', 'file_size', 'fits_checksum', 
-                       'fits_datasum']
-
-        for c in columns:
-            platemeta_key = pmeta_dict[c] if c in pmeta_dict else c
-
-            if platemeta_key in platemeta:
-                c_str = '{}=%s'.format(c)
-                col_list.append(c_str)
-                val_tuple += (platemeta.get_value(platemeta_key),)
-
-        col_str = ','.join(col_list)
-        val_tuple += (scan_id,)
-
-        sql = ('UPDATE {} SET {} WHERE scan_id=%s'
-               .format(self.table_name('scan'), col_str))
-        self.db.execute_query(sql, val_tuple)
-
-    def write_preview(self, previewmeta):
-        """
-        Write preview image entry to the database.
-
-        Parameters
-        ----------
-        previewmeta : Preview
-            Preview metadata instance
-
-        Returns
-        -------
-        preview_id : int
-            Preview ID number
-
-        """
-
-        if (isinstance(previewmeta['db_plate_id'], int) and 
-            (previewmeta['db_plate_id'] > 0)):
-            plate_id = previewmeta['db_plate_id']
+            cols = ['file_datetime', 'file_size', 'fits_checksum',
+                    'fits_datasum']
         else:
-            plate_id = self.get_plate_id(previewmeta['plate_num'],
-                                         previewmeta['archive_id'])
+            cols = [c for c in self.schema['scan'].column_names
+                    if c != 'scan_id']
 
-            if plate_id is None:
-                plate_id = self.get_plate_id_wfpdb(previewmeta['wfpdb_id'])
+        row = scan.to_row()
+        self.update('scan', {c: row[c] for c in cols if c in row},
+                    {'scan_id': scan_id})
 
-        col_list = ['plate_id']
-        val_tuple = (plate_id,)
+    def write_preview(self, preview: Preview, plate_num: str | None = None,
+                      wfpdb_id: str | None = None) -> int:
+        """Write a preview, as :meth:`write_scan`. Returns its ID."""
+        self._require_archive_id(preview)
 
-        # Add preview_id only if it is given in previewmeta
-        if (isinstance(previewmeta['preview_id'], int) and 
-            (previewmeta['preview_id'] > 0)):
-            col_list.append('preview_id')
-            val_tuple += (previewmeta['preview_id'],)
+        if not preview.plate_id:
+            preview.plate_id = self._plate_id(plate_num, preview.archive_id,
+                                              wfpdb_id)
 
-        # Get preview table columns from database schema
-        preview_table = self.get_table_dict('preview')
-        del preview_table['plate_id']
-        del preview_table['preview_id']
+        preview.preview_id = self.insert('preview', preview.to_row(),
+                                         first=('plate_id', 'preview_id'),
+                                         return_id=True)
+        return preview.preview_id
 
-        for k in preview_table.keys():
-            if k in previewmeta:
-                col_list.append(k)
-                val_tuple = val_tuple + (previewmeta[k], )
+    def write_logbook(self, logbook: Logbook) -> int:
+        """Write a logbook. Returns its ID."""
+        self._require_archive_id(logbook)
+        logbook.logbook_id = self.insert('logbook', logbook.to_row(),
+                                         return_id=True)
+        return logbook.logbook_id
 
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
+    def write_logpage(self, logpage: Logpage,
+                      logbook_num: str | None = None) -> int:
+        """Write a logpage; without ``logpage.logbook_id``, the logbook is
+        looked up by ``logbook_num`` (default ``logpage.logbook_num``).
+        Returns the logpage ID."""
+        self._require_archive_id(logpage)
 
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING preview_id'
-               .format(self.table_name('preview'), col_str, val_str))
-        preview_id = self.db.execute_query(sql, val_tuple)
-        return preview_id
+        if logpage.logbook_id is None:
+            logpage.logbook_id = self.get_logbook_id(
+                logbook_num or logpage.logbook_num, logpage.archive_id)
 
-    def write_logbook(self, logbookmeta):
-        """
-        Write a logbook to the database.
+        logpage.logpage_id = self.insert('logpage', logpage.to_row(),
+                                         return_id=True)
+        return logpage.logpage_id
 
-        """
+    # --- Results -------------------------------------------------------------
 
-        col_list = []
-        val_tuple = ()
+    def write_platesolution(self, platesolution: Any, process_id=None,
+                            scan_id=None, plate_id=None,
+                            archive_id=None) -> int:
+        """Write a solution set (an object with the columns as
+        attributes). Returns its ID."""
+        row = dict(zip(RESULT_IDS, (process_id, scan_id, plate_id,
+                                    archive_id)))
 
-        # Get logbook table columns from database schema
-        logbook_table = self.get_table_dict('logbook')
-        del logbook_table['logbook_id']
+        for col in self.schema['solution_set'].column_names:
+            if col not in row and hasattr(platesolution, col):
+                row[col] = _result_value(getattr(platesolution, col))
 
-        for k in logbook_table.keys():
-            if k in logbookmeta:
-                col_list.append(k)
-                val_tuple = val_tuple + (logbookmeta[k], )
+        return self.insert('solution_set', row, first=RESULT_IDS,
+                           return_id=True)
 
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING logbook_id'
-               .format(self.table_name('logbook'), col_str, val_str))
-        logbook_id = self.db.execute_query(sql, val_tuple)
-        return logbook_id
+    def write_solution(self, solution: dict, solutionset_id=None,
+                       process_id=None, scan_id=None, plate_id=None,
+                       archive_id=None) -> int:
+        """Write an astrometric solution. Returns its ID."""
+        row = dict(zip(SOLUTION_IDS, (solutionset_id, process_id, scan_id,
+                                      plate_id, archive_id)))
 
-    def write_logpage(self, logpagemeta):
-        """
-        Write a single logpage to the database.
+        for col in self.schema['solution'].column_names:
+            if col not in row and col in solution:
+                row[col] = _result_value(solution[col])
 
-        """
+        return self.insert('solution', row, first=SOLUTION_IDS,
+                           return_id=True)
 
-        if logpagemeta['logbook_id'] is None:
-            logbook_id = self.get_logbook_id(logpagemeta['logbook_num'],
-                                             logpagemeta['archive_id'])
-            logpagemeta['logbook_id'] = logbook_id
-            
-        col_list = []
-        val_tuple = ()
+    def _write_rows(self, table: str, rows: Iterable[dict], first: tuple,
+                    csv_path: str | None) -> None:
+        """Insert rows, or write them to a CSV file."""
+        if csv_path is None:
+            self.insert_many(table, rows, first)
+            return
 
-        # Get logpage table columns from database schema
-        logpage_table = self.get_table_dict('logpage')
-        del logpage_table['logpage_id']
+        with open(csv_path, 'w', newline='') as f:
+            writer = None
 
-        for k in logpage_table.keys():
-            if k in logpagemeta:
-                col_list.append(k)
-                val_tuple = val_tuple + (logpagemeta[k], )
+            for row in rows:
+                cols = self._columns(table, row, first)
 
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING logpage_id'
-               .format(self.table_name('logpage'), col_str, val_str))
-        logpage_id = self.db.execute_query(sql, val_tuple)
-        return logpage_id
+                if writer is None:
+                    writer = CsvWriter(f, delimiter=',', quotechar='"',
+                                       quoting=csv.QUOTE_MINIMAL)
+                    writer.writerow(cols)
 
-    def write_platesolution(self, platesolution, process_id=None, scan_id=None,
-                            plate_id=None, archive_id=None):
-        """
-        Write plate solution to the database.
-
-        """
-
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, plate_id, archive_id)
-
-        # Get solution_set table columns from database schema
-        solutionset_table = self.get_table_dict('solution_set')
-
-        for k in solutionset_table.keys():
-            if hasattr(platesolution, k):
-                col_list.append(k)
-                attr = getattr(platesolution, k)
-
-                if isinstance(attr, u.Quantity):
-                    value = attr.value
-                elif isinstance(attr, fits.Header):
-                    value = attr.tostring(sep='\\n')
-                elif isinstance(attr, bool):
-                    value = int(attr)
-                else:
-                    value = attr
-
-                # Replace nan and inf with None
-                try:
-                    if not np.isfinite(value):
-                        value = None
-                except TypeError:
-                    pass
-
-                val_tuple = val_tuple + (value, )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING solutionset_id'
-               .format(self.table_name('solution_set'), col_str, val_str))
-        solutionset_id = self.db.execute_query(sql, val_tuple)
-        return solutionset_id
-
-    def write_solution(self, solution, solutionset_id=None, process_id=None,
-                       scan_id=None, plate_id=None, archive_id=None):
-        """
-        Write individual astrometric solution to the database.
-
-        """
-
-        col_list = ['solutionset_id', 'process_id', 'scan_id', 'plate_id',
-                    'archive_id']
-        val_tuple = (solutionset_id, process_id, scan_id, plate_id, archive_id)
-
-        # Get solution table columns from database schema
-        solution_table = self.get_table_dict('solution')
-
-        for k in solution_table.keys():
-            if k in solution:
-                col_list.append(k)
-
-                if isinstance(solution[k], u.Quantity):
-                    value = solution[k].value
-                elif isinstance(solution[k], fits.Header):
-                    value = solution[k].tostring(sep='\\n')
-                elif isinstance(solution[k], bool):
-                    value = int(solution[k])
-                else:
-                    value = solution[k]
-
-                # Replace nan and inf with None
-                try:
-                    if not np.isfinite(value):
-                        value = None
-                except TypeError:
-                    pass
-
-                val_tuple = val_tuple + (value, )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING solution_id'
-               .format(self.table_name('solution'), col_str, val_str))
-        solution_id = self.db.execute_query(sql, val_tuple)
-        return solution_id
+                writer.writerow([row[c] for c in cols])
 
     def write_solution_healpix(self, solution_healpix, solution_id=None,
                                solutionset_id=None, process_id=None,
                                scan_id=None, plate_id=None, archive_id=None,
-                               solution_num=None, write_csv=None):
-        """
-        Write HEALPix map of a solution to the database.
-
-        """
-
-        # Open CSV files for writing
-        if write_csv:
-            fn_solhp_csv = '{:06d}_solution_healpix.csv'.format(solution_id)
-            fn_solhp_csv = os.path.join(self.write_db_solution_healpix_dir,
-                                        fn_solhp_csv)
-            solhp_csv = open(fn_solhp_csv, 'w', newline='')
-            solhp_writer = csvWriter(solhp_csv, delimiter=',', quotechar='"',
-                                     quoting=csv.QUOTE_MINIMAL)
-
-        # Prepare query for the solution_healpix table
-        col_list = ['solution_id', 'solutionset_id', 'process_id', 'scan_id',
-                    'plate_id', 'archive_id', 'solution_num']
-
-        # Get solution_healpix table columns from database schema
-        solhp_table = self.get_table_dict('solution_healpix')
-
-        for k in solhp_table.keys():
-            if k in solution_healpix.columns:
-                col_list.append(k)
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
-               .format(self.table_name('solution_healpix'), col_str, val_str))
-
-        # Write header rows to CSV files
-        if write_csv:
-            solhp_writer.writerow(col_list)
-
-        # Prepare data and execute queries
-        solhp_data = []
-
-        for i, solhp in enumerate(solution_healpix):
-            # Insert 1000 rows simultaneously
-            if not write_csv and i > 0 and i%1000 == 0:
-                self.db.executemany_query(sql, solhp_data)
-                solhp_data = []
-
-            # Prepare solution_healpix data
-            val_tuple = (solution_id, solutionset_id, process_id, scan_id,
-                         plate_id, archive_id, solution_num)
-
-            for k in col_list:
-                if k in solution_healpix.columns:
-                    try:
-                        solhp_val = (solhp[k] if np.isfinite(solhp[k])
-                                      else None)
-                    except TypeError:
-                        solhp_val = solhp[k]
-
-                    val_tuple = val_tuple + (solhp_val, )
-
-            if write_csv:
-                solhp_writer.writerow(val_tuple)
-            else:
-                solhp_data.append(val_tuple)
+                               solution_num=None, write_csv=None) -> None:
+        """Write the HEALPix table of a solution (rows with the columns of
+        ``solution_healpix``), or write it to a CSV file."""
+        ids = dict(zip(HEALPIX_IDS, (solution_id, solutionset_id, process_id,
+                                     scan_id, plate_id, archive_id,
+                                     solution_num)))
+        cols = [c for c in self.schema['solution_healpix'].column_names
+                if c not in ids]
+        rows = ({**ids, **{c: _finite(r[c]) for c in cols if c in _keys(r)}}
+                for r in solution_healpix)
+        csv_path = None
 
         if write_csv:
-            # Close CSV file
-            solhp_csv.close()
-        else:
-            # Insert remaining rows
-            self.db.executemany_query(sql, solhp_data)
+            csv_path = os.path.join(
+                self.files.write_db_solution_healpix_dir,
+                '{:06d}_solution_healpix.csv'.format(solution_id))
 
-    def write_scanner_pattern(self, table_row, solutionset_id=None,
+        self._write_rows('solution_healpix', rows, HEALPIX_IDS, csv_path)
+
+    def write_scanner_pattern(self, row, solutionset_id=None,
                               process_id=None, scan_id=None, plate_id=None,
-                              archive_id=None):
-        """
-        Write scanner pattern to the database.
+                              archive_id=None) -> None:
+        """Write one row of the scanner pattern."""
+        out = dict(zip(SOLUTION_IDS, (solutionset_id, process_id, scan_id,
+                                      plate_id, archive_id)))
 
-        """
+        for col in self.schema['scanner_pattern'].column_names:
+            if col not in out and col in _keys(row):
+                out[col] = row[col]
 
-        col_list = ['solutionset_id', 'process_id', 'scan_id', 'plate_id',
-                    'archive_id']
-        val_tuple = (solutionset_id, process_id, scan_id, plate_id, archive_id)
+        self.insert('scanner_pattern', out, first=SOLUTION_IDS)
 
-        # Get scanner_pattern table columns from database schema
-        scanner_pattern_table = self.get_table_dict('scanner_pattern')
+    def write_phot_calib(self, phot_calib: dict, process_id=None,
+                         scan_id=None, plate_id=None,
+                         archive_id=None) -> int:
+        """Write a photometric calibration. Returns its ID."""
+        row = {**dict(zip(RESULT_IDS, (process_id, scan_id, plate_id,
+                                       archive_id))),
+               **{k: v for k, v in phot_calib.items() if k not in RESULT_IDS}}
+        return self.insert('phot_calib', row, first=RESULT_IDS,
+                           return_id=True)
 
-        for k in scanner_pattern_table.keys():
-            if k in table_row.columns:
-                col_list.append(k)
-                val_tuple = val_tuple + (table_row[k], )
+    def write_calib_curve(self, calib_curve: dict, process_id=None,
+                          scan_id=None, plate_id=None,
+                          archive_id=None) -> None:
+        """Write a point of a photometric calibration curve."""
+        row = {**dict(zip(RESULT_IDS, (process_id, scan_id, plate_id,
+                                       archive_id))),
+               **{k: v for k, v in calib_curve.items()
+                  if k not in RESULT_IDS}}
+        self.insert('phot_calib_curve', row, first=RESULT_IDS)
 
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
-               .format(self.table_name('scanner_pattern'), col_str, val_str))
-        self.db.execute_query(sql, val_tuple)
+    def source_id(self, process_id: int, source_num: int) -> int:
+        """Database ID of a source:
+        dr_num, process_id and source_num as digits."""
+        cfg = self.cfg
+        return (cfg.dr_num * 10**(cfg.process_num_digits +
+                                  cfg.source_num_digits) +
+                process_id * 10**cfg.source_num_digits + source_num)
 
-    def write_phot_calib(self, phot_calib, process_id=None, scan_id=None, 
-                         plate_id=None, archive_id=None):
-        """
-        Write photometric calibration to the database.
+    def write_sources(self, sources, process_id=None, scan_id=None,
+                      plate_id=None, archive_id=None, write_csv=None) -> None:
+        """Write sources to the ``source`` and ``source_calib`` tables (or
+        CSV files). NaN and infinity become NULL; in ``source_calib`` also
+        negative HEALPix numbers and Gaia IDs 0. As in the old code, the
+        batches of the two tables alternate."""
+        ids = dict(zip(RESULT_IDS, (process_id, scan_id, plate_id,
+                                    archive_id)))
+        names = _keys(sources)
+        tables = ['source', 'source_calib']
+        cols = {t: [c for c in self.schema[t].column_names
+                    if c in names and c not in ids and c != 'source_id']
+                for t in tables}
 
-        """
+        def row(s, table):
+            out = {'source_id': self.source_id(process_id, s['source_num']),
+                   **ids}
 
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, plate_id, archive_id)
+            for c in cols[table]:
+                val = _finite(s[c])
 
-        # Get phot_calib table columns from database schema
-        phot_calib_table = self.get_table_dict('phot_calib')
+                if table == 'source_calib':
+                    if 'healpix256' in c and val is not None and val < 0:
+                        val = None
 
-        for k in phot_calib_table.keys():
-            if k in phot_calib:
-                col_list.append(k)
-                val_tuple = val_tuple + (phot_calib[k], )
+                    if c.startswith('gaia') and c.endswith('_id') and \
+                            val == 0:
+                        val = None
 
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING calib_id'
-               .format(self.table_name('phot_calib'), col_str, val_str))
-        calib_id = self.db.execute_query(sql, val_tuple)
-        return calib_id
+                out[c] = val
 
-    def write_calib_curve(self, calib_curve, process_id=None, scan_id=None,
-                          plate_id=None, archive_id=None):
-        """
-        Write photometric calibration curve to the database.
-
-        """
-
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id']
-        val_tuple = (process_id, scan_id, plate_id, archive_id)
-
-        # Get phot_calib_curve table columns from database schema
-        phot_calib_curve_table = self.get_table_dict('phot_calib_curve')
-
-        for k in phot_calib_curve_table.keys():
-            if k in calib_curve:
-                col_list.append(k)
-                val_tuple = val_tuple + (calib_curve[k], )
-
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
-               .format(self.table_name('phot_calib_curve'), col_str, val_str))
-        self.db.execute_query(sql, val_tuple)
-
-    def write_sources(self, sources, process_id=None, scan_id=None, 
-                      plate_id=None, archive_id=None, write_csv=None):
-        """
-        Write source data to the database.
-
-        """
-
-        # Open CSV files for writing
-        if write_csv:
-            fn_source_csv = '{:06d}_source.csv'.format(process_id)
-            fn_source_csv = os.path.join(self.write_db_source_dir, 
-                                         fn_source_csv)
-            source_csv = open(fn_source_csv, 'w', newline='')
-            source_writer = csvWriter(source_csv, delimiter=',',
-                                      quotechar='"', 
-                                      quoting=csv.QUOTE_MINIMAL)
-            fn_source_calib_csv = '{:06d}_source_calib.csv'.format(process_id)
-            fn_source_calib_csv = os.path.join(self.write_db_source_calib_dir, 
-                                               fn_source_calib_csv)
-            source_calib_csv = open(fn_source_calib_csv, 'w', newline='')
-            source_calib_writer = csvWriter(source_calib_csv, delimiter=',',
-                                            quotechar='"', 
-                                            quoting=csv.QUOTE_MINIMAL)
-
-        # Prepare query for the source table
-        col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
-                    'archive_id']
-
-        # Get source table columns from database schema
-        source_table = self.get_table_dict('source')
-
-        for k in source_table.keys():
-            if k in sources.columns:
-                col_list.append(k)
-
-        source_columns = col_list
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql_source = ('INSERT INTO {} ({}) VALUES ({})'
-                      .format(self.table_name('source'), col_str, val_str))
-
-        # Prepare query for the source_calib table
-        col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
-                    'archive_id']
-
-        # Get source table columns from database schema
-        source_calib_table = self.get_table_dict('source_calib')
-
-        for k in source_calib_table.keys():
-            if k in sources.columns:
-                col_list.append(k)
-
-        source_calib_columns = col_list
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql_source_calib = ('INSERT INTO {} ({}) VALUES ({})'
-                            .format(self.table_name('source_calib'), col_str,
-                                    val_str))
-
-        # Write header rows to CSV files
-        if write_csv:
-            source_writer.writerow(source_columns)
-            source_calib_writer.writerow(source_calib_columns)
-
-        # Prepare data and execute queries
-        source_data = []
-        source_calib_data = []
-
-        for i, source in enumerate(sources):
-            # Insert 1000 rows simultaneously
-            if not write_csv and i > 0 and i%1000 == 0:
-                self.db.executemany_query(sql_source, source_data)
-                source_data = []
-                self.db.executemany_query(sql_source_calib, source_calib_data)
-                source_calib_data = []
-
-            # Prepare source data
-            source_id = (self.dr_num * 10**(self.process_num_digits +
-                                            self.source_num_digits) +
-                         process_id * 10**self.source_num_digits +
-                         source['source_num'])
-            val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
-
-            for k in source_columns:
-                if k in sources.columns:
-                    source_val = (source[k] if np.isfinite(source[k]) 
-                                  else None)
-                    val_tuple = val_tuple + (source_val, )
-
-            if write_csv:
-                source_writer.writerow(val_tuple)
-            else:
-                source_data.append(val_tuple)
-
-            # Prepare source_calib data
-            val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
-
-            for k in source_calib_columns:
-                if k in sources.columns:
-                    try:
-                        source_val = (source[k] if np.isfinite(source[k])
-                                      else None)
-                    except TypeError:
-                        source_val = source[k]
-
-                    if 'healpix256' in k and source_val < 0:
-                        source_val = None
-                        
-                    if 'gaiaedr3_id' in k and source_val == 0:
-                        source_val = None
-                        
-                    val_tuple = val_tuple + (source_val, )
-
-            if write_csv:
-                source_calib_writer.writerow(val_tuple)
-            else:
-                source_calib_data.append(val_tuple)
+            return out
 
         if write_csv:
-            # Close CSV files
-            source_csv.close()
-            source_calib_csv.close()
-        else:
-            # Insert remaining rows
-            self.db.executemany_query(sql_source, source_data)
-            self.db.executemany_query(sql_source_calib, source_calib_data)
+            for table, attr in [('source', 'write_db_source_dir'),
+                                ('source_calib',
+                                 'write_db_source_calib_dir')]:
+                path = os.path.join(getattr(self.files, attr),
+                                    '{:06d}_{}.csv'.format(process_id, table))
+                self._write_rows(table, (row(s, table) for s in sources),
+                                 SOURCE_IDS, path)
 
-    def write_source_xmatches(self, xmatches, process_id=None, scan_id=None,
-                              plate_id=None, archive_id=None, write_csv=None):
-        """
-        Write source crossmatch data to the database.
-
-        """
-
-        # Open CSV files for writing
-        if write_csv:
-            fn_source_xmatch_csv = '{:06d}_source_xmatch.csv'.format(process_id)
-            fn_source_xmatch_csv = os.path.join(self.write_db_source_xmatch_dir, 
-                                               fn_source_xmatch_csv)
-            source_xmatch_csv = open(fn_source_xmatch_csv, 'w', newline='')
-            source_xmatch_writer = csvWriter(source_xmatch_csv, delimiter=',',
-                                             quotechar='"', 
-                                             quoting=csv.QUOTE_MINIMAL)
-
-        # Prepare query for the source_xmatch table
-        col_list = ['source_id', 'process_id', 'scan_id', 'plate_id',
-                    'archive_id']
-
-        # Get source_xmatch table columns from database schema
-        source_xmatch_table = self.get_table_dict('source_xmatch')
-
-        for k in source_xmatch_table.keys():
-            if k in xmatches.columns:
-                col_list.append(k)
-
-        source_xmatch_columns = col_list
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql_source_xmatch = ('INSERT INTO {} ({}) VALUES ({})'
-                             .format(self.table_name('source_xmatch'), col_str,
-                                     val_str))
-
-        # Write header rows to CSV files
-        if write_csv:
-            source_xmatch_writer.writerow(source_xmatch_columns)
-
-        # Prepare data and execute queries
-        source_xmatch_data = []
-
-        for i, xmatch in enumerate(xmatches):
-            # Insert 1000 rows simultaneously
-            if not write_csv and i > 0 and i%1000 == 0:
-                self.db.executemany_query(sql_source_xmatch, source_xmatch_data)
-                source_xmatch_data = []
-
-            # Prepare source_xmatch data
-            source_id = (self.dr_num * 10**(self.process_num_digits +
-                                            self.source_num_digits) +
-                         process_id * 10**self.source_num_digits +
-                         xmatch['source_num'])
-            val_tuple = (source_id, process_id, scan_id, plate_id, archive_id)
-
-            for k in source_xmatch_columns:
-                if k in xmatches.columns:
-                    try:
-                        xmatch_val = (xmatch[k] if np.isfinite(xmatch[k])
-                                      else None)
-                    except TypeError:
-                        xmatch_val = xmatch[k]
-
-                    val_tuple = val_tuple + (xmatch_val, )
-
-            if write_csv:
-                source_xmatch_writer.writerow(val_tuple)
-            else:
-                source_xmatch_data.append(val_tuple)
-
-        if write_csv:
-            # Close CSV file
-            source_xmatch_csv.close()
-        else:
-            # Insert remaining rows
-            self.db.executemany_query(sql_source_xmatch, source_xmatch_data)
-
-    def write_process_start(self, scan_id=None, plate_id=None, 
-                            archive_id=None, filename=None, use_psf=None):
-        """
-        Write plate-solve process to the database.
-
-        """
-
-        col_list = ['scan_id', 'plate_id', 'archive_id', 'filename',
-                    'hostname', 'use_psf', 'pyplate_version']
-
-        if use_psf:
-            use_psf = 1
-        else:
-            use_psf = 0
-
-        #hostname = platform.node()
-        hostname = socket.gethostname()
-            
-        val_tuple = (scan_id, plate_id, archive_id, filename, hostname,
-                     use_psf, __version__)
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({}) RETURNING process_id'
-               .format(self.table_name('process'), col_str, val_str))
-        process_id = self.db.execute_query(sql, val_tuple)
-        return process_id
-
-    def update_process(self, process_id, **kwargs):
-        """
-        Update plate-solve process in the database.
-
-        """
-
-        col_list = []
-        val_tuple = ()
-
-        # Get process table columns from database schema
-        process_table = self.get_table_dict('process')
-
-        for k in kwargs:
-            # Check if the keyword matches a column name in the process table
-            # and if the keyword is not None
-            if k in process_table and kwargs[k] is not None:
-                col_list.append('{}=%s'.format(k))
-                val_tuple = val_tuple + (kwargs[k], )
-
-        # If no valid keywords are given, then give up
-        if not col_list:
             return
 
-        col_str = ','.join(col_list)
-        sql = ('UPDATE {} SET {} WHERE process_id=%s'
-               .format(self.table_name('process'), col_str))
-        val_tuple = val_tuple + (process_id, )
-        self.db.execute_query(sql, val_tuple)
+        for start in range(0, len(sources), BATCH_SIZE):
+            batch = sources[start:start + BATCH_SIZE]
 
-    def write_process_end(self, process_id, completed=None, duration=None):
-        """
-        Write plate-solve process end to the database.
+            for table in tables:
+                self.insert_many(table, [row(s, table) for s in batch],
+                                 SOURCE_IDS)
 
-        """
+    def write_source_xmatches(self, xmatches, process_id=None, scan_id=None,
+                              plate_id=None, archive_id=None,
+                              write_csv=None) -> None:
+        """Write crossmatches to ``source_xmatch`` (or a CSV file)."""
+        ids = dict(zip(RESULT_IDS, (process_id, scan_id, plate_id,
+                                    archive_id)))
+        names = _keys(xmatches)
+        cols = [c for c in self.schema['source_xmatch'].column_names
+                if c in names and c not in ids and c != 'source_id']
+        rows = ({'source_id': self.source_id(process_id, x['source_num']),
+                 **ids, **{c: _finite(x[c]) for c in cols}}
+                for x in xmatches)
+        csv_path = None
 
-        sql = ('UPDATE {} SET timestamp_end=NOW(),duration=%s,completed=%s '
-               'WHERE process_id=%s'.format(self.table_name('process')))
-        val_tuple = (duration, completed, process_id)
-        self.db.execute_query(sql, val_tuple)
+        if write_csv:
+            csv_path = os.path.join(self.files.write_db_source_xmatch_dir,
+                                    '{:06d}_source_xmatch.csv'
+                                    .format(process_id))
 
-    def write_processlog(self, level, message, event=None, solution_num=None,
-                         process_id=None, scan_id=None, plate_id=None,
-                         archive_id=None):
-        """
-        Write plate solve process log message to the database.
+        self._write_rows('source_xmatch', rows, SOURCE_IDS, csv_path)
 
-        """
+    def write_process_start(self, scan_id=None, plate_id=None,
+                            archive_id=None, filename=None,
+                            use_psf=None) -> int:
+        """Write the start of a plate process. Returns the process ID."""
+        row = {'scan_id': scan_id, 'plate_id': plate_id,
+               'archive_id': archive_id, 'filename': filename,
+               'hostname': self.hostname or socket.gethostname(),
+               'use_psf': 1 if use_psf else 0,
+               'pyplate_version': self.version or __version__}
+        return self.insert('process', row, first=list(row), return_id=True)
 
-        col_list = ['process_id', 'scan_id', 'plate_id', 'archive_id',
-                    'level', 'event', 'solution_num', 'message']
-        val_tuple = (process_id, scan_id, plate_id, archive_id,
-                     level, event, solution_num, message)
-        col_str = ','.join(col_list)
-        val_str = ','.join(['%s'] * len(col_list))
-        sql = ('INSERT INTO {} ({}) VALUES ({})'
-               .format(self.table_name('process_log'), col_str, val_str))
-        self.db.execute_query(sql, val_tuple)
+    def update_process(self, process_id: int, **kwargs) -> None:
+        """Set columns of the process; unknown names and None values are
+        skipped."""
+        row = {k: v for k, v in kwargs.items() if v is not None}
+        self.update('process', row, {'process_id': process_id})
 
-    def get_plate_id(self, plate_num, archive_id):
-        """
-        Get plate ID from the database by archive ID and plate number.
+    def write_process_end(self, process_id: int, completed=None,
+                          duration=None) -> None:
+        """Write the end time, duration and completion of a process."""
+        p = self.backend.placeholder
+        sql = ('UPDATE {} SET timestamp_end={},duration={},completed={} '
+               'WHERE process_id={}'.format(self.backend.qualify('process'),
+                                             self.backend.now_sql, p, p, p))
+        self.backend.execute(sql, (duration, completed, process_id))
 
-        Parameters
-        ----------
-        plate_num : str
-            Plate number
-        archive_id : int
-            Archive ID
+    def write_processlog(self, level: int, message: str, event=None,
+                         solution_num=None, process_id=None, scan_id=None,
+                         plate_id=None, archive_id=None) -> None:
+        """Write a log message of a process."""
+        row = {'process_id': process_id, 'scan_id': scan_id,
+               'plate_id': plate_id, 'archive_id': archive_id,
+               'level': level, 'event': event, 'solution_num': solution_num,
+               'message': message}
+        self.insert('process_log', row, first=list(row))
 
-        Returns
-        -------
-        plate_id : int
-            Plate ID
+    # --- Lookups ---------------------------------------------------------------
+    # A lookup with a key of None is not sent and finds nothing
 
-        """
+    def _lookup(self, sql: str, keys: Sequence) -> tuple | None:
+        if any(k is None for k in keys):
+            return None
 
-        sql = ('SELECT plate_id FROM {} WHERE archive_id=%s AND plate_num=%s'
-               .format(self.table_name('plate')))
-        plate_id = self.db.execute_query(sql, (archive_id, plate_num))
-        return plate_id
+        return self._select_one(sql, keys)
 
-    def get_plate_id_wfpdb(self, wfpdb_id):
-        """
-        Get plate ID from the database by WFPDB ID.
+    def get_plate_id(self, plate_num: str | None,
+                     archive_id: int | None) -> int | None:
+        """Plate ID by archive ID and plate number."""
+        row = self._lookup('SELECT plate_id FROM {} WHERE archive_id={} AND '
+                           'plate_num={}'.format(self.backend.qualify('plate'),
+                                                 *[self.backend.placeholder]
+                                                 * 2),
+                           (archive_id, plate_num))
+        return row[0] if row else None
 
-        Parameters
-        ----------
-        wfpdb_id : str
-            WFPDB ID
+    def get_plate_id_wfpdb(self, wfpdb_id: str | None) -> int | None:
+        """Plate ID by WFPDB ID."""
+        row = self._lookup('SELECT plate_id FROM {} WHERE wfpdb_id={}'
+                           .format(self.backend.qualify('plate'),
+                                   self.backend.placeholder), (wfpdb_id,))
+        return row[0] if row else None
 
-        Returns
-        -------
-        plate_id : int
-            Plate ID
+    def get_scan_id(self, filename: str | None,
+                    archive_id: int | None) -> tuple[int | None, int | None]:
+        """Scan ID and plate ID by scan file name and archive ID."""
+        p = self.backend.placeholder
+        row = self._lookup('SELECT scan_id, plate_id FROM {} '
+                           'WHERE filename_scan={} AND archive_id={}'
+                           .format(self.backend.qualify('scan'), p, p),
+                           (filename, archive_id))
+        return tuple(row) if row else (None, None)
 
-        """
+    def get_logbook_id(self, logbook_num: str | None,
+                       archive_id: int | None) -> int | None:
+        """Logbook ID by archive ID and logbook number."""
+        p = self.backend.placeholder
+        row = self._lookup('SELECT logbook_id FROM {} '
+                           'WHERE archive_id={} AND logbook_num={}'
+                           .format(self.backend.qualify('logbook'), p, p),
+                           (archive_id, logbook_num))
+        return row[0] if row else None
 
-        sql = ('SELECT plate_id FROM {} WHERE wfpdb_id=%s'
-               .format(self.table_name('plate')))
-        plate_id = self.db.execute_query(sql, (wfpdb_id,))
-        return plate_id
+    def get_logpage_id(self, filename: str | None,
+                       archive_id: int | None) -> int | None:
+        """Logpage ID by file name and archive ID."""
+        p = self.backend.placeholder
+        row = self._lookup('SELECT logpage_id FROM {} '
+                           'WHERE filename={} AND archive_id={}'
+                           .format(self.backend.qualify('logpage'), p, p),
+                           (filename, archive_id))
+        return row[0] if row else None
 
-    def get_scan_id(self, filename, archive_id):
-        """
-        Get scan ID and plate ID from the database.
+    def get_plate_epoch(self, plate_id: int | None) -> float | None:
+        """Earliest start year of the exposures of a plate."""
+        row = self._lookup('SELECT year_start FROM {} WHERE plate_id={} '
+                           'AND year_start IS NOT NULL ORDER BY year_start'
+                           .format(self.backend.qualify('exposure'),
+                                   self.backend.placeholder), (plate_id,))
+        return row[0] if row else None
 
-        Parameters
-        ----------
-        filename : str
-            Filename of the scan
-        archive_id : int
-            Archive ID number
 
-        Returns
-        -------
-        result : tuple
-            A tuple containing scan ID and plate ID
+def _keys(rows) -> list[str]:
+    """Column names of an astropy Table or Row, or keys of a dict or of
+    the first dict of a list."""
+    if hasattr(rows, 'colnames'):
+        return rows.colnames
 
-        """
+    if isinstance(rows, dict):
+        return list(rows)
 
-        sql = ('SELECT scan_id, plate_id FROM {} '
-               'WHERE filename_scan=%s AND archive_id=%s'
-               .format(self.table_name('scan')))
-        result = self.db.execute_query(sql, (filename, archive_id))
-
-        if result is None:
-            result = (None, None)
-
-        return result
-
-    def get_logbook_id(self, logbook_num, archive_id):
-        """
-        Get logbook ID from the database by archive ID and logbook number.
-
-        Parameters
-        ----------
-        logbook_num : str
-            Logbook number (unique within the specified archive)
-        archive_id : int
-            Archive ID
-
-        Returns
-        -------
-        logbook_id : int
-            Logbook ID
-
-        """
-
-        sql = ('SELECT logbook_id FROM {} '
-               'WHERE archive_id=%s AND logbook_num=%s'
-               .format(self.table_name('logbook')))
-        logbook_id = self.db.execute_query(sql, (archive_id, logbook_num))
-        return logbook_id
-
-    def get_logpage_id(self, filename, archive_id):
-        """
-        Get logpage ID from the database.
-
-        Parameters
-        ----------
-        filename : str
-            Filename of the logpage
-        archive_id : int
-            Archive ID number
-
-        Returns
-        -------
-        result : int
-            Logpage ID number
-
-        """
-
-        sql = ('SELECT logpage_id FROM {} '
-               'WHERE filename=%s AND archive_id=%s'
-               .format(self.table_name('logpage')))
-        logpage_id = self.db.execute_query(sql, (filename, archive_id))
-        return logpage_id
-
-    def get_plate_epoch(self, plate_id):
-        """
-        Get plate epoch from the database.
-
-        Parameters
-        ----------
-        plate_id : int
-            Plate ID number
-
-        Returns
-        -------
-        result : float
-            Plate epoch as a float
-
-        """
-
-        sql = ('SELECT year_start FROM {} WHERE plate_id=%s '
-               'AND year_start IS NOT NULL ORDER BY year_start'
-               .format(self.table_name('exposure')))
-        result = self.db.execute_query(sql, (plate_id,))
-        return result
+    rows = list(rows)
+    return list(rows[0]) if rows else []

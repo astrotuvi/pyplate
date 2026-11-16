@@ -1,0 +1,33 @@
+# Template for paths.local: the machine-specific part of the reference-plate
+# configuration. Copy to paths.local (ignored by git) and fill in the paths.
+# run_reference_plates.py reads plates.conf and then this file.
+#
+# The output directories of the pipeline (work, logs, headers, WCS) are set
+# by run_reference_plates.py inside the run directory under
+# [Reference] output_dir, so they are not needed here.
+
+[Reference]
+# Directory for the full results of reference runs (outside the repository)
+output_dir = /path/to/reference/output
+
+[Files]
+# Metadata CSV files named in plates.conf
+csv_dir = /path/to/Metadata
+# Plate scans (LA02333_x.fits, LA02334_x.fits)
+fits_dir = /path/to/Scans
+# astrometry.net index files (index_<year>/) and Gaia files for solving
+index_dir = /path/to/GaiaEDR3
+gaia_dir = /path/to/GaiaEDR3
+tycho2_dir = /path/to/Tycho-2
+
+[Solve]
+filter_path = /path/to/sextractor/gauss_3.0_5x5.conv
+
+[Programs]
+sextractor_path = /path/to/sex
+scamp_path = /path/to/scamp
+psfex_path = /path/to/psfex
+solve_field_path = /path/to/solve-field
+build_index_path = /path/to/build-astrometry-index
+wcs_to_tan_path = /path/to/wcs-to-tan
+xy2sky_path =

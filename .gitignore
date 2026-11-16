@@ -61,8 +61,5 @@ target/
 *.loc
 *.local 
 
-# ignore sql files
-*.sql
-
 # VS Code
 .vscode/

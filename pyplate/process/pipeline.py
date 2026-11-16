@@ -2,15 +2,13 @@ import os
 import multiprocessing as mp
 import time
 from deprecated import deprecated
-from ..metadata import Archive, PlateHeader, read_conf
+from astropy.io import fits
+from ..config import load_config
+from ..metadata import ArchiveReader, PlateHeader
 from ..database.database import PlateDB
 from ..image import PlateConverter
-from .process import Process
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
+from . import output
+from .process import PlateProcess
 
 
 class PlatePipeline:
@@ -51,53 +49,24 @@ class PlatePipeline:
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration and set class attributes from it.
+
+        Parameters
+        ----------
+        conf : :class:`pyplate.config.Config` or str
+            Configuration, or the path of a TOML configuration file
 
         """
 
         if isinstance(conf, str):
-            conf = read_conf(conf)
+            conf = load_config(conf)
 
         self.conf = conf
+        self.work_dir = conf.files.work_dir
+        self.write_log_dir = conf.files.write_log_dir
 
-        for attr in ['work_dir', 'write_log_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['read_wfpdb', 'read_csv', 'read_fits', 
-                     'output_header_file', 'output_header_fits', 
-                     'invert_image', 'extract_sources', 'classify_artifacts',
-                     'solve_plate', 'output_solution_db', 'output_wcs_file',
-                     'crossmatch_gaia', 'calibrate_photometry',
-                     'output_calibration_db', 
-                     'output_sources_db', 'output_sources_csv']:
-            try:
-                setattr(self, attr, conf.getboolean('Pipeline', attr))
-            except ValueError:
-                print('Error in configuration file: not a boolean value '
-                      '([{}], {})'.format('Pipeline', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['processes', 'process_max_tasks']:
-            try:
-                setattr(self, attr, conf.getint('Pipeline', attr))
-            except ValueError:
-                print('Error in configuration file: not an integer value '
-                      '([{}], {})'.format('Pipeline', attr))
-            except configparser.Error:
-                pass
-
-        for attr in ['wait_start']:
-            try:
-                setattr(self, attr, conf.getfloat('Pipeline', attr))
-            except ValueError:
-                print('Error in configuration file: not a float value '
-                      '([{}], {})'.format('Pipeline', attr))
-            except configparser.Error:
-                pass
+        for attr, value in conf.pipeline.__dict__.items():
+            setattr(self, attr, value)
 
     def single_image(self, filename, plate_epoch=None):
         """
@@ -112,42 +81,34 @@ class PlatePipeline:
             
         """
 
-        archive = Archive()
-        archive.assign_conf(self.conf)
-
-        if self.read_wfpdb:
-            archive.read_wfpdb()
-
-        if self.read_csv:
-            archive.read_csv()
-
+        reader = ArchiveReader(self.conf, read_wfpdb=self.read_wfpdb,
+                               read_csv=self.read_csv)
         fn = os.path.basename(filename)
-        pmeta = archive.get_platemeta(filename=fn)
-        pmeta.compute_values()
+        plate = reader.get_plate(filename_scan=fn)
+        plate.compute_values(self.conf.metadata.evening_date)
+        scan = [s for s in plate.scans if s.filename_scan == fn][0]
 
-        h = PlateHeader()
-        h.assign_conf(pmeta.conf)
-        h.assign_platemeta(pmeta)
-        h.update_from_platemeta()
-        h.assign_values()
-        h.update_comments()
-        h.rewrite()
-        h.reorder()
+        try:
+            fits_header = fits.getheader(os.path.join(self.conf.files.fits_dir,
+                                                      fn),
+                                         ignore_missing_end=True)
+        except Exception:
+            fits_header = None
+
+        h = PlateHeader.from_metadata(plate, scan, self.conf,
+                                      fits_header=fits_header)
 
         if self.output_header_file:
             fn_header = os.path.splitext(fn)[0] + '.hdr'
             h.output_to_file(fn_header)
 
-        proc = Process(fn)
-        proc.assign_conf(pmeta.conf)
-        proc.assign_header(h)
-        proc.assign_metadata(pmeta)
+        proc = PlateProcess(self.conf, fn, plate=plate, scan=scan, header=h)
 
         if self.plate_epoch is not None:
-            proc.plate_epoch = self.plate_epoch
+            proc.ctx.plate_epoch = self.plate_epoch
 
         if plate_epoch is not None:
-            proc.plate_epoch = plate_epoch
+            proc.ctx.plate_epoch = plate_epoch
 
         proc.setup()
 
@@ -169,56 +130,59 @@ class PlatePipeline:
                 proc.sources.process_coordinates()
 
             if self.output_wcs_file:
-                proc.output_wcs_header()
+                output.write_wcs_header(proc)
 
             if proc.plate_solved:
-                proc.log.write('Updating FITS header with the WCS', 
-                               level=3, event=37)
-                h.insert_wcs(proc.plate_solution.header_wcs)
+                proc.ctx.log.write('Updating FITS header with the WCS', 
+                                   level=3, event=37)
+                h.insert_wcs(proc.solution.header_wcs)
 
             if self.output_header_file:
-                proc.log.write('Writing FITS header to a file', 
-                               level=3, event=38)
+                proc.ctx.log.write('Writing FITS header to a file', 
+                                   level=3, event=38)
                 h.output_to_file(fn_header)
 
             if self.output_header_fits:
-                proc.log.write('Writing FITS header to the FITS file', 
-                               level=3, event=39)
+                proc.ctx.log.write('Writing FITS header to the FITS file', 
+                                   level=3, event=39)
                 h.output_to_fits(fn)
 
                 # Get metadata for the updated FITS file
-                pmeta['fits_datetime'] = h.fits_datetime
-                pmeta['fits_size'] = h.fits_size
-                pmeta['fits_checksum'] = h.fits_checksum
-                pmeta['fits_datasum'] = h.fits_datasum
+                scan.file_datetime = h.fits_datetime
+                scan.file_size = h.fits_size
+                scan.fits_checksum = h.fits_checksum
+                scan.fits_datasum = h.fits_datasum
 
                 # Updating scan metadata in the scan table
-                platedb = PlateDB()
-                platedb.assign_conf(self.conf)
+                platedb = PlateDB(self.conf.database, self.conf.files)
                 platedb.open_connection()
-                platedb.update_scan(pmeta, filecols=True)
+                platedb.update_scan(scan, filecols=True)
                 platedb.close_connection()
         
             if self.crossmatch_gaia:
-                proc.query_star_catalog(mag_range=[0,12])
-                proc.sources.log = proc.log
-                proc.sources.crossmatch_gaia(proc.plate_solution,
-                                             proc.star_catalog)
+                proc.crossmatch()
 
             if self.calibrate_photometry:
                 proc.calibrate_photometry()
 
-            if self.output_solution_db:
-                proc.output_solution_db()
+            if (self.output_solution_db or self.output_calibration_db or
+                self.output_sources_db):
+                platedb = PlateDB(self.conf.database, self.conf.files)
+                platedb.open_connection()
 
-            if self.output_calibration_db:
-                proc.output_calibration_db()
+                if self.output_solution_db:
+                    output.write_solution(platedb, proc)
 
-            if self.output_sources_db:
-                proc.output_sources_db()
+                if self.output_calibration_db:
+                    output.write_calibration(platedb, proc)
+
+                if self.output_sources_db:
+                    output.write_sources(platedb, proc)
+
+                platedb.close_connection()
 
             if self.output_sources_csv:
-                proc.output_sources_csv()
+                output.write_sources_csv(proc)
 
         proc.finish()
 

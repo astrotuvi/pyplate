@@ -2,18 +2,12 @@ import os
 import numpy as np
 import pyvo as vo
 import warnings
-from astropy.table import Table, Column, MaskedColumn, vstack, setdiff
+from astropy.table import Table, MaskedColumn, vstack, setdiff
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 #from astroquery.gaia import Gaia
-from .solve import PlateSolution
-from ..conf import read_conf
-from ..database.database import PlateDB
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
+from .solve import SolutionSet
+from ..database.database import BACKENDS
 
 
 class StarCatalog(Table):
@@ -38,7 +32,7 @@ class StarCatalog(Table):
 
         self.catalog = catalog
         self.protocol = protocol
-        self.db_section = None
+        self.connection = None
         self.table_name = None
 
         self.log = None
@@ -52,31 +46,18 @@ class StarCatalog(Table):
 
     def assign_conf(self, conf):
         """
-        Parse configuration and set class attributes.
+        Assign the configuration (:class:`pyplate.config.Config`) and set
+        class attributes from it.
 
         """
 
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-
         self.conf = conf
-
-        for attr in ['catalog', 'protocol', 'table_name']:
-            try:
-                setattr(self, attr, conf.get('Catalog', attr))
-            except configparser.Error:
-                pass
-
-        try:
-            self.protocol = self.protocol.upper()
-        except TypeError:
-            pass
+        self.catalog = conf.catalog.catalog
+        self.protocol = conf.catalog.protocol.upper()
+        self.table_name = conf.catalog.table_name
 
         if self.protocol == 'SQL':
-            try:
-                self.db_section = conf.get('Catalog', 'db')
-            except configparser.Error:
-                pass
+            self.connection = conf.catalog.connection
 
     def query_gaia_tap(self, query, skycoord, radius):
         """
@@ -149,11 +130,10 @@ class StarCatalog(Table):
             self.log.write('Gaia SQL query: {}'.format(sql_query),
                            level=4, event=42)
 
-        gaiadb = PlateDB()
-        gaiadb.assign_conf(self.conf, section=self.db_section)
-        gaiadb.open_connection()
+        gaiadb = BACKENDS[self.connection.rdbms](self.connection)
+        gaiadb.connect()
 
-        res = gaiadb.db.execute_select_query(sql_query)
+        res = gaiadb.select_all(sql_query)
         cols = [col.strip() for col in
                 sql_query.split('FROM')[0].split('SELECT')[1].split(',')]
         dtype = ['i8'] + ['f8'] * (len(cols) - 1)
@@ -163,11 +143,11 @@ class StarCatalog(Table):
         else:
             tab = Table(names=cols, dtype=dtype)
 
-        gaiadb.close_connection()
+        gaiadb.close()
 
         return tab
 
-    def query_gaia(self, plate_solution=None, skycoord=None, radius=None,
+    def query_gaia(self, solution_set=None, skycoord=None, radius=None,
                    mag_range=[0,20], color_term=None, filename=None,
                    protocol=None):
         """
@@ -176,7 +156,7 @@ class StarCatalog(Table):
 
         Parameters
         ----------
-        plate_solution : :class:`solve.PlateSolution`
+        solution_set : :class:`solve.SolutionSet`
             Plate solution containing one or more astrometric solutions
         skycoord : :class:`astropy.coordinates.SkyCoord`
             Sky coordinates for the query center
@@ -201,14 +181,14 @@ class StarCatalog(Table):
 
         assert not isinstance(mag_range, str)
         assert len(mag_range) == 2
-        assert isinstance(plate_solution, PlateSolution) or use_coord_radius
+        assert isinstance(solution_set, SolutionSet) or use_coord_radius
 
         if protocol is None:
             protocol = self.protocol
 
         assert isinstance(protocol, str)
 
-        psol = plate_solution
+        psol = solution_set
         protocol = protocol.upper()
 
         if mag_range[0] is None:
@@ -264,7 +244,7 @@ class StarCatalog(Table):
 
         # Use astrometric solutions for query
         else:
-            half_diag = u.Quantity([sol['half_diag'] for sol in psol.solutions])
+            half_diag = u.Quantity([sol.half_diag for sol in psol.solutions])
             fov_diag = 2 * half_diag[half_diag > 0 * u.deg].mean()
 
             # If max angular separation between solutions is less than
@@ -286,15 +266,15 @@ class StarCatalog(Table):
                 # Loop through solutions
                 for i in np.arange(psol.num_solutions):
                     solution = psol.solutions[i]
-                    sol_skycoord = SkyCoord(ra=solution['ra_icrs']*u.deg,
-                                            dec=solution['dec_icrs']*u.deg)
+                    sol_skycoord = SkyCoord(ra=solution.ra_icrs*u.deg,
+                                            dec=solution.dec_icrs*u.deg)
 
                     if protocol == 'SQL':
                         tab = self.query_gaia_sql(query_str, sol_skycoord,
-                                                  solution['half_diag'])
+                                                  solution.half_diag)
                     else:
                         tab = self.query_gaia_tap(query_str, sol_skycoord,
-                                                  solution['half_diag'])
+                                                  solution.half_diag)
 
                     tab['solution_num'] = i + 1
                     gaia_tables.append(tab)

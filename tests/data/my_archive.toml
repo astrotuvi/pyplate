@@ -1,0 +1,28 @@
+[Files]
+csv_dir = "data"
+plate_csv = ["my_plates.csv"]
+scan_csv = ["my_scans.csv"]
+
+[CSV."my_plates.csv"]
+csv_list_delimiter = ";"
+plate_num = 1
+date_orig_start = 2
+time_orig_start = 3
+time_orig_end = 4
+numexp = 5
+exptime = 6
+observer = 7
+tz_orig = 8
+
+[CSV."my_scans.csv"]
+filename_scan = 1
+plate_num = 2
+scan_author = 3
+scan_date = 4
+
+["Keyword values"]
+observatory = "Astrophysikalische Observatorium Potsdam"
+site_name = "Potsdam-Telegrafenberg"
+site_longitude = 13.06417
+site_latitude = 52.38056
+site_elevation = 107

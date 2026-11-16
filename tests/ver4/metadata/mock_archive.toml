@@ -1,0 +1,31 @@
+[Archive]
+archive_id = 99
+archive_name = "Mock archive"
+
+[Files]
+plate_csv = ["mock_plates.csv"]
+
+[CSV."mock_plates.csv"]
+csv_list_delimiter = ";"
+csv_timezone = "UT"
+plate_num = 1
+date_orig_start = 2
+time_orig_start = 3
+time_orig_end = 4
+numexp = 5
+exptime = 6
+ra_orig = 7
+dec_orig = 8
+object_name = 9
+object_type_code = 10
+method_code = 11
+
+[Metadata]
+evening_date = true
+
+["Keyword values"]
+observatory = "Mock Observatory"
+site_name = "Mock Hill"
+site_longitude = 26.72
+site_latitude = 58.27
+site_elevation = 70

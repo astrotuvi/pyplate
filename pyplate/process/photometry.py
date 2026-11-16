@@ -1,18 +1,17 @@
 import os
-import math
 import numpy as np
+from collections.abc import Callable
+from dataclasses import dataclass
 from astropy.table import Table
 from astropy.stats import sigma_clip
 from scipy.interpolate import InterpolatedUnivariateSpline, SmoothBivariateSpline
 from scipy.ndimage.filters import generic_filter
 from scipy.optimize import curve_fit
 from collections import OrderedDict
-from ..conf import read_conf
-
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
+from ..metadata.base import DbRecord, related
+from .context import ProcessContext
+from .solve import SolutionSet
+from .sources import SourceTable
 
 try:
     import statsmodels.api as sm
@@ -29,23 +28,107 @@ def _abscurve(x, x0, a, b, c):
     return a * np.abs(x - x0) + b * (x - x0)**2 + c
 
 
+@dataclass
+class PhotCalib(DbRecord):
+    """A photometric calibration of one solution in one iteration
+    (``phot_calib`` table).
+
+    The columns are described in ``applause_dr5.yaml``.
+
+    Attributes
+    ----------
+    curve
+        The calibration curve: natural magnitude as a function of the plate
+        magnitude (``mag_auto``).
+    """
+
+    table = 'phot_calib'
+
+    calib_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    solution_num: int | None = None
+    iteration: int | None = None
+    color_term: float | None = None
+    color_term_error: float | None = None
+    cterm_stdev_fit: float | None = None
+    cterm_stdev_min: float | None = None
+    cterm_range_min: float | None = None
+    cterm_range_max: float | None = None
+    cterm_iterations: int | None = None
+    cterm_num_stars: int | None = None
+    num_gaia_dr4: int | None = None
+    num_candidate_stars: int | None = None
+    num_calib_stars: int | None = None
+    num_bright_stars: int | None = None
+    num_outliers: int | None = None
+    bright_limit: float | None = None
+    faint_limit: float | None = None
+    mag_range: float | None = None
+    rmse_min: float | None = None
+    rmse_median: float | None = None
+    rmse_max: float | None = None
+    plate_mag_brightest: float | None = None
+    plate_mag_density02: float | None = None
+    plate_mag_brightcut: float | None = None
+    plate_mag_maxden: float | None = None
+    plate_mag_lim: float | None = None
+
+    curve: Callable | None = related(default=None)
+
+
+@dataclass
+class PhotCalibCurve(DbRecord):
+    """A point of a photometric calibration curve (``phot_calib_curve``
+    table).
+
+    The columns are described in ``applause_dr5.yaml``.
+    """
+
+    table = 'phot_calib_curve'
+
+    calibcurve_id: int | None = None
+    calib_id: int | None = None
+    process_id: int | None = None
+    scan_id: int | None = None
+    plate_id: int | None = None
+    archive_id: int | None = None
+    solution_num: int | None = None
+    iteration: int | None = None
+    plate_mag: float | None = None
+    natmag: float | None = None
+
+
 class PhotometryProcess:
     """
     Plate photometry process class
 
+    The calibrations are collected in ``phot_calib_list`` as dictionaries
+    of ``phot_calib`` columns.
+
+    Parameters
+    ----------
+    ctx
+        Context of the process.
+    sources
+        Sources crossmatched with Gaia; the calibration writes its columns.
+    solution
+        Astrometric solutions.
+
     """
 
-    def __init__(self):
-        self.basefn = ''
-        self.write_phot_dir = ''
-        self.scratch_dir = None
-        self.log = None
-    
-        self.plate_header = None
-        self.platemeta = None
+    def __init__(self, ctx: ProcessContext, sources: SourceTable,
+                 solution: SolutionSet):
+        self.basefn = ctx.basefn
+        self.write_phot_dir = ctx.cfg.files.write_phot_dir
+        self.scratch_dir = ctx.work_dir
+        self.log = ctx.log
+        self.plate_header = ctx.header
 
-        self.sources = None
-        self.plate_solution = None
+        self.sources = sources
+        self.solution = solution
 
         self.phot_cterm_list = []
         self.phot_calib = None
@@ -54,23 +137,6 @@ class PhotometryProcess:
         self.calib_curve = None
         self.faint_limit = None
         self.bright_limit = None
-
-    def assign_conf(self, conf):
-        """
-        Parse configuration and set class attributes.
-
-        """
-
-        if isinstance(conf, str):
-            conf = read_conf(conf)
-            
-        self.conf = conf
-
-        for attr in ['write_phot_dir']:
-            try:
-                setattr(self, attr, conf.get('Files', attr))
-            except configparser.Error:
-                pass
 
     def evaluate_color_term(self, sources, solution_num=0):
         """
@@ -87,8 +153,8 @@ class PhotometryProcess:
 
         """
 
-        cat_mag1 = sources['gaiaedr3_bpmag'].data
-        cat_mag2 = sources['gaiaedr3_rpmag'].data
+        cat_mag1 = sources['gaiadr4_bpmag'].data
+        cat_mag2 = sources['gaiadr4_rpmag'].data
         plate_mag = sources['mag_auto'].data
         mag_corr = sources['natmag_correction'].data
         mag_err = sources['magerr_auto'].data
@@ -406,7 +472,7 @@ class PhotometryProcess:
 
         """
 
-        num_solutions = self.plate_solution.num_solutions
+        num_solutions = self.solution.num_solutions
 
         assert (solution_num is None or 
                 (solution_num > 0 and solution_num <= num_solutions))
@@ -461,7 +527,7 @@ class PhotometryProcess:
 
         # Store number of Gaia DR2 objects matched with the current solution
         bgaia = (self.sources['solution_num'] == solution_num)
-        self.phot_calib['num_gaia_edr3'] = bgaia.sum()
+        self.phot_calib['num_gaia_dr4'] = bgaia.sum()
 
         # For single exposures, exclude blended sources.
         # For multiple exposures, include them, because otherwise the bright
@@ -479,10 +545,10 @@ class PhotometryProcess:
                     (self.sources['mag_auto'] < 90) &
                     bflags &
                     (self.sources['flag_clean'] == 1) &
-                    ~self.sources['gaiaedr3_bpmag'].mask &
-                    ~self.sources['gaiaedr3_rpmag'].mask &
-                    (self.sources['gaiaedr3_bp_rp'].filled(99.) <= 2) &
-                    (self.sources['gaiaedr3_neighbors'] == 1))
+                    ~self.sources['gaiadr4_bpmag'].mask &
+                    ~self.sources['gaiadr4_rpmag'].mask &
+                    (self.sources['gaiadr4_bp_rp'].filled(99.) <= 2) &
+                    (self.sources['gaiadr4_neighbors'] == 1))
 
         num_calstars = cal_mask.sum()
         self.phot_calib['num_candidate_stars'] = num_calstars
@@ -558,8 +624,8 @@ class PhotometryProcess:
             return
 
         plate_mag_u = self.sources['mag_auto'][ind_calibstar_u].data
-        cat_bmag_u = self.sources['gaiaedr3_bpmag'][ind_calibstar_u].data
-        cat_vmag_u = self.sources['gaiaedr3_rpmag'][ind_calibstar_u].data
+        cat_bmag_u = self.sources['gaiadr4_bpmag'][ind_calibstar_u].data
+        cat_vmag_u = self.sources['gaiadr4_rpmag'][ind_calibstar_u].data
         cat_natmag = cat_vmag_u + cterm * (cat_bmag_u - cat_vmag_u)
         self.sources['cat_natmag'][ind_calibstar_u] = cat_natmag
 
@@ -1067,11 +1133,11 @@ class PhotometryProcess:
 
         # Select stars with known external photometry
         bgaia = (sol_mask &
-                 ~self.sources['gaiaedr3_bpmag'].mask &
-                 ~self.sources['gaiaedr3_rpmag'].mask)
+                 ~self.sources['gaiadr4_bpmag'].mask &
+                 ~self.sources['gaiadr4_rpmag'].mask)
 
         if bgaia.sum() > 0:
-            bp_rp = self.sources['gaiaedr3_bp_rp'][bgaia]
+            bp_rp = self.sources['gaiadr4_bp_rp'][bgaia]
             bp_rp_err = 0.
 
             self.sources['rpmag'][bgaia] = (self.sources['natmag'][bgaia]
