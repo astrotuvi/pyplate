@@ -17,6 +17,7 @@ from ..config import Config
 from ..database.database import PlateDB
 from ..metadata import Plate, Scan
 from ..metadata.base import DbRecord
+from ..metadata.header import fits_structure
 from .._version import __version__
 from . import artifacts, extraction
 from .catalog import StarCatalog
@@ -218,6 +219,23 @@ class PlateProcess:
                               level=1, event=10)
                 self.finish(completed=0)
                 return
+        elif ctx.header['NAXIS'] is None:
+            # Header made without the scan file: take the FITS structure
+            # (SIMPLE, BITPIX, NAXIS, BSCALE, BZERO, EXTEND) from the file
+            try:
+                structure = fits_structure(
+                    fits.getheader(self.fn_fits, ignore_missing_end=True))
+            except IOError:
+                ctx.log.write('Could not read FITS file {}'
+                              .format(self.fn_fits),
+                              level=1, event=10)
+                self.finish(completed=0)
+                return
+
+            for key in ['SIMPLE', 'BITPIX', 'NAXIS', 'BSCALE', 'BZERO',
+                        'EXTEND']:
+                if key in ctx.header:
+                    ctx.header[key] = structure[key]
 
         if ctx.header['NAXIS'] != 2:
             ctx.log.write('Incompatible FITS file: NAXIS != 2',
