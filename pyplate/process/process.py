@@ -341,7 +341,7 @@ class PlateProcess:
             platedb.close_connection()
 
     def invert_plate(self):
-        """
+        r"""
         Invert FITS image and save the result (\*_inverted.fits) in the scratch 
         or work directory.
 
